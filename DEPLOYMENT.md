@@ -42,5 +42,5 @@
 - Worker nhận từng phần 8 MiB dưới cùng hostname, truyền dạng stream tới R2 (không base64, không qua Apps Script).
 - Mọi phần trừ phần cuối của video có cùng kích thước, từ 5 MiB trở lên theo R2.
 - Tệp video tối đa 2 GiB và 60 phút (trình duyệt kiểm tra thời lượng; backend giới hạn kích thước).
-- Thông tin đăng nhập chỉ lưu trên D1 dưới dạng hàm dẫn xuất PBKDF2 có muối; PIN 6–12 chữ số; chặn 15 phút sau năm lần sai.
+- Thông tin đăng nhập chỉ lưu trên D1 dưới dạng hàm dẫn xuất PBKDF2 có muối; PIN 3–12 chữ số (khuyến nghị từ 6); chặn 15 phút sau năm lần sai.
 - Trước triển khai sản xuất cần kiểm thử tải file đầy đủ, phân quyền nhiều người dùng, thao tác đồng thời, sao lưu D1/R2 và bảo vệ thông tin khách hàng.
