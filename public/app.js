@@ -36,11 +36,11 @@ async function bootstrap(){
 }
 function renderTabs(){
  const role=state.user.role,buttons=[['orders','Danh sách đơn']];
- if(['ADMIN','SALE'].includes(role))buttons.push(['sale','Sale / Gộp đơn']);
+ if(['ADMIN','SALE','SHIPPER'].includes(role))buttons.push(['sale',role==='SHIPPER'?'Gộp vận đơn':'Sale / Gộp đơn']);
  if(role==='ADMIN')buttons.push(['staff','Nhân sự']);
  $('tabs').replaceChildren(...buttons.map(([key,text])=>{const b=button(text,()=>tab(key),key===state.tab?'selected':'');return b;}));
 }
-function tab(key){state.tab=key;show('ordersView',key==='orders');show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);renderTabs();if(key==='sale')loadGroupOptions();}
+function tab(key){state.tab=key;show('ordersView',key==='orders');show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);show('newSalePanel',state.user.role!=='SHIPPER');renderTabs();if(key==='sale')loadGroupOptions();}
 async function loadOrders(){
  const q=$('search').value.trim();const r=await api('GET','/api/orders?q='+encodeURIComponent(q));
  state.orders=r.orders;$('listTitle').textContent=statusTitle[state.user.role]||'Đơn hàng';
@@ -148,7 +148,7 @@ async function saveShip(){
 async function loadGroupOptions(){
  try{
   const r=await api('GET','/api/orders');const list=$('groupList');list.replaceChildren();
-  const options=r.orders.filter(o=>['CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN'].includes(o.status)&&!o.group_id);
+  const options=r.orders.filter(o=>state.user.role==='SHIPPER'?o.status==='CHỜ VẬN ĐƠN':['CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN'].includes(o.status)&&!o.group_id);
   for(const o of options){
    const row=el('label',null,'order');row.style.display='flex';
    const ck=document.createElement('input');ck.type='checkbox';ck.className='groupCheck';ck.value=o.id;
