@@ -3,9 +3,9 @@
 ## Trạng thái hạ tầng ngày 10/11/2026
 - GitHub: `truongtho6699/Qbooks.management` (repository công khai, có quyền ghi).
 - Cloudflare có hai tài khoản đang kết nối: `locphat` và tài khoản cá nhân.
-- **Cả hai chưa bật R2**: API trả mã lỗi 10042 *Please enable R2 through the Cloudflare Dashboard*.
+- **R2 đã được kích hoạt trên tài khoản cá nhân** và bucket riêng `qbooks-media` (Standard, APAC) đã tạo thành công ngày 10/11/2026.
 - Chưa thấy DNS zone `quantri.page.com` trong hai tài khoản; **không thể xác nhận `qbook.quantri.page.com` là tên miền thuộc quyền quản lý**.
-- Chưa tạo D1 mới, R2 bucket, Worker production; chưa chạm Apps Script V35 hay Google Sheets thực tế.
+- **D1 `qbooks-db` đã được tạo**, mã CSDL: `17474d4c-8980-4c97-afb4-c52303b10325`; cấu trúc `schema.sql` đã được áp dụng, xác minh đủ 7 bảng nghiệp vụ. Worker và giao diện chưa triển khai; chưa chạm Apps Script V35 hay Google Sheets thực tế.
 
 ## Hạ tầng cần cấp
 | Công cụ | Tên gợi ý | Binding |
@@ -19,9 +19,9 @@
 **Lưu ý:** Với repo mới, dùng Cloudflare CLI `cf` và tài liệu hướng dẫn [cf CLI](https://developers.cloudflare.com/cf/agents/index.md); không cấu hình nhầm binding của cơ sở dữ liệu `ban1` hoặc `locphat-ai-db` đang dùng cho công việc khác.
 
 ## Triển khai sau khi bật R2
-1. Chọn đúng tài khoản Cloudflare; xác thực hạn mức lưu trữ và dự toán phí.
-2. Bật R2 trên Dashboard và tạo bucket **private** `qbooks-media`. Không bật truy cập công khai, không tạo khóa tài khoản R2 trên frontend.
-3. Tạo D1 riêng `qbooks-db`; áp dụng `schema.sql` đúng database này.
+1. **Đã xong:** Dùng tài khoản Cloudflare cá nhân, R2 và D1 riêng cho QBooks.
+2. **Đã xong:** R2 `qbooks-media` đã được tạo. Không bật public bucket, không tạo khóa tài khoản R2 trên frontend.
+3. **Đã xong:** D1 `qbooks-db` đã được tạo tại APAC, schema đã áp dụng đúng database.
 4. Tạo Worker từ `src/worker.js`, gắn R2 `MEDIA`, D1 `DB`, Static Assets `ASSETS` trỏ `public/`.
 5. Tạo secret `SETUP_KEY` là chuỗi ngẫu nhiên dài (không commit lên GitHub).
 6. Dùng `POST /api/setup` để tạo quản trị khi chưa có nhân sự nào.
