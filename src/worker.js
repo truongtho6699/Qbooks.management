@@ -57,7 +57,7 @@ async function handle(req,env){
   if(input.setupKey!==env.SETUP_KEY)throw Object.assign(new Error('Mã thiết lập không hợp lệ.'),{status:403});
   const count=await env.DB.prepare('SELECT COUNT(*) n FROM users').first();
   if(count.n)throw Object.assign(new Error('Hệ thống đã có quản trị; không cho thiết lập lại.'),{status:409});
-  if(!/^\d{6,12}$/.test(String(input.pin||'')))throw Error('PIN quản trị cần 3–12 chữ số.');
+  if(!/^\d{3,12}$/.test(String(input.pin||'')))throw Error('PIN quản trị cần 3–12 chữ số.');
   const salt=uid(),id=uid();
   await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash) VALUES(?,?,?,?,?,?)')
    .bind(id,clean(input.email).toLowerCase(),clean(input.name)||'Admin','ADMIN',salt,await hashPin(input.pin,salt)).run();
@@ -89,7 +89,7 @@ async function handle(req,env){
  if(method==='POST'&&path==='/api/users'){
   needRole(user,'ADMIN');const b=await requestJSON(req);
   if(!['ADMIN','SALE','PACKER','SHIPPER'].includes(b.role))throw Error('Vai trò không hợp lệ.');
-  if(!/^\d{6,12}$/.test(String(b.pin||'')))throw Error('PIN cần 3–12 chữ số.');
+  if(!/^\d{3,12}$/.test(String(b.pin||'')))throw Error('PIN cần 3–12 chữ số.');
   const salt=uid(),id=uid();
   await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash) VALUES(?,?,?,?,?,?)')
    .bind(id,clean(b.email).toLowerCase(),clean(b.name),b.role,salt,await hashPin(b.pin,salt)).run();
