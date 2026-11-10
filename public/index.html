@@ -10,7 +10,7 @@
 <div class="filters"><input id="search" placeholder="Tìm mã hóa đơn, tên khách, Sale…" autocomplete="off"></div>
 <div id="orderList" class="cards"></div>
 </section>
-<section id="saleView" hidden><div class="panel"><h2>Sale · Lên đơn</h2>
+<section id="saleView" hidden><div class="panel" id="newSalePanel"><h2>Sale · Lên đơn</h2>
 <form id="saleForm"><div class="fields"><label>Mã hóa đơn (có thể nhập nhiều mã, cách nhau bằng dấu phẩy)<input name="invoice_codes" placeholder="HD0011, HD0012" required></label><label>Tên Sale<input name="sale_name" placeholder="Admin" required></label><label>Tên khách hàng<input name="customer" required></label><label>Số quyển<input name="quantity" type="number" min="0" value="0"></label><label>Loại vận chuyển<input name="transport" placeholder="Gửi xe, Ship ngoài..."></label><label>Nhà xe (nếu có)<input name="carrier"></label><label>Địa chỉ<input name="address"></label><label class="check"><input name="urgent" type="checkbox"> Đơn gấp</label></div><button class="primary">LƯU ĐƠN SALE</button></form></div>
 <div class="panel"><h2>Gộp nhiều đơn vào một mã vận đơn</h2><p class="hint">Chọn các đơn chưa hoàn thành ở danh sách bên dưới, rồi bấm tạo nhóm.</p><div id="groupList" class="cards compact"></div><button class="secondary" id="createGroup">TẠO NHÓM VẬN ĐƠN</button></div></section>
 <section id="detailView" hidden><button class="textbtn" id="backBtn">← Quay lại danh sách</button><div class="panel"><div id="selectedOrder"></div><div id="packControls">
