@@ -20,13 +20,13 @@ Bản MVP độc lập với Google Apps Script V35, dành cho quy trình **Sale
 2. Tạo bucket riêng `qbooks-media` và cơ sở dữ liệu D1 riêng `qbooks-db`; không tái sử dụng database ứng dụng khác.
 3. Cấu hình binding `MEDIA` (R2), `DB` (D1), `ASSETS` (Worker static assets: `public/`). Thiết lập Worker `qbooks-management` với entry `src/worker.js` bằng Cloudflare CLI `cf` hoặc giao diện Workers.
 4. Tạo **secret `SETUP_KEY`** ngẫu nhiên dài; không đưa vào GitHub. Áp dụng `schema.sql` vào D1.
-5. Khởi tạo quản trị một lần bằng `POST /api/setup` body `{"setupKey":"…","email":"…","name":"Admin","pin":"mã PIN 6-12 số"}` (chỉ khi chưa có user).
+5. Khởi tạo quản trị một lần bằng `POST /api/setup` body `{"setupKey":"…","email":"…","name":"Admin","pin":"mã PIN 3-12 số"}` (chỉ khi chưa có user).
 6. Kiểm tra Worker trong môi trường thử nghiệm: đăng nhập, tạo đơn mẫu, upload ảnh/video, xác nhận R2 và D1; sau đó mới nhập dữ liệu thật.
 7. Tên `qbook.quantri.page.com` chỉ dùng được nếu người sử dụng có quyền kiểm soát vùng DNS `quantri.page.com` hoặc `page.com` tương ứng trên Cloudflare. Hiện chưa xác thực được. Dùng hostname Workers mặc định khi thử nghiệm.
 
 ## Giới hạn
 - Video tối đa 60 phút (kiểm tra metadata trên trình duyệt), dung lượng tối đa 2 GiB; ảnh tối đa 25 MiB.
-- Mã PIN ngắn dễ bị đoán. MVP bắt buộc ít nhất 6 chữ số, khóa 15 phút sau 5 lần sai.
+- Mã PIN ngắn dễ bị đoán. MVP cho phép từ 3 chữ số theo nghiệp vụ (khuyến nghị từ 6 chữ số), khóa 15 phút sau 5 lần sai.
 - Tệp được giữ riêng tư ở R2. Không bật public bucket. Tải xuống qua endpoint yêu cầu đăng nhập.
 - Các bản export/migration từ `DATA_TONG`, `DM_NHAN_SU` vẫn cần đối chiếu và nghiệm thu riêng.
 
