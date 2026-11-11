@@ -76,6 +76,47 @@ async function initGoogleSignIn(){
   $('googleStatus').textContent='Dùng tài khoản Google đã được cấp quyền hoặc đăng ký mới để chờ quản trị duyệt.';
  }catch(e){$('googleStatus').textContent=e.message;}
 }
+function resetStaffEdit(){
+ state.editStaffId=null;
+ $('staffForm').reset();
+ $('staffForm').elements.email.readOnly=false;
+ $('staffForm').elements.role.disabled=false;
+ $('saveStaffBtn').textContent='TẠO NHÂN SỰ';
+}
+async function loadStaffUsers(){
+ if(!capabilities().admin)return;
+ const r=await api('GET','/api/users'),list=$('staffList');
+ list.replaceChildren();
+ for(const person of r.users||[]){
+  const row=button(person.name+' · '+person.email+' · '+(person.active?'HOẠT ĐỘNG':'NGỪNG')+' · '+[person.can_pack?'Đóng hàng':'',person.can_ship?'Vận đơn':'',person.can_admin?'Admin':''].filter(Boolean).join('/'),()=>{
+   state.editStaffId=person.id;
+   const form=$('staffForm');
+   form.elements.name.value=person.name;form.elements.email.value=person.email;
+   form.elements.email.readOnly=true;form.elements.role.value=person.role;
+   form.elements.role.disabled=true;form.elements.pin.value='';
+   form.elements.dongHang.checked=!!person.can_pack;form.elements.vanDon.checked=!!person.can_ship;
+   form.elements.admin.checked=!!person.can_admin;form.elements.active.checked=!!person.active;
+   $('saveStaffBtn').textContent='LƯU THAY ĐỔI NHÂN SỰ';
+   form.scrollIntoView({behavior:'smooth',block:'center'});
+  },'order');
+  list.append(row);
+ }
+}
+async function loadAdminReport(kind){
+ const wrap=$('adminReport');wrap.replaceChildren(el('p','Đang tải '+kind+'...'));
+ try{
+  const report=await api('GET','/api/admin/data?kind='+encodeURIComponent(kind));
+  const table=document.createElement('table');table.className='admin-table';
+  const header=document.createElement('tr');
+  for(const name of report.headers||[])header.append(el('th',name));
+  table.append(header);
+  for(const record of report.rows||[]){
+   const tr=document.createElement('tr');for(const value of record)tr.append(el('td',String(value??'')));
+   table.append(tr);
+  }
+  wrap.replaceChildren(table);
+ }catch(e){wrap.replaceChildren(el('p',e.message));}
+}
 async function loadPendingGoogle(){
  const container=$('googlePendingList');
  if(!state.user||!capabilities().admin)return;
@@ -136,7 +177,7 @@ function tab(key){
  show('newSalePanel',state.user.role!=='SHIPPER');
  renderTabs();
  if(key==='sale')loadGroupOptions();
- if(key==='staff')loadPendingGoogle();
+ if(key==='staff'){loadPendingGoogle();loadStaffUsers();}
  if(['pack','ship','orders'].includes(key))loadOrders().catch(e=>notice(e.message));
 }
 async function loadOrders(){
@@ -335,7 +376,7 @@ $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
 $('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
-$('staffForm').addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('POST','/api/users',Object.fromEntries(new FormData(e.target)));notice('Đã tạo nhân sự '+r.id,true);e.target.reset()}catch(err){notice(err.message)}});
+$('staffForm').addEventListener('submit',async e=>{e.preventDefault();const f=e.target;const data=Object.fromEntries(new FormData(f));data.dongHang=f.elements.dongHang.checked;data.vanDon=f.elements.vanDon.checked;data.admin=f.elements.admin.checked;data.active=f.elements.active.checked;if(!state.editStaffId&&!data.pin)return notice('Nhân sự mới cần mã PIN 3–8 số.');try{const r=state.editStaffId?await api('PATCH','/api/users/'+state.editStaffId,data):await api('POST','/api/users',data);notice('Đã lưu nhân sự '+r.id,true);resetStaffEdit();await loadStaffUsers();await loadAdminReport('STAFF');}catch(err){notice(err.message)}});
 const SHEET_ID='1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw';
 async function googleRead(url,token){
  const res=await fetch(url,{headers:{Authorization:'Bearer '+token},cache:'no-store'});
@@ -455,6 +496,8 @@ $('confirmImport').onchange=()=>{$('importGoogleSheets').disabled=!$('confirmImp
 $('importGoogleSheets').onclick=importGoogleSheets;
 $('checkLegacy').onclick=checkLegacy;
 $('previewLegacy').onclick=previewLegacy;
+$('cancelStaffEdit').onclick=resetStaffEdit;
+$all('.admin-report').forEach(btn=>btn.onclick=()=>loadAdminReport(btn.dataset.kind));
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 initGoogleSignIn();
 if(state.token)bootstrap();
