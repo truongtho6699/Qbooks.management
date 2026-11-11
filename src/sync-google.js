@@ -49,6 +49,12 @@ async function targetFolder(token,order,stage){
  const folder=await getFolder(token,parent,stages[stage]);
  return {id:folder,url:driveUrl(folder),orderFolder:driveUrl(orderFolder),packingFolder:packing?driveUrl(parent):null};
 }
+async function storeFolderLinks(env,orderId,stage,folder){
+ const column={ANH_HOA_DON:'invoice_folder_url',VIDEO_DONG_HANG:'video_folder_url',HANG_HOA:'goods_folder_url',GIAO_HANG:'shipping_folder_url'}[stage];
+ if(!column)throw Error('Loại hồ sơ không được hỗ trợ.');
+ await env.DB.prepare('UPDATE orders SET '+column+'=?'+(folder.packingFolder?',packing_folder_url=?':'')+' WHERE id=?')
+  .bind(...(folder.packingFolder?[folder.url,folder.packingFolder,orderId]:[folder.url,orderId])).run();
+}
 async function findExistingDriveFile(token,folderId,filename){
  const q="name = '"+quoted(filename)+"' and trashed = false and '"+quoted(folderId)+"' in parents";
  const url=GOOGLE_BASE+'/drive/v3/files?'+new URLSearchParams({q,fields:'files(id,name,size,webViewLink),nextPageToken',page_size:'100'}).toString();
@@ -75,6 +81,7 @@ export async function driveInit(env,data){
  if(old){
   if(Number(old.size)!==upload.bytes)throw conflict('Tệp Drive trùng tên nhưng khác dung lượng: '+upload.id);
   await env.DB.prepare("UPDATE uploads SET drive_file_id=?,drive_folder_url=?,drive_offset=?,drive_completed_at=CURRENT_TIMESTAMP WHERE id=? AND drive_file_id IS NULL").bind(old.id,folder.url,upload.bytes,upload.id).run();
+  await storeFolderLinks(env,order.id,upload.stage,folder);
   return {done:true,uploadId:upload.id,fileId:old.id,offset:upload.bytes,total:upload.bytes};
  }
  const url=GOOGLE_BASE+'/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,parents,webViewLink';
@@ -86,6 +93,7 @@ export async function driveInit(env,data){
  if(!session||!/^https:\/\/(www\.googleapis\.com|content-googleapis\.com)\//.test(session))
   throw Error('Drive không trả phiên tải tệp hợp lệ.');
  await env.DB.prepare("UPDATE uploads SET drive_session_url=?,drive_folder_url=?,drive_offset=0 WHERE id=? AND drive_file_id IS NULL").bind(session,folder.url,upload.id).run();
+ await storeFolderLinks(env,order.id,upload.stage,folder);
  return {done:false,uploadId:upload.id,offset:0,total:upload.bytes};
 }
 export async function driveChunk(env,data){
@@ -161,8 +169,7 @@ function desiredSheetUpdates(order,files){
   if(f.drive_folder_url&&stageMap[f.stage]!==undefined)put(stageMap[f.stage],f.drive_folder_url);
  }
  // Root packing link must resolve from a synchronized Drive stage's folder metadata.
- const packingFile=files.find(f=>f.stage!=='GIAO_HANG'&&f.drive_folder_url);
- if(packingFile)put(10,order.packing_folder_url||'');
+ if(order.packing_folder_url&&files.some(f=>f.stage!=='GIAO_HANG'&&f.drive_folder_url))put(10,order.packing_folder_url);
  return out;
 }
 export async function sheetCommit(env,data){
@@ -184,7 +191,11 @@ export async function sheetCommit(env,data){
  for(let i=1;i<rows.length;i++)if(clean(rows[i]?.[0])===orderId)matched.push(i);
  if(matched.length!==1)throw conflict('Không tìm được đúng một đơn '+orderId+' trong DATA_TONG.');
  const sheetRow=matched[0]+1,live=rows[matched[0]];
- const desired=desiredSheetUpdates(order,allUploads);
+ const identities=await env.DB.prepare('SELECT id,email,name FROM users WHERE id=? OR id=?').bind(order.packed_by||'',order.shipped_by||'').all();
+ const userNames=new Map((identities.results||[]).map(u=>[u.id,u.email]));
+ const enriched={...order,source_packed_by:order.packed_by?userNames.get(order.packed_by)||order.source_packed_by:order.source_packed_by,
+  source_shipped_by:order.shipped_by?userNames.get(order.shipped_by)||order.source_shipped_by:order.source_shipped_by};
+ const desired=desiredSheetUpdates(enriched,allUploads);
  if(!desired.size)throw conflict('Chưa xác định được trường thay đổi.');
  const updates=[];
  for(const [i,value] of desired){
