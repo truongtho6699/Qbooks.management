@@ -40,6 +40,11 @@ async function pendingUpload(env,id){
  if(!u)throw Object.assign(new Error('Không tìm thấy phiên tải.'),{status:404});
  return u;
 }
+async function assertOrderLock(env,user,orderId,stage){
+ const lock=await env.DB.prepare('SELECT user_id,stage,expires_at FROM order_locks WHERE order_id=?').bind(orderId).first();
+ if(!lock||lock.user_id!==user.id||lock.stage!==stage||lock.expires_at<now())
+  throw Object.assign(new Error('Chưa khóa đơn hoặc đơn đã bị người khác nhận xử lý. Chọn đơn lại.'),{status:409});
+}
 async function checkUploads(env,orderId,stages){
  const rows=await env.DB.prepare('SELECT stage,status FROM uploads WHERE order_id=?').bind(orderId).all();
  const data=rows.results||[];
@@ -256,9 +261,30 @@ async function handle(req,env){
   for(const id of ids)stmts.push(env.DB.prepare('UPDATE orders SET group_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND (group_id IS NULL OR group_id=?)').bind(groupId,id,groupId));
   await env.DB.batch(stmts);await audit(env,user,'GROUP_ORDERS','',JSON.stringify({groupId,ids}));return json({groupId,orderIds:ids});
  }
+ const lockMatch=path.match(/^\/api\/orders\/([a-f0-9_-]+)\/lock$/);
+ if(lockMatch){
+  const id=lockMatch[1],o=await orderById(env,id);
+  if(method==='POST'){
+   const data=await requestJSON(req),stage=data.stage;
+   if(!['DONG_HANG','VAN_DON'].includes(stage))throw Error('Loại khóa đơn không hợp lệ.');
+   needRole(user,stage==='DONG_HANG'?'PACKER':'SHIPPER');
+   if(stage==='DONG_HANG'&&o.status!==STATUS.PACK)throw Error('Đơn không chờ đóng hàng.');
+   if(stage==='VAN_DON'&&![STATUS.SHIP,STATUS.MOVING].includes(o.status))throw Error('Đơn không chờ vận đơn.');
+   const expires=now()+6*3600;
+   const result=await env.DB.prepare('INSERT INTO order_locks(order_id,user_id,stage,expires_at) VALUES(?,?,?,?) ON CONFLICT(order_id) DO UPDATE SET user_id=excluded.user_id,stage=excluded.stage,expires_at=excluded.expires_at,locked_at=CURRENT_TIMESTAMP WHERE order_locks.expires_at<? OR order_locks.user_id=?')
+    .bind(id,user.id,stage,expires,now(),user.id).run();
+   if(result.meta.changes!==1)throw Object.assign(new Error('Đơn đang được người khác xử lý. Vui lòng thử lại sau.'),{status:409});
+   return json({ok:true,expiresAt:expires});
+  }
+  if(method==='DELETE'){
+   await env.DB.prepare('DELETE FROM order_locks WHERE order_id=? AND user_id=?').bind(id,user.id).run();
+   return json({ok:true});
+  }
+ }
  if(method==='POST'&&path==='/api/uploads'){
   const b=await requestJSON(req),order=await orderById(env,b.orderId);
   if(order.status!==(b.stage==='GIAO_HANG'?STATUS.SHIP:STATUS.PACK)||!hasRole(user,b.stage==='GIAO_HANG'?'SHIPPER':'PACKER'))throw Object.assign(new Error('Không có quyền tải lên đơn này.'),{status:403});
+  await assertOrderLock(env,user,order.id,b.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG');
   const size=Number(b.size),name=clean(b.filename),type=clean(b.contentType);
   validateUpload({stage:b.stage,filename:name,contentType:type,size});
   const id=uid(),key=filePath(order.id,b.stage,name),multipart=b.stage==='VIDEO_DONG_HANG';
@@ -280,6 +306,7 @@ async function handle(req,env){
    return new Response(object.body,{headers:{'content-type':u.content_type,'content-disposition':'attachment; filename="download"','cache-control':'private, no-store'}});
   }
   mustStageAccess(user,u,o);
+  await assertOrderLock(env,user,o.id,u.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG');
   if(method==='GET'&&!action){
    const rows=await env.DB.prepare('SELECT part_number,etag,bytes FROM upload_parts WHERE upload_id=? ORDER BY part_number').bind(id).all();
    return json({id,status:u.status,bytes:u.bytes,chunkSize:u.chunk_size,parts:rows.results||[]});
@@ -319,6 +346,7 @@ async function handle(req,env){
  if(method==='POST'&&pMatch){
   needRole(user,'PACKER');const id=pMatch[1],o=await orderById(env,id),b=await requestJSON(req);
   if(o.status!==STATUS.PACK)throw Error('Đơn đã đóng hoặc không còn ở trạng thái chờ.');
+  await assertOrderLock(env,user,id,'DONG_HANG');
   const media=await checkUploads(env,id,['ANH_HOA_DON','VIDEO_DONG_HANG','HANG_HOA']);
   if(!media.length)throw Error('Chưa có ảnh/video xác nhận đóng hàng.');
   const result=await env.DB.prepare("UPDATE orders SET status=?,boxes=?,packing_note=?,packed_by=?,packed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?")
@@ -333,7 +361,7 @@ async function handle(req,env){
   if(orders.results.length!==ids.length||orders.results.some(x=>x.status!==STATUS.SHIP))throw Error('Chỉ được bàn giao các đơn Chờ vận đơn.');
   const groupIds=[...new Set(orders.results.map(o=>o.group_id).filter(Boolean))];
   if(groupIds.length>1)throw Error('Các đơn đang nằm ở nhiều nhóm khác nhau.');
-  for(const id of ids)await checkUploads(env,id,['GIAO_HANG']);
+  for(const id of ids){await assertOrderLock(env,user,id,'VAN_DON');await checkUploads(env,id,['GIAO_HANG']);}
   const groupId=groupIds[0]||('VD'+Date.now());
   const stmts=[];
   if(!groupIds.length)stmts.push(env.DB.prepare('INSERT INTO shipping_groups(id,created_by) VALUES(?,?)').bind(groupId,user.id));
