@@ -296,7 +296,7 @@ async function handle(req,env){
  }
  if(method==='GET'&&path==='/api/packing-people'){
   needRole(user,'PACKER','SHIPPER');
-  const r=await env.DB.prepare("SELECT email,name FROM users WHERE active=1 AND (role IN ('PACKER','ADMIN') OR can_pack=1) UNION SELECT email,name FROM legacy_staff_catalog WHERE active=1 AND can_pack=1 ORDER BY name LIMIT 300").all();
+  const r=await env.DB.prepare("SELECT email,name FROM users WHERE active=1 AND (can_pack=1 OR can_admin=1) UNION SELECT email,name FROM legacy_staff_catalog WHERE active=1 AND can_pack=1 ORDER BY name LIMIT 300").all();
   return json({people:r.results||[]});
  }
  if(method==='GET'&&path==='/api/admin/data'){
