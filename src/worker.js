@@ -62,12 +62,14 @@ async function handle(req,env){
    if(matching){
     if(!matching.active)throw Object.assign(new Error('Tài khoản đã bị vô hiệu hóa. Liên hệ quản trị.'),{status:403});
     if(matching.google_sub&&matching.google_sub!==identity.sub)throw Object.assign(new Error('Email này đã liên kết tài khoản Google khác.'),{status:403});
-    if(!matching.google_sub){
+    if(!matching.google_sub&&identity.authoritativeEmail){
      const changed=await env.DB.prepare('UPDATE users SET google_sub=? WHERE id=? AND google_sub IS NULL')
       .bind(identity.sub,matching.id).run();
      if(!changed.meta.changes)throw Error('Tài khoản vừa được cập nhật. Vui lòng đăng nhập lại.');
+     found=matching;
+    }else if(matching.google_sub===identity.sub){
+     found=matching;
     }
-    found=matching;
    }
   }
   if(!found){
@@ -124,7 +126,7 @@ async function handle(req,env){
  if(method==='GET'&&path==='/api/bootstrap')return json({user:{id:user.id,name:user.name,email:user.email,role:user.role},statuses:STATUS});
  if(method==='GET'&&path==='/api/google/pending'){
   needRole(user,'ADMIN');
-  const rows=await env.DB.prepare("SELECT google_sub,email,name,requested_at FROM google_registrations WHERE status='PENDING' ORDER BY requested_at DESC LIMIT 100").all();
+  const rows=await env.DB.prepare("SELECT r.google_sub,r.email,r.name,r.requested_at,CASE WHEN u.id IS NULL THEN 0 ELSE 1 END existing_user FROM google_registrations r LEFT JOIN users u ON u.email=r.email WHERE r.status='PENDING' ORDER BY r.requested_at DESC LIMIT 100").all();
   return json({registrations:rows.results||[]});
  }
  if(method==='POST'&&path==='/api/google/approve'){
@@ -133,8 +135,17 @@ async function handle(req,env){
   if(!['SALE','PACKER','SHIPPER'].includes(role))throw Error('Chỉ được phê duyệt nhân sự theo vai trò nghiệp vụ.');
   const requestRow=await env.DB.prepare("SELECT google_sub,email,name FROM google_registrations WHERE google_sub=? AND status='PENDING'").bind(sub).first();
   if(!requestRow)throw Object.assign(new Error('Đăng ký không còn chờ duyệt.'),{status:404});
-  const existing=await env.DB.prepare('SELECT id FROM users WHERE email=? OR google_sub=?').bind(requestRow.email,sub).first();
-  if(existing)throw Object.assign(new Error('Email hoặc Google ID đã có tài khoản; cần kiểm tra trước khi duyệt.'),{status:409});
+  const existing=await env.DB.prepare('SELECT id,email,role,google_sub FROM users WHERE email=? OR google_sub=?').bind(requestRow.email,sub).first();
+  if(existing){
+   if(existing.email!==requestRow.email||(existing.google_sub&&existing.google_sub!==sub))
+    throw Object.assign(new Error('Google đã liên kết tài khoản khác. Cần đối chiếu trước khi duyệt.'),{status:409});
+   await env.DB.batch([
+    env.DB.prepare('UPDATE users SET google_sub=? WHERE id=? AND (google_sub IS NULL OR google_sub=?)').bind(sub,existing.id,sub),
+    env.DB.prepare("DELETE FROM google_registrations WHERE google_sub=? AND status='PENDING'").bind(sub)
+   ]);
+   await audit(env,user,'LINK_GOOGLE_USER','',existing.id);
+   return json({ok:true,id:existing.id,role:existing.role,linked:true});
+  }
   const salt=uid(),id=uid();
   const unusablePinHash=await hashPin(randomToken(),salt);
   await env.DB.batch([
