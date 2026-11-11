@@ -21,6 +21,13 @@ export function moneyVN(v,label='Khoản tiền'){
  if(!Number.isSafeInteger(n)||n<0)throw Error(label+' cần là số nguyên không âm.');
  return n;
 }
+export function displayVND(value){
+ const v=String(value??'').trim().replace(/[\s₫đ]/gi,'');
+ if(!v)return 0;
+ if(/^\d{1,3}([.,]\d{3})+$/.test(v))return moneyVN(Number(v.replace(/[.,]/g,'')));
+ if(/^\d+$/.test(v))return moneyVN(Number(v));
+ throw Error('Giá trị tiền trong Google Sheets không hợp lệ: '+value);
+}
 export function shippingTotal(f){return moneyVN(f.tienShip,'Tiền ship')+moneyVN(f.hangNang,'Hàng nặng')+moneyVN(f.phiBen,'Phí bến')+moneyVN(f.phuPhi,'Phụ phí');}
 export function normalizeV35Row(row){
  if(!Array.isArray(row)||row.length<40)throw Error('Dòng DATA_TONG thiếu cột. Yêu cầu ít nhất đến AN.');
@@ -30,7 +37,7 @@ export function normalizeV35Row(row){
  if(status&&!V35_STATUS.includes(status))throw Error('Trạng thái không được hỗ trợ: '+status);
  const codes=field(row,3);
  if(!codes)throw Error('Mã hóa đơn trống.');
- const fees={tienShip:moneyVN(field(row,31),'Tiền ship'),hangNang:moneyVN(field(row,32),'Hàng nặng'),phiBen:moneyVN(field(row,33),'Phí bến'),phuPhi:moneyVN(field(row,34),'Phụ phí')};
+ const fees={tienShip:displayVND(field(row,31)),hangNang:displayVND(field(row,32)),phiBen:displayVND(field(row,33)),phuPhi:displayVND(field(row,34))};
  const helpers=field(row,29).split('|').map(x=>x.trim()).filter(Boolean);
  return {
   id,invoice_codes:codes,original_content:field(row,1),delivery_time:field(row,2),transport:field(row,4),
