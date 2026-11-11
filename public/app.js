@@ -357,7 +357,7 @@ function sourceAuth(scope,done){
    if(!window.google.accounts.oauth2.hasGrantedAllScopes(response,scope)){
     status.textContent='Chưa cấp đủ quyền chỉ đọc.';return;
    }
-   Promise.resolve(done(response.access_token)).catch(e=>{
+   Promise.resolve(done(response.access_token,Number(response.expires_in)||3600)).catch(e=>{
     status.textContent='Không đọc được dữ liệu Google: '+e.message;
    });
   },
@@ -367,7 +367,9 @@ function sourceAuth(scope,done){
  client.requestAccessToken({prompt:'consent'});
 }
 function connectGoogleSheets(){
- sourceAuth('https://www.googleapis.com/auth/spreadsheets.readonly',async token=>{
+ sourceAuth('https://www.googleapis.com/auth/spreadsheets.readonly',async(token,expiresIn)=>{
+  state.sheetReadToken=token;
+  state.sheetReadUntil=Date.now()+Math.max(60,expiresIn-120)*1000;
   const status=$('legacyStatus');
   status.textContent='Đang đọc Google Sheets bằng quyền Google của anh...';
   const ranges=['DATA_TONG!A1:AP1000','DM_NHAN_SU!A1:F300','CAU_HINH!A1:C50','SALE_GOP_VAN_DON!A1:B100'];
@@ -389,6 +391,9 @@ function connectGoogleSheets(){
    const item=el('div',null,'order');item.append(el('div',[r[0],r[3],r[5]].filter(Boolean).join(' · ')),el('span',r[23]||'Chưa có trạng thái','tag'));list.append(item);
   }
   if(rows.length>50)list.append(el('p','Đang xem 50/'+rows.length+' đơn. Đây chỉ là bản đọc thử, chưa nhập dữ liệu vào D1.'));
+  $('confirmImport').disabled=!rows.length;
+  $('confirmImport').checked=false;
+  $('importGoogleSheets').disabled=true;
  });
 }
 function connectGoogleDrive(){
@@ -398,6 +403,32 @@ function connectGoogleDrive(){
   const data=await googleRead('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(state.googleDriveRoot)+'?fields=id,name,mimeType,webViewLink',token);
   $('legacyStatus').textContent='Đã xác minh Drive: '+data.name+' ('+data.mimeType+'). Chỉ kiểm tra thông tin thư mục, chưa tạo hoặc di chuyển file.';
  });
+}
+async function importGoogleSheets(){
+ if(!capabilities().admin)return notice('Chỉ Admin được phép nhập dữ liệu từ Google Sheets.');
+ if(!$('confirmImport').checked)return notice('Cần xác nhận đối chiếu dữ liệu trước khi nhập.');
+ if(!state.sheetReadToken||Date.now()>=state.sheetReadUntil)return notice('Quyền Google đã hết hạn. Hãy bấm Đọc Google Sheets để cấp lại.');
+ const btn=$('importGoogleSheets');btn.disabled=true;
+ $('legacyStatus').textContent='Đang đọc nguồn Google Sheets và nhập vào D1; KHÔNG ghi sang Google Sheets hoặc Drive...';
+ try{
+  let offset=0,total={new:0,updated:0,unchanged:0,conflicts:0,errors:0},issues=[];
+  for(let i=0;i<15;i++){
+   const r=await api('POST','/api/legacy/import',{
+    confirmation:'DONG_Y_NHAP_D1_CHI_MOT_CHIEU',
+    googleAccessToken:state.sheetReadToken,offset,limit:100
+   });
+   for(const key of Object.keys(total))total[key]+=Number(r[key])||0;
+   issues.push(...(r.details||[]).slice(0,12));
+   if((r.new||0)+(r.updated||0)+(r.unchanged||0)+(r.conflicts||0)+(r.errors||0)<100)break;
+   offset+=100;
+  }
+  $('legacyStatus').textContent='Đã hoàn tất đối chiếu/nhập D1: mới '+total.new+', cập nhật '+total.updated+', giữ nguyên '+total.unchanged+', xung đột '+total.conflicts+', lỗi '+total.errors+'. Google Sheets và Drive không bị ghi.';
+  const box=$('legacyPreview');box.replaceChildren();
+  for(const item of issues)box.append(el('p',item.id?item.id+' · '+item.result:'Dòng '+item.row+': '+item.error));
+  $('confirmImport').checked=false;
+  await loadOrders();
+ }catch(e){$('legacyStatus').textContent='Không nhập được D1: '+e.message;}
+ finally{btn.disabled=!$('confirmImport').checked;}
 }
 async function checkLegacy(){
  const node=$('legacyStatus');node.textContent='Đang kiểm tra...';
@@ -420,6 +451,8 @@ async function previewLegacy(){
 }
 $('connectGoogleSheets').onclick=connectGoogleSheets;
 $('connectGoogleDrive').onclick=connectGoogleDrive;
+$('confirmImport').onchange=()=>{$('importGoogleSheets').disabled=!$('confirmImport').checked;};
+$('importGoogleSheets').onclick=importGoogleSheets;
 $('checkLegacy').onclick=checkLegacy;
 $('previewLegacy').onclick=previewLegacy;
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
