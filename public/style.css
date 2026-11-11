@@ -23,3 +23,11 @@
 .money-total{margin:8px 0;padding:15px;border-radius:12px;background:#ecf5ff;color:#165ad6;font-size:23px;font-weight:800;text-align:right}
 #legacyStatus:not(:empty){margin:9px 0 14px;font-weight:650}
 @media(max-width:560px){.helper-checks .check{width:100%;min-width:0}}
+
+/* Admin DATA_TONG / LOG / STAFF mobile tables */
+.table-wrap{max-width:100%;overflow:auto;margin-top:13px;border:1px solid #dfe6ef;border-radius:12px}
+.admin-table{border-collapse:collapse;min-width:680px;width:100%;font-size:12px}
+.admin-table th,.admin-table td{text-align:left;padding:10px 12px;border-bottom:1px solid #edf1f6;vertical-align:top;max-width:350px;overflow-wrap:anywhere}
+.admin-table th{background:#f0f5fb;color:#43546e;position:sticky;top:0}
+.admin-table tr:hover td{background:#f8fbff}
+#staffList .order{font-weight:600;font-size:13px;text-align:left}
