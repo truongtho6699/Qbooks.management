@@ -130,6 +130,74 @@ async function handle(req,env){
   return json({ok:true});
  }
  if(method==='GET'&&path==='/api/bootstrap')return json({user:{id:user.id,name:user.name,email:user.email,role:user.role,rights:{dongHang:hasRole(user,'PACKER'),vanDon:hasRole(user,'SHIPPER'),admin:hasRole(user,'ADMIN')}},statuses:STATUS});
+ if(method==='POST'&&path==='/api/legacy/import'){
+  needRole(user,'ADMIN');
+  const b=await requestJSON(req);
+  if(b.confirmation!=='DONG_Y_NHAP_D1_CHI_MOT_CHIEU')
+   throw Object.assign(new Error('Chưa xác nhận nhập dữ liệu vào D1.'),{status:403});
+  const token=String(b.googleAccessToken||'').trim();
+  if(token.length<30||token.length>4096||!/^[A-Za-z0-9._~+\/-]+$/.test(token))
+   throw Error('Phiên Google không hợp lệ hoặc đã hết hạn.');
+  const offset=Math.max(0,Math.min(900,Math.floor(Number(b.offset)||0)));
+  const limit=Math.max(1,Math.min(100,Math.floor(Number(b.limit)||50)));
+  const rowStart=offset+2,rowEnd=rowStart+limit-1;
+  const ranges=['DATA_TONG!A1:AP1','DATA_TONG!A'+rowStart+':AP'+rowEnd];
+  const query=ranges.map(r=>'ranges='+encodeURIComponent(r)).join('&');
+  const google=await fetch('https://sheets.googleapis.com/v4/spreadsheets/1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw/values:batchGet?'+query+'&valueRenderOption=FORMATTED_VALUE',
+    {headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  if(!google.ok)throw Object.assign(new Error('Không đọc được Google Sheets để nhập. Kiểm tra quyền truy cập hoặc cấp lại quyền đọc.'),{status:502});
+  const valueRanges=(await google.json()).valueRanges||[];
+  const header=valueRanges[0]?.values?.[0]||[];
+  if(header[0]!=='ID_DON'||header[3]!=='MA_HOA_DON'||header[23]!=='TRANG_THAI'||header[41]!=='NHA_XE_SALE')
+   throw Error('Tiêu đề DATA_TONG không khớp cấu trúc 42 cột V35. Đã từ chối nhập.');
+  const rawRows=valueRanges[1]?.values||[];
+  const report={new:0,updated:0,unchanged:0,conflicts:0,errors:0,details:[],readOnlyGoogle:true};
+  const fields=[
+   'id','invoice_codes','original_content','delivery_time','transport','customer','quantity','address',
+   'sale_name','carrier','status','group_id','packing_note','boxes','packing_helpers','shipping_note',
+   'shipping_person','shipping_phone','shipping_type','shipping_fee','heavy_fee','terminal_fee','extra_fee','total_fee',
+   'packing_folder_url','shipping_folder_url','invoice_folder_url','video_folder_url','goods_folder_url',
+   'source_system','source_updated_at','source_fingerprint','source_payload','source_creator','source_created_at',
+   'source_packed_by','source_shipped_by'
+  ];
+  const updates=fields.filter(k=>!['id','source_system'].includes(k));
+  const seen=new Set();
+  for(let i=0;i<rawRows.length;i++){
+   const row=rawRows[i];
+   if(!row[0])continue;
+   try{
+    const parsed=normalizeV35Row(row);
+    if(seen.has(parsed.id))throw Error('Trùng ID_DON trong lô dữ liệu.');
+    seen.add(parsed.id);
+    const hash=await sha(JSON.stringify(row));
+    const current=await env.DB.prepare('SELECT id,source_system,local_dirty,source_fingerprint FROM orders WHERE id=?')
+     .bind(parsed.id).first();
+    if(current){
+     if(current.source_system!=='GOOGLE_SHEETS'||current.local_dirty){
+      report.conflicts++;report.details.push({id:parsed.id,result:'CONFLICT'});continue;
+     }
+     if(current.source_fingerprint===hash){
+      report.unchanged++;continue;
+     }
+    }
+    const valueByKey={...parsed,packing_helpers:JSON.stringify(parsed.packing_helpers),
+     source_system:'GOOGLE_SHEETS',source_fingerprint:hash,source_payload:JSON.stringify(row),
+     source_creator:parsed.legacy_created_by,source_created_at:parsed.legacy_created_at,
+     source_packed_by:parsed.legacy_packed_by,source_shipped_by:parsed.legacy_shipped_by};
+    const binds=fields.map(k=>valueByKey[k]??null);
+    if(!current){
+     await env.DB.prepare('INSERT INTO orders ('+fields.join(',')+',synced_at) VALUES ('+fields.map(()=>'?').join(',')+',CURRENT_TIMESTAMP)').bind(...binds).run();
+     report.new++;
+    }else{
+     await env.DB.prepare('UPDATE orders SET '+updates.map(k=>k+'=?').join(',')+',synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND source_system=\'GOOGLE_SHEETS\' AND local_dirty=0')
+      .bind(...updates.map(k=>valueByKey[k]??null),parsed.id).run();
+     report.updated++;
+    }
+   }catch(err){report.errors++;report.details.push({row:rowStart+i,error:err.message.slice(0,160)});}
+  }
+  await audit(env,user,'IMPORT_GOOGLE_SHEETS','',JSON.stringify({offset,limit,new:report.new,updated:report.updated,conflicts:report.conflicts,errors:report.errors}));
+  return json(report);
+ }
  if(method==='GET'&&path==='/api/legacy/status'){
   needRole(user,'ADMIN');
   return json({sheetId:'1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw',
