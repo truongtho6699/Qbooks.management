@@ -11,6 +11,15 @@ export const V35_COLUMNS=Object.freeze([
 export const V35_STATUS=Object.freeze(['CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH']);
 export const V35_SHIP_TYPES=Object.freeze(['Ship ruột','Kiot','App']);
 const field=(row,i)=>String(row?.[i]??'').trim();
+export function parseVNDate(v){
+ const m=String(v||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+ if(!m)return '';
+ const [day,month,year,hour,minute,second]=[Number(m[1]),Number(m[2]),Number(m[3]),Number(m[4]),Number(m[5]),Number(m[6]||0)];
+ const dt=new Date(Date.UTC(year,month-1,day,hour,minute,second));
+ if(dt.getUTCFullYear()!==year||dt.getUTCMonth()!==month-1||dt.getUTCDate()!==day||hour>23||minute>59||second>59)return '';
+ const z=n=>String(n).padStart(2,'0');
+ return year+'-'+z(month)+'-'+z(day)+' '+z(hour)+':'+z(minute)+':'+z(second);
+}
 export function splitInvoiceCodes(v){return String(v??'').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);}
 export function detectDuplicateInvoices(existing,proposed){
  const seen=new Set(existing.flatMap(s=>splitInvoiceCodes(s)));
