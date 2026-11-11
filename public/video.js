@@ -163,15 +163,32 @@ function editDetail(v){return panel('Video đang xử lý','<div class="record-c
  '<div class="actions full">'+btn('Quay lại','','backList')+btn('Lưu hậu kỳ & phát hành','primary','','submit')+'</div></form>');
 }
 function production(){
+ const dateSelected=state.productionDate||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const staffSelected=state.productionStaff||'';
+ const dayOf=s=>{
+  if(!s)return '';
+  const d=new Date(String(s).replace(' ','T')+(String(s).includes('Z')?'':'Z'));
+  return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+ };
+ const ofDay=state.items.filter(v=>(v.filmed_at&&dayOf(v.filmed_at)===dateSelected)||(v.edited_at&&dayOf(v.edited_at)===dateSelected));
  const byName=new Map();
- for(const v of state.items){for(const [name,kind] of [[v.camera_name,'filmed'],[v.editor_name,'edited']]){
- if(!name)continue;const value=byName.get(name)||{filmed:0,edited:0};
- if(kind==='filmed'&&v.filmed_at)value.filmed++;
- if(kind==='edited'&&v.edited_at)value.edited++;
- byName.set(name,value);
- }}
- return kpis([{label:'Video đã quay',value:state.items.filter(v=>v.filmed_at).length},{label:'Video đã hậu kỳ',value:state.items.filter(v=>v.edited_at).length},{label:'Nhân sự tham gia',value:byName.size},{label:'Đầu sách',value:state.books.length}])+
- panel('Sản lượng theo nhân sự',table(['Nhân sự','Đã quay','Đã hậu kỳ','Tổng hoạt động'],[...byName].map(([name,v])=>[E(name),count(v.filmed),count(v.edited),count(v.filmed+v.edited)])),'Chưa có dữ liệu nhân sự');
+ for(const v of ofDay){
+  if(v.filmed_at&&dayOf(v.filmed_at)===dateSelected&&v.camera_name){
+   const p=byName.get(v.camera_name)||{filmed:0,edited:0};p.filmed++;byName.set(v.camera_name,p);
+  }
+  if(v.edited_at&&dayOf(v.edited_at)===dateSelected&&v.editor_name){
+   const p=byName.get(v.editor_name)||{filmed:0,edited:0};p.edited++;byName.set(v.editor_name,p);
+  }
+ }
+ const people=[...byName].filter(([name])=>!staffSelected||name===staffSelected);
+ const todayFilmed=people.reduce((n,[,p])=>n+p.filmed,0),todayEdited=people.reduce((n,[,p])=>n+p.edited,0);
+ return '<div class="filters"><div class="field"><label>Ngày báo cáo</label><input type="date" id="productionDate" value="'+E(dateSelected)+'"></div>'+
+ '<div class="field"><label>Nhân sự</label><select id="productionStaff"><option value="">Tất cả nhân sự</option>'+
+ [...new Set(state.items.flatMap(v=>[v.camera_name,v.editor_name]).filter(Boolean))].sort().map(name=>'<option '+(staffSelected===name?'selected':'')+' value="'+E(name)+'">'+E(name)+'</option>').join('')+
+ '</select></div></div>'+
+ kpis([{label:'Video quay trong ngày',value:todayFilmed},{label:'Video hậu kỳ trong ngày',value:todayEdited},
+  {label:'Tổng hoạt động trong ngày',value:todayFilmed+todayEdited},{label:'Nhân sự có hoạt động',value:people.length}])+
+ panel('Sản lượng theo từng nhân sự',table(['Nhân sự','Video quay','Video hậu kỳ','Tổng số'],people.map(([name,p])=>[E(name),count(p.filmed),count(p.edited),count(p.filmed+p.edited)])),'Chưa có sản lượng trong ngày được chọn');
 }
 function booksProgress(){return panel('Tiến độ đầu sách',booksTable(),'Theo dõi số lượng và trạng thái sản xuất theo từng đầu sách');}
 function report(){
@@ -313,6 +330,8 @@ function startUpload(sourceId,statusId,inputName){
  });
 }
 function wire(){
+ if($('productionDate'))$('productionDate').onchange=e=>{state.productionDate=e.target.value;render()};
+ if($('productionStaff'))$('productionStaff').onchange=e=>{state.productionStaff=e.target.value;render()};
  document.querySelectorAll('[data-book]').forEach(b=>b.onclick=()=>{state.selectedBook=b.dataset.book;navigate('bookDetail')});
  const backBooks=$('backBooks');if(backBooks)backBooks.onclick=()=>navigate('booksProgress');
  document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>navigate(b.dataset.goto));
