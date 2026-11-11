@@ -50,3 +50,11 @@
 - Binding production/preview: `DB` → `qbooks-db`, `MEDIA` → `qbooks-media`.
 - Route API qua `functions/api/[[path]].js`; static assets từ `public/`.
 - Dự án này độc lập với Apps Script V35. Chưa thiết lập tài khoản quản trị hay nhập dữ liệu thật.
+
+## Đã triển khai Pages 11/11/2026
+- Pages: https://qbooks-quantri.pages.dev/ (GitHub main, nhánh triển khai tự động).
+- API Functions: `functions/api/[[path]].js`, endpoint kiểm tra: `/api/health`.
+- Pages Production/Preview bindings: `DB` => `qbooks-db`, `MEDIA` => `qbooks-media`.
+- Build GitHub Actions đã thành công; Cloudflare Pages xác nhận giai đoạn build/deploy thành công.
+- **Chưa cấu hình secret `SETUP_KEY`**. Chủ dự án phải vào Pages → Settings → Variables and Secrets, tạo secret ngẫu nhiên dài tên `SETUP_KEY`, sau đó redeploy. Chỉ khi có secret mới dùng biểu mẫu Khởi tạo quản trị lần đầu, nhập email/tên và đặt mã PIN riêng.
+- Chưa thử ảnh/video thực tế trên iPhone/Zalo, chưa nhập dữ liệu thật từ Google Sheets. Ứng dụng cũ V35 không thay đổi.
