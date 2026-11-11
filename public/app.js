@@ -1,7 +1,7 @@
 
 const CHUNK_BYTES=8*1024*1024;
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false};
+const state={token:sessionStorage.getItem('qbooks_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set()};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
 const $all=(s)=>[...document.querySelectorAll(s)];
 function notice(text='',ok=false){$('notice').textContent=text;$('notice').className=ok?'notice ok':'notice';}
@@ -113,27 +113,83 @@ async function bootstrap(){
  try{const r=await api('GET','/api/bootstrap');state.user=r.user;$('userInfo').textContent=r.user.name+' · '+r.user.role;show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;renderTabs();await loadOrders();}
  catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;notice(e.message);}
 }
+function capabilities(){const r=state.user?.rights||{};return {pack:r.dongHang||['PACKER','ADMIN'].includes(state.user?.role),ship:r.vanDon||['SHIPPER','ADMIN'].includes(state.user?.role),admin:r.admin||state.user?.role==='ADMIN'};}
 function renderTabs(){
- const role=state.user.role,buttons=[['orders','Danh sách đơn']];
- if(['ADMIN','SALE','SHIPPER'].includes(role))buttons.push(['sale',role==='SHIPPER'?'Gộp vận đơn':'Sale / Gộp đơn']);
- if(role==='ADMIN')buttons.push(['staff','Nhân sự']);
- $('tabs').replaceChildren(...buttons.map(([key,text])=>{const b=button(text,()=>tab(key),key===state.tab?'selected':'');return b;}));
+ const r=capabilities(),role=state.user.role,buttons=[];
+ if(r.pack)buttons.push(['pack','Đóng hàng']);
+ if(r.ship)buttons.push(['ship','Vận đơn']);
+ if(['ADMIN','SALE','SHIPPER'].includes(role))buttons.push(['sale',role==='SHIPPER'?'Gộp vận đơn':'Sale (D1 thử nghiệm)']);
+ if(r.admin)buttons.push(['staff','Quản trị']);
+ if(!buttons.length)buttons.push(['orders','Danh sách đơn']);
+ $('tabs').replaceChildren(...buttons.map(([key,text])=>button(text,()=>tab(key),key===state.tab?'selected':'')));
 }
-function tab(key){state.tab=key;show('ordersView',key==='orders');show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);show('newSalePanel',state.user.role!=='SHIPPER');renderTabs();if(key==='sale')loadGroupOptions();if(key==='staff')loadPendingGoogle();}
+async function releaseLocks(){
+ const ids=[...state.lockedOrderIds];state.lockedOrderIds.clear();
+ await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
+}
+function tab(key){
+ if(state.lockedOrderIds.size)releaseLocks();
+ state.tab=key;
+ show('ordersView',['pack','ship','orders'].includes(key));
+ show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);
+ show('newSalePanel',state.user.role!=='SHIPPER');
+ renderTabs();
+ if(key==='sale')loadGroupOptions();
+ if(key==='staff')loadPendingGoogle();
+ if(['pack','ship','orders'].includes(key))loadOrders().catch(e=>notice(e.message));
+}
 async function loadOrders(){
- const q=$('search').value.trim();const r=await api('GET','/api/orders?q='+encodeURIComponent(q));
- state.orders=r.orders;$('listTitle').textContent=statusTitle[state.user.role]||'Đơn hàng';
+ const q=$('search').value.trim(),status=state.tab==='pack'?'CHỜ ĐÓNG HÀNG':state.tab==='ship'?'CHỜ VẬN ĐƠN':'';
+ const r=await api('GET','/api/orders?q='+encodeURIComponent(q)+'&status='+encodeURIComponent(status));
+ state.orders=r.orders;
+ $('listTitle').textContent=state.tab==='pack'?'Đơn chờ đóng hàng':state.tab==='ship'?'Đơn chờ vận đơn':statusTitle[state.user.role]||'Đơn hàng';
  const list=$('orderList');list.replaceChildren();
  if(!r.orders.length)list.append(el('p','Chưa có đơn phù hợp.'));
  for(const o of r.orders)list.append(makeCard(o,()=>openOrder(o)));
 }
-function openOrder(order){
- state.selected=order;show('ordersView',false);show('saleView',false);show('detailView',true);
- const n=$('selectedOrder');n.replaceChildren(el('h2',order.title),el('p','Khách hàng: '+order.customer+' · '+order.invoice_codes));
- const pack=order.status==='CHỜ ĐÓNG HÀNG'&&['PACKER','ADMIN'].includes(state.user.role);
- const ship=order.status==='CHỜ VẬN ĐƠN'&&['SHIPPER','ADMIN'].includes(state.user.role);
+async function loadPackingHelpers(){
+ const list=$('packingHelpers');list.replaceChildren();
+ try{
+  const result=await api('GET','/api/packing-people');
+  for(const person of result.people||[]){
+   if(person.email===state.user.email)continue;
+   const label=el('label',null,'check');
+   const input=document.createElement('input');input.type='checkbox';input.className='packHelperChoice';input.value=person.name;
+   label.append(input,document.createTextNode(person.name));list.append(label);
+  }
+ }catch(e){list.append(el('p','Chưa tải được danh sách nhân sự: '+e.message));}
+}
+async function openOrder(order){
+ if(state.saving)return;
+ const r=capabilities(),pack=order.status==='CHỜ ĐÓNG HÀNG'&&r.pack,ship=order.status==='CHỜ VẬN ĐƠN'&&r.ship;
+ if(!pack&&!ship)return notice('Không có quyền thực hiện với đơn này.');
+ try{
+  await releaseLocks();
+  await api('POST','/api/orders/'+order.id+'/lock',{stage:pack?'DONG_HANG':'VAN_DON'});
+  state.lockedOrderIds.add(order.id);
+ }catch(e){return notice('Không lấy được khóa đơn: '+e.message);}
+ state.selected=order;
+ show('ordersView',false);show('saleView',false);show('detailView',true);
+ const n=$('selectedOrder');n.replaceChildren(el('h2',order.title),el('p','Khách: '+order.customer+' · Mã HĐ: '+order.invoice_codes),
+  el('p','Vận chuyển: '+(order.transport||'')+' · Nhà xe: '+(order.carrier||'')+' · Nội dung: '+(order.original_content||'')));
  show('packControls',pack);show('shipControls',ship);show('progressWrap',false);
- $('boxes').value=order.boxes||0;$('packNote').value=order.packing_note||'';notice('');
+ $('boxes').value=order.boxes||0;$('packNote').value=order.packing_note||'';
+ if(pack)await loadPackingHelpers();
+ if(ship){
+  $('shippingBoxes').value=order.boxes||0;
+  $('shippingType').value=order.shipping_type||'';
+  $('shippingPhone').value=order.shipping_phone||'';
+  $('shippingPerson').value=order.shipping_person||'';
+  $('shippingFee').value=order.shipping_fee||0;
+  $('heavyFee').value=order.heavy_fee||0;
+  $('terminalFee').value=order.terminal_fee||0;
+  $('extraFee').value=order.extra_fee||0;
+  $('shippingNote').value=order.shipping_note||'';
+  $('shippingStatus').value='HOÀN THÀNH';
+  updateShippingTotal();
+  showShippingGroup(order);
+ }
+ notice('');
 }
 function progress(file,done,total){
  $('progressWrap').hidden=false;$('uploadLabel').textContent='Đang tải: '+file;
