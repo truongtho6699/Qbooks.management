@@ -85,13 +85,14 @@ async function loadPendingGoogle(){
   for(const person of res.registrations){
    const row=el('div',null,'order google-pending');
    const info=el('div');
-   info.append(el('strong',person.name),meta(person.email),meta('Đăng ký: '+person.requested_at));
+   info.append(el('strong',person.name),meta(person.email),meta(person.existing_user?'Đã có nhân sự: chỉ liên kết Google, giữ nguyên quyền.':'Đăng ký mới: cần chọn vai trò.'),meta('Đăng ký: '+person.requested_at));
    const controls=el('div',null,'google-actions');
    const select=document.createElement('select');
    [['PACKER','Đóng hàng'],['SHIPPER','Vận đơn'],['SALE','Sale']].forEach(([value,title])=>{
     const opt=document.createElement('option');opt.value=value;opt.textContent=title;select.append(opt);
    });
-   const approve=button('Duyệt',async()=>{
+   if(person.existing_user){select.disabled=true;select.title='Tài khoản đã có, sẽ giữ nguyên vai trò.';}
+   const approve=button(person.existing_user?'Liên kết Google':'Duyệt',async()=>{
     approve.disabled=true;
     try{
      await api('POST','/api/google/approve',{sub:person.google_sub,role:select.value});
