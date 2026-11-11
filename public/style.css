@@ -13,3 +13,13 @@
 .google-actions select{min-width:125px;width:auto;margin:0}
 .google-actions .primary{width:auto}
 @media(max-width:560px){.google-pending{display:block}.google-actions{margin-top:12px}}
+
+/* Nghiệp vụ Đóng hàng – Vận đơn theo V35 */
+.span-all{grid-column:1/-1}
+.field{min-width:0}
+.helper-checks{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.helper-checks .check{display:flex;align-items:center;gap:7px;border:1px solid #dae5f4;border-radius:11px;padding:9px 12px;background:#f8fbff;font-size:13px;margin:0;min-width:130px}
+.helper-checks .check input{accent-color:#2977e5;width:17px;height:17px}
+.money-total{margin:8px 0;padding:15px;border-radius:12px;background:#ecf5ff;color:#165ad6;font-size:23px;font-weight:800;text-align:right}
+#legacyStatus:not(:empty){margin:9px 0 14px;font-weight:650}
+@media(max-width:560px){.helper-checks .check{width:100%;min-width:0}}
