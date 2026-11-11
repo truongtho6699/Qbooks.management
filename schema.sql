@@ -9,8 +9,19 @@ CREATE TABLE IF NOT EXISTS users (
  active INTEGER NOT NULL DEFAULT 1,
  failed_attempts INTEGER NOT NULL DEFAULT 0,
  locked_until INTEGER NOT NULL DEFAULT 0,
+ google_sub TEXT,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL;
+CREATE TABLE IF NOT EXISTS google_registrations (
+ google_sub TEXT PRIMARY KEY,
+ email TEXT NOT NULL,
+ name TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','REJECTED')),
+ requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_google_registrations_email ON google_registrations(email);
 CREATE TABLE IF NOT EXISTS sessions (
  token_hash TEXT PRIMARY KEY,
  user_id TEXT NOT NULL REFERENCES users(id),
