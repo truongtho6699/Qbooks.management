@@ -44,6 +44,7 @@ async function loadGoogleSdk(){
 async function initGoogleSignIn(){
  try{
   const cfg=await api('GET','/api/google/config');
+  state.googleClientId=cfg.clientId||null;
   if(!cfg.enabled||!cfg.clientId){
    $('googleStatus').textContent='Google chưa được kết nối. Quản trị cần cấu hình GOOGLE_CLIENT_ID trên Cloudflare Pages.';
    return;
@@ -335,6 +336,69 @@ $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 $('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
 $('staffForm').addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('POST','/api/users',Object.fromEntries(new FormData(e.target)));notice('Đã tạo nhân sự '+r.id,true);e.target.reset()}catch(err){notice(err.message)}});
+const SHEET_ID='1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw';
+async function googleRead(url,token){
+ const res=await fetch(url,{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+ let data;try{data=await res.json()}catch{throw Error('Google trả dữ liệu không hợp lệ.');}
+ if(!res.ok)throw Error(data.error?.message||'Google API trả lỗi '+res.status);
+ return data;
+}
+function sourceAuth(scope,done){
+ const status=$('legacyStatus');
+ if(!capabilities().admin)return notice('Chỉ Admin được kết nối dữ liệu Google.');
+ if(!state.googleClientId||!window.google?.accounts?.oauth2){
+  status.textContent='Google chưa sẵn sàng. Hãy tải lại trang hoặc kiểm tra Client ID.';
+  return;
+ }
+ const client=window.google.accounts.oauth2.initTokenClient({
+  client_id:state.googleClientId,scope,
+  callback:response=>{
+   if(response.error||!response.access_token){status.textContent='Google không cấp quyền: '+(response.error||'Đã hủy');return;}
+   if(!window.google.accounts.oauth2.hasGrantedAllScopes(response,scope)){
+    status.textContent='Chưa cấp đủ quyền chỉ đọc.';return;
+   }
+   Promise.resolve(done(response.access_token)).catch(e=>{
+    status.textContent='Không đọc được dữ liệu Google: '+e.message;
+   });
+  },
+  error_callback:e=>{status.textContent='Cửa sổ Google bị đóng/chặn: '+e.type;}
+ });
+ // Phải gọi từ sự kiện nhấn nút, tránh popup bị trình duyệt chặn.
+ client.requestAccessToken({prompt:'consent'});
+}
+function connectGoogleSheets(){
+ sourceAuth('https://www.googleapis.com/auth/spreadsheets.readonly',async token=>{
+  const status=$('legacyStatus');
+  status.textContent='Đang đọc Google Sheets bằng quyền Google của anh...';
+  const ranges=['DATA_TONG!A1:AP1000','DM_NHAN_SU!A1:F300','CAU_HINH!A1:C50','SALE_GOP_VAN_DON!A1:B100'];
+  const params=ranges.map(v=>'ranges='+encodeURIComponent(v)).join('&');
+  const payload=await googleRead('https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values:batchGet?'+params+'&valueRenderOption=FORMATTED_VALUE',token);
+  const values=(payload.valueRanges||[]).map(v=>v.values||[]);
+  const rows=(values[0]||[]).slice(1).filter(r=>r[0]);
+  const staff=(values[1]||[]).slice(1).filter(r=>r[0]);
+  const config=(values[2]||[]).slice(1);
+  state.googleDriveRoot=(config.find(r=>r[0]==='ROOT_FOLDER_ID')||[])[1]||'';
+  const groups=(values[3]||[]).slice(1).filter(r=>r[0]);
+  const states={};
+  for(const r of rows){const k=r[23]||'(trống)';states[k]=(states[k]||0)+1;}
+  const grouped=rows.filter(r=>r[37]).length;
+  const combined=rows.filter(r=>String(r[3]||'').includes(',')).length;
+  status.textContent='Đã đọc CHỈ ĐỌC: '+rows.length+' đơn, '+staff.length+' nhân sự (không đọc PIN), '+groups.length+' lựa chọn gộp. '+Object.entries(states).map(([k,n])=>k+': '+n).join(' · ')+'. Đơn có nhóm: '+grouped+', nhiều mã hóa đơn: '+combined+'. D1 và Google Sheets chưa bị sửa.';
+  const list=$('legacyPreview');list.replaceChildren();
+  for(const r of rows.slice(0,50)){
+   const item=el('div',null,'order');item.append(el('div',[r[0],r[3],r[5]].filter(Boolean).join(' · ')),el('span',r[23]||'Chưa có trạng thái','tag'));list.append(item);
+  }
+  if(rows.length>50)list.append(el('p','Đang xem 50/'+rows.length+' đơn. Đây chỉ là bản đọc thử, chưa nhập dữ liệu vào D1.'));
+ });
+}
+function connectGoogleDrive(){
+ if(!state.googleDriveRoot)return $('legacyStatus').textContent='Hãy bấm Đọc Google Sheets trước để nhận thư mục DON_HANG từ CAU_HINH.';
+ sourceAuth('https://www.googleapis.com/auth/drive.metadata.readonly',async token=>{
+  $('legacyStatus').textContent='Đang kiểm tra thư mục Google Drive...';
+  const data=await googleRead('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(state.googleDriveRoot)+'?fields=id,name,mimeType,webViewLink',token);
+  $('legacyStatus').textContent='Đã xác minh Drive: '+data.name+' ('+data.mimeType+'). Chỉ kiểm tra thông tin thư mục, chưa tạo hoặc di chuyển file.';
+ });
+}
 async function checkLegacy(){
  const node=$('legacyStatus');node.textContent='Đang kiểm tra...';
  try{
@@ -354,6 +418,8 @@ async function previewLegacy(){
   }
  }catch(e){box.replaceChildren(el('p','Chưa thể đối chiếu: '+e.message));}
 }
+$('connectGoogleSheets').onclick=connectGoogleSheets;
+$('connectGoogleDrive').onclick=connectGoogleDrive;
 $('checkLegacy').onclick=checkLegacy;
 $('previewLegacy').onclick=previewLegacy;
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
