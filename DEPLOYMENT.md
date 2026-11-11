@@ -44,3 +44,9 @@
 - Tệp video tối đa 2 GiB và 60 phút (trình duyệt kiểm tra thời lượng; backend giới hạn kích thước).
 - Thông tin đăng nhập chỉ lưu trên D1 dưới dạng hàm dẫn xuất PBKDF2 có muối; PIN 3–12 chữ số (khuyến nghị từ 6); chặn 15 phút sau năm lần sai.
 - Trước triển khai sản xuất cần kiểm thử tải file đầy đủ, phân quyền nhiều người dùng, thao tác đồng thời, sao lưu D1/R2 và bảo vệ thông tin khách hàng.
+
+## Cấu hình Pages Functions (11/11/2026)
+- Pages project: `qbooks-quantri`; GitHub `main`, output `public`.
+- Binding production/preview: `DB` → `qbooks-db`, `MEDIA` → `qbooks-media`.
+- Route API qua `functions/api/[[path]].js`; static assets từ `public/`.
+- Dự án này độc lập với Apps Script V35. Chưa thiết lập tài khoản quản trị hay nhập dữ liệu thật.
