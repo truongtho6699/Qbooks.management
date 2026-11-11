@@ -379,6 +379,30 @@ async function handle(req,env){
     b.admin||b.role==='ADMIN'?1:0).run();
   await audit(env,user,'CREATE_USER','',id);return json({id},201);
  }
+ if(method==='GET'&&path==='/api/shipping/overview'){
+  needRole(user,'PACKER','SHIPPER');
+  const isManager=hasRole(user,'ADMIN');
+  // Overview is scoped to accessible operational orders for non-admin workers.
+  const where=isManager?'':hasRole(user,'PACKER')&&hasRole(user,'SHIPPER')?'':hasRole(user,'PACKER')?" WHERE status IN ('CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN')":" WHERE status IN ('CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH')";
+  const data=await env.DB.prepare('SELECT id,invoice_codes,customer,sale_name,quantity,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').all();
+  const orders=data.results||[];
+  const byId=new Map(orders.map(o=>[o.id,{...o,media:[]}]));
+  if(orders.length){
+   const ids=orders.map(o=>o.id);
+   for(let i=0;i<ids.length;i+=70){
+    const part=ids.slice(i,i+70);
+    const files=await env.DB.prepare('SELECT id,order_id,stage,filename,bytes,drive_file_id,drive_folder_url FROM uploads WHERE status=\'COMPLETE\' AND order_id IN ('+part.map(()=>'?').join(',')+') ORDER BY created_at DESC').bind(...part).all();
+    for(const media of files.results||[])byId.get(media.order_id)?.media.push(media);
+   }
+  }
+  return json({orders:[...byId.values()],manager:isManager,totals:{
+    total:orders.length,
+    waitingPacking:orders.filter(o=>o.status==='CHỜ ĐÓNG HÀNG').length,
+    waitingShipping:orders.filter(o=>o.status==='CHỜ VẬN ĐƠN').length,
+    moving:orders.filter(o=>o.status==='ĐANG GIAO').length,
+    completed:orders.filter(o=>o.status==='HOÀN THÀNH').length
+  }});
+ }
  if(method==='GET'&&path==='/api/orders'){
   needRole(user,'PACKER','SHIPPER');
   const query=clean(url.searchParams.get('q')).slice(0,120);
