@@ -299,13 +299,61 @@ async function handle(req,env){
   const r=await env.DB.prepare("SELECT email,name FROM users WHERE active=1 AND (role IN ('PACKER','ADMIN') OR can_pack=1) UNION SELECT email,name FROM legacy_staff_catalog WHERE active=1 AND can_pack=1 ORDER BY name LIMIT 300").all();
   return json({people:r.results||[]});
  }
+ if(method==='GET'&&path==='/api/admin/data'){
+  needRole(user,'ADMIN');
+  const kind=clean(url.searchParams.get('kind'));
+  if(kind==='DATA'){
+   const result=await env.DB.prepare('SELECT id,invoice_codes,customer,sale_name,quantity,status,group_id,shipping_type,total_fee,source_system,local_dirty,updated_at FROM orders ORDER BY created_at DESC LIMIT 300').all();
+   return json({headers:['ID_DON','MA_HOA_DON','TEN_KHACH','TEN_SALE','SO_QUYEN','TRANG_THAI','NHOM_VAN_DON','LOAI_SHIP','TONG_TIEN','NGUON','CHO_DONG_BO','CAP_NHAT'],rows:(result.results||[]).map(x=>Object.values(x))});
+  }
+  if(kind==='LOG'){
+   const result=await env.DB.prepare('SELECT created_at,action,order_id,details FROM audit_log ORDER BY id DESC LIMIT 300').all();
+   return json({headers:['THOI_GIAN','HANH_DONG','ID_DON','CHI_TIET'],rows:(result.results||[]).map(x=>[x.created_at,x.action,x.order_id,x.details])});
+  }
+  if(kind==='STAFF'){
+   const result=await env.DB.prepare('SELECT email,name,role,can_pack,can_ship,can_admin,active FROM users ORDER BY name LIMIT 300').all();
+   return json({headers:['EMAIL','HO_TEN','VAI_TRO','DONG_HANG','VAN_DON','ADMIN','TRANG_THAI'],rows:(result.results||[]).map(x=>[x.email,x.name,x.role,x.can_pack,x.can_ship,x.can_admin,x.active?'HOẠT ĐỘNG':'NGỪNG'])});
+  }
+  throw Error('Loại báo cáo không hợp lệ.');
+ }
+ if(method==='GET'&&path==='/api/users'){
+  needRole(user,'ADMIN');
+  const r=await env.DB.prepare('SELECT id,email,name,role,can_pack,can_ship,can_admin,active FROM users ORDER BY name LIMIT 300').all();
+  return json({users:r.results||[]});
+ }
+ const staffMatch=path.match(/^\/api\/users\/([a-f0-9-]+)$/);
+ if(method==='PATCH'&&staffMatch){
+  needRole(user,'ADMIN');const id=staffMatch[1],b=await requestJSON(req);
+  const target=await env.DB.prepare('SELECT id,email,role FROM users WHERE id=?').bind(id).first();
+  if(!target)throw Object.assign(new Error('Không tìm thấy nhân sự.'),{status:404});
+  const active=b.active!==false;
+  const pack=!!b.dongHang,ship=!!b.vanDon,admin=!!b.admin;
+  if(user.id===id&&(!active||!admin))throw Error('Không thể tự vô hiệu hóa hoặc bỏ quyền quản trị của chính mình.');
+  const name=clean(b.name);
+  if(!name)throw Error('Tên nhân sự không được trống.');
+  const pin=String(b.pin||'').trim();
+  if(pin&&!/^\d{3,8}$/.test(pin))throw Error('PIN mới phải có 3–8 chữ số.');
+  if(pin){
+   const salt=uid(),hashed=await hashPin(pin,salt);
+   await env.DB.prepare('UPDATE users SET name=?,can_pack=?,can_ship=?,can_admin=?,active=?,pin_salt=?,pin_hash=? WHERE id=?')
+    .bind(name,pack?1:0,ship?1:0,admin?1:0,active?1:0,salt,hashed,id).run();
+  }else{
+   await env.DB.prepare('UPDATE users SET name=?,can_pack=?,can_ship=?,can_admin=?,active=? WHERE id=?')
+    .bind(name,pack?1:0,ship?1:0,admin?1:0,active?1:0,id).run();
+  }
+  await audit(env,user,'UPDATE_STAFF','',target.email);
+  return json({ok:true,id});
+ }
  if(method==='POST'&&path==='/api/users'){
   needRole(user,'ADMIN');const b=await requestJSON(req);
   if(!['ADMIN','SALE','PACKER','SHIPPER'].includes(b.role))throw Error('Vai trò không hợp lệ.');
   if(!/^\d{3,12}$/.test(String(b.pin||'')))throw Error('PIN cần 3–12 chữ số.');
   const salt=uid(),id=uid();
-  await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash) VALUES(?,?,?,?,?,?)')
-   .bind(id,clean(b.email).toLowerCase(),clean(b.name),b.role,salt,await hashPin(b.pin,salt)).run();
+  await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?)')
+   .bind(id,clean(b.email).toLowerCase(),clean(b.name),b.role,salt,await hashPin(b.pin,salt),
+    b.dongHang||['PACKER','ADMIN'].includes(b.role)?1:0,
+    b.vanDon||['SHIPPER','ADMIN'].includes(b.role)?1:0,
+    b.admin||b.role==='ADMIN'?1:0).run();
   await audit(env,user,'CREATE_USER','',id);return json({id},201);
  }
  if(method==='GET'&&path==='/api/orders'){
