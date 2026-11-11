@@ -30,7 +30,9 @@ export function displayVND(value){
 }
 export function shippingTotal(f){return moneyVN(f.tienShip,'Tiền ship')+moneyVN(f.hangNang,'Hàng nặng')+moneyVN(f.phiBen,'Phí bến')+moneyVN(f.phuPhi,'Phụ phí');}
 export function normalizeV35Row(row){
- if(!Array.isArray(row)||row.length<40)throw Error('Dòng DATA_TONG thiếu cột. Yêu cầu ít nhất đến AN.');
+ if(!Array.isArray(row)||!row.length)throw Error('Dòng DATA_TONG trống hoặc không hợp lệ.');
+ // Google Sheets API bỏ các ô trống ở cuối dòng, trong khi header vẫn đủ A:AP.
+ row=Array.from({length:42},(_,i)=>row[i]??'');
  const id=field(row,0);
  if(!/^DON_[0-9]{8}_[0-9]{4,}$/.test(id))throw Error('ID_DON không hợp lệ.');
  const status=field(row,23);
