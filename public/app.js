@@ -208,6 +208,83 @@ async function releaseLocks(){
  await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
 }
 function tab(key){if(state.lockedOrderIds.size)releaseLocks();state.tab=key;switchView();}
+const MEDIA_LABELS={ANH_HOA_DON:'Ảnh hóa đơn',VIDEO_DONG_HANG:'Video đóng hàng',HANG_HOA:'Ảnh hàng hóa',GIAO_HANG:'Ảnh bàn giao'};
+const LINK_LABELS=[['packing_folder_url','Thư mục đóng hàng'],['shipping_folder_url','Thư mục vận đơn'],['invoice_folder_url','Thư mục ảnh hóa đơn'],['video_folder_url','Thư mục video'],['goods_folder_url','Thư mục ảnh hàng hóa']];
+function safeDriveUrl(value){
+ try{const u=new URL(String(value||''));return u.protocol==='https:'&&['drive.google.com','docs.google.com'].includes(u.hostname)?u.href:null}catch{return null}
+}
+async function downloadMedia(id,filename,btn){
+ const old=btn.textContent;btn.disabled=true;btn.textContent='Đang lấy tệp…';
+ try{
+  const response=await fetch('/api/uploads/'+encodeURIComponent(id)+'/file',{headers:{authorization:'Bearer '+state.token}});
+  if(!response.ok){const error=await response.json().catch(()=>({}));throw Error(error.error||'Không thể đọc tệp.');}
+  const blob=await response.blob(),link=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=link;a.download=filename||'hoso';document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(link),60000);
+ }catch(e){notice('Không tải được ảnh/video: '+e.message);}
+ finally{btn.disabled=false;btn.textContent=old;}
+}
+function addMediaLinks(container,order){
+ const media=order.media||[];
+ for(const [key,label] of LINK_LABELS){
+  const href=safeDriveUrl(order[key]);
+  if(href){const a=el('a',label,'overview-link');a.href=href;a.target='_blank';a.rel='noopener noreferrer';container.append(a);}
+ }
+ for(const item of media){
+  if(item.drive_file_id){
+   const a=el('a',(MEDIA_LABELS[item.stage]||'Tệp')+' · Drive','overview-link');
+   a.href='https://drive.google.com/file/d/'+encodeURIComponent(item.drive_file_id)+'/view';
+   a.target='_blank';a.rel='noopener noreferrer';container.append(a);
+  }else{
+   const b=button((MEDIA_LABELS[item.stage]||'Tệp')+' · Tải R2',()=>downloadMedia(item.id,item.filename,b),'overview-link');
+   b.title=item.filename;container.append(b);
+  }
+ }
+ if(!container.children.length)container.append(el('span','Chưa có hồ sơ','muted'));
+}
+function appendOverviewRow(order,table,cardHolder){
+ const code=order.invoice_codes||order.id;
+ const tr=document.createElement('tr');
+ const orderTd=document.createElement('td');orderTd.append(el('strong',code),el('small',order.id));
+ const customer=document.createElement('td');customer.append(el('strong',order.customer||'—'),el('small','Sale: '+(order.sale_name||'—')));
+ const status=document.createElement('td');status.append(el('span',order.status,'tag'));
+ const links=document.createElement('td');links.className='overview-media-links';addMediaLinks(links,order);
+ const detail=document.createElement('td');
+ const view=button('Xem đơn',()=>showOrderSummary(order),'secondary');detail.append(view);
+ tr.append(orderTd,customer,status,links,detail);table.append(tr);
+ const card=el('article',null,'overview-mobile-card');
+ card.append(el('strong',code),el('small',(order.customer||'—')+' · '+(order.sale_name||'—')),el('span',order.status,'tag'));
+ const linksMobile=el('div',null,'overview-media-links');addMediaLinks(linksMobile,order);card.append(linksMobile);
+ card.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'));cardHolder.append(card);
+}
+function showOrderSummary(order){
+ const modal=$('orderSummaryDialog');
+ const info=$('orderSummaryInfo');info.replaceChildren();
+ for(const [label,val] of [['Mã đơn',order.id],['Mã hóa đơn',order.invoice_codes],['Khách hàng',order.customer],['Sale',order.sale_name],['Trạng thái',order.status],['Số quyển',order.quantity],['Nhóm vận đơn',order.group_id],['Nhà xe',order.carrier||order.transport]]){
+  const row=el('div',null,'summary-field');row.append(el('strong',label),el('span',String(val??'—')));info.append(row);
+ }
+ const media=$('orderSummaryMedia');media.replaceChildren();addMediaLinks(media,order);
+ if(typeof modal.showModal==='function')modal.showModal();else modal.hidden=false;
+}
+function renderOverview(){
+ const r=state.overviewData;if(!r)return;
+ const kpis=$('shippingKpis');kpis.replaceChildren();
+ const cards=[['Tổng số đơn',r.totals.total,'all'],['Chờ đóng hàng',r.totals.waitingPacking,'pack'],['Chờ vận đơn',r.totals.waitingShipping,'ship'],['Đang giao',r.totals.moving,'moving'],['Hoàn thành',r.totals.completed,'done']];
+ for(const [label,num,style] of cards){
+  const card=el('div',null,'shipping-kpi '+style);card.append(el('small',label),el('strong',Number(num||0).toLocaleString('vi-VN')));kpis.append(card);
+ }
+ const term=$('overviewSearch').value.trim().toLocaleLowerCase('vi'),status=$('overviewStatus').value;
+ const rows=r.orders.filter(o=>(!status||o.status===status)&&(!term||[o.id,o.invoice_codes,o.customer,o.sale_name].some(x=>String(x||'').toLocaleLowerCase('vi').includes(term))));
+ const table=$('overviewRows'),cardsHolder=$('overviewCards');table.replaceChildren();cardsHolder.replaceChildren();
+ if(rows.length){for(const o of rows)appendOverviewRow(o,table,cardsHolder);}
+ else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=5;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
+ $('overviewHint').textContent='Đang hiển thị '+rows.length+'/'+r.orders.length+' đơn. Liên kết Drive mở trong tab mới; ảnh/video trên R2 được tải qua phiên đăng nhập.';
+}
+async function loadOverview(){
+ $('overviewHint').textContent='Đang đọc dữ liệu đơn và hồ sơ…';
+ const r=await api('GET','/api/shipping/overview');
+ state.overviewData=r;renderOverview();
+}
 async function loadOrders(){
  const q=$('search').value.trim(),status=state.tab==='pack'?'CHỜ ĐÓNG HÀNG':state.tab==='ship'?'CHỜ VẬN ĐƠN':'';
  const r=await api('GET','/api/orders?q='+encodeURIComponent(q)+'&status='+encodeURIComponent(status));
@@ -601,5 +678,9 @@ $('previewLegacy').onclick=previewLegacy;
 $('cancelStaffEdit').onclick=resetStaffEdit;
 $all('.admin-report').forEach(btn=>btn.onclick=()=>loadAdminReport(btn.dataset.kind));
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
+$('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
+$('overviewSearch').oninput=renderOverview;
+$('overviewStatus').onchange=renderOverview;
+$('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
 initGoogleSignIn();
 if(state.token)bootstrap();
