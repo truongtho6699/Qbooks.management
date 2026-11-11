@@ -74,7 +74,26 @@ export async function driveInit(env,data){
  if(upload.drive_file_id)return {done:true,uploadId:upload.id,fileId:upload.drive_file_id,offset:upload.bytes,total:upload.bytes};
  const order=await env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(upload.order_id).first();
  if(!order)throw Error('Không tìm thấy đơn.');
- if(upload.drive_session_url)return {done:false,uploadId:upload.id,offset:upload.drive_offset,total:upload.bytes};
+ if(upload.drive_session_url){
+  const probe=await fetch(upload.drive_session_url,{method:'PUT',headers:{'Content-Length':'0','Content-Range':'bytes */'+upload.bytes},redirect:'manual'});
+  if(probe.status===308){
+   const range=probe.headers.get('range');
+   const offset=range?Number(range.split('-').pop())+1:0;
+   if(!Number.isSafeInteger(offset)||offset<0||offset>upload.bytes)throw Error('Drive trả tiến độ không hợp lệ.');
+   if(offset!==upload.drive_offset)await env.DB.prepare('UPDATE uploads SET drive_offset=? WHERE id=? AND drive_file_id IS NULL').bind(offset,upload.id).run();
+   return {done:false,uploadId:upload.id,offset,total:upload.bytes};
+  }
+  if(probe.ok){
+   const detail=await probe.json();
+   if(!detail.id||Number(detail.size)!==upload.bytes)throw Error('Drive chưa xác nhận được tệp.');
+   await env.DB.prepare("UPDATE uploads SET drive_file_id=?,drive_offset=?,drive_session_url=NULL,drive_completed_at=CURRENT_TIMESTAMP WHERE id=? AND drive_file_id IS NULL").bind(detail.id,upload.bytes,upload.id).run();
+   return {done:true,uploadId:upload.id,fileId:detail.id,offset:upload.bytes,total:upload.bytes};
+  }
+  if(probe.status===404||probe.status===410){
+   await env.DB.prepare('UPDATE uploads SET drive_session_url=NULL,drive_offset=0 WHERE id=? AND drive_file_id IS NULL').bind(upload.id).run();
+  }else throw Object.assign(new Error('Không xác minh được phiên Drive: HTTP '+probe.status),{status:502});
+ }
+
  const folder=await targetFolder(token,order,upload.stage);
  const filename=safeName('QBOOKS_'+upload.id+'_'+upload.filename);
  const old=await findExistingDriveFile(token,folder.id,filename);
