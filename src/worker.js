@@ -239,7 +239,9 @@ async function handle(req,env){
   return json({orders:(rows.results||[]).map(o=>({...o,title:orderTitle(o)}))});
  }
  if(method==='POST'&&path==='/api/orders'){
-  needRole(user,'SALE');const b=await requestJSON(req);
+  needRole(user,'SALE');
+  if(env.QBOOKS_ENABLE_LOCAL_SALE!=='true')
+   throw Object.assign(new Error('Đơn Sale hiện lấy từ SALE_DONG_DON trên Google Sheets. Chức năng tạo đơn riêng D1 tạm khóa để tránh dữ liệu lệch.'),{status:409});const b=await requestJSON(req);
   const invoice=clean(b.invoice_codes),saleName=clean(b.sale_name)||user.name,customer=clean(b.customer);
   if(!invoice||!customer)throw Error('Cần mã hóa đơn và tên khách hàng.');
   const id=uid();
@@ -248,7 +250,9 @@ async function handle(req,env){
   await audit(env,user,'CREATE_ORDER',id,invoice);return json({id},201);
  }
  if(method==='POST'&&path==='/api/groups'){
-  needRole(user,'SALE','SHIPPER');const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
+  needRole(user,'SALE','SHIPPER');
+  if(env.QBOOKS_ENABLE_LOCAL_SALE!=='true')
+   throw Object.assign(new Error('Gộp đơn thực hiện tại SALE_GOP_VAN_DON. Chưa bật ghi nhóm từ Cloudflare.'),{status:409});const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
   if(ids.length<2)throw Error('Cần ít nhất 2 đơn để gộp.');
   if(ids.length>100)throw Error('Tối đa 100 đơn/nhóm.');
   const rows=await env.DB.prepare('SELECT id,status,group_id FROM orders WHERE id IN ('+ids.map(()=>'?').join(',')+')').bind(...ids).all();
