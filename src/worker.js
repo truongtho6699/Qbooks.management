@@ -1,5 +1,6 @@
 
 import {STATUS,CHUNK_BYTES,STAGES,MAX_VIDEO,MAX_IMAGE,canUploadStage,validateUpload,partBounds,partsCount,orderTitle} from './domain.js';
+import {verifyGoogleCredential} from './google-auth.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const fail=(message,status=400)=>json({error:message},status);
@@ -51,6 +52,41 @@ function filePath(orderId,stage,name){return 'orders/'+encodeURIComponent(orderI
 async function handle(req,env){
  const url=new URL(req.url),path=url.pathname,method=req.method;
  if(method==='GET'&&path==='/api/health')return json({ok:true,service:'qbooks-management',storageConfigured:!!env.MEDIA,databaseConfigured:!!env.DB});
+ if(method==='GET'&&path==='/api/google/config')return json({enabled:!!env.GOOGLE_CLIENT_ID,clientId:env.GOOGLE_CLIENT_ID||null});
+ if(method==='POST'&&path==='/api/google/login'){
+  const data=await requestJSON(req);
+  const identity=await verifyGoogleCredential(data.credential,env.GOOGLE_CLIENT_ID);
+  let found=await env.DB.prepare('SELECT id,email,name,role,active,google_sub FROM users WHERE google_sub=?').bind(identity.sub).first();
+  if(!found){
+   const matching=await env.DB.prepare('SELECT id,email,name,role,active,google_sub FROM users WHERE email=?').bind(identity.email).first();
+   if(matching){
+    if(!matching.active)throw Object.assign(new Error('Tài khoản đã bị vô hiệu hóa. Liên hệ quản trị.'),{status:403});
+    if(matching.google_sub&&matching.google_sub!==identity.sub)throw Object.assign(new Error('Email này đã liên kết tài khoản Google khác.'),{status:403});
+    if(!matching.google_sub){
+     const changed=await env.DB.prepare('UPDATE users SET google_sub=? WHERE id=? AND google_sub IS NULL')
+      .bind(identity.sub,matching.id).run();
+     if(!changed.meta.changes)throw Error('Tài khoản vừa được cập nhật. Vui lòng đăng nhập lại.');
+    }
+    found=matching;
+   }
+  }
+  if(!found){
+   const existing=await env.DB.prepare('SELECT status FROM google_registrations WHERE google_sub=?').bind(identity.sub).first();
+   if(existing?.status==='REJECTED')throw Object.assign(new Error('Yêu cầu đăng ký Google đã bị từ chối. Liên hệ quản trị.'),{status:403});
+   if(!existing){
+    await env.DB.prepare("INSERT INTO google_registrations(google_sub,email,name,status) VALUES(?,?,?,'PENDING')")
+     .bind(identity.sub,identity.email,identity.name).run();
+   }else{
+    await env.DB.prepare("UPDATE google_registrations SET name=?,updated_at=CURRENT_TIMESTAMP WHERE google_sub=? AND status='PENDING'")
+     .bind(identity.name,identity.sub).run();
+   }
+   return json({pending:true,message:'Đã ghi nhận đăng ký Google. Vui lòng chờ quản trị viên duyệt và cấp quyền.'},202);
+  }
+  if(!found.active)throw Object.assign(new Error('Tài khoản đã bị vô hiệu hóa.'),{status:403});
+  const token=randomToken(),expires=now()+12*3600;
+  await env.DB.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').bind(await sha(token),found.id,expires).run();
+  return json({token,user:{id:found.id,email:found.email,name:found.name,role:found.role},expires});
+ }
  if(method==='POST'&&path==='/api/setup'){
   if(!env.SETUP_KEY)throw Error('Chưa cấu hình mã thiết lập quản trị trong Worker secret.');
   const input=await requestJSON(req);
@@ -86,6 +122,35 @@ async function handle(req,env){
   return json({ok:true});
  }
  if(method==='GET'&&path==='/api/bootstrap')return json({user:{id:user.id,name:user.name,email:user.email,role:user.role},statuses:STATUS});
+ if(method==='GET'&&path==='/api/google/pending'){
+  needRole(user,'ADMIN');
+  const rows=await env.DB.prepare("SELECT google_sub,email,name,requested_at FROM google_registrations WHERE status='PENDING' ORDER BY requested_at DESC LIMIT 100").all();
+  return json({registrations:rows.results||[]});
+ }
+ if(method==='POST'&&path==='/api/google/approve'){
+  needRole(user,'ADMIN');
+  const input=await requestJSON(req),sub=clean(input.sub),role=clean(input.role);
+  if(!['SALE','PACKER','SHIPPER'].includes(role))throw Error('Chỉ được phê duyệt nhân sự theo vai trò nghiệp vụ.');
+  const requestRow=await env.DB.prepare("SELECT google_sub,email,name FROM google_registrations WHERE google_sub=? AND status='PENDING'").bind(sub).first();
+  if(!requestRow)throw Object.assign(new Error('Đăng ký không còn chờ duyệt.'),{status:404});
+  const existing=await env.DB.prepare('SELECT id FROM users WHERE email=? OR google_sub=?').bind(requestRow.email,sub).first();
+  if(existing)throw Object.assign(new Error('Email hoặc Google ID đã có tài khoản; cần kiểm tra trước khi duyệt.'),{status:409});
+  const salt=uid(),id=uid();
+  const unusablePinHash=await hashPin(randomToken(),salt);
+  await env.DB.batch([
+   env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,google_sub) VALUES(?,?,?,?,?,?,?)')
+    .bind(id,requestRow.email,requestRow.name,role,salt,unusablePinHash,sub),
+   env.DB.prepare("DELETE FROM google_registrations WHERE google_sub=? AND status='PENDING'").bind(sub)
+  ]);
+  await audit(env,user,'APPROVE_GOOGLE_USER','',JSON.stringify({id,role}));
+  return json({ok:true,id,role});
+ }
+ if(method==='POST'&&path==='/api/google/reject'){
+  needRole(user,'ADMIN');const input=await requestJSON(req),sub=clean(input.sub);
+  const result=await env.DB.prepare("UPDATE google_registrations SET status='REJECTED',updated_at=CURRENT_TIMESTAMP WHERE google_sub=? AND status='PENDING'").bind(sub).run();
+  if(!result.meta.changes)throw Object.assign(new Error('Đăng ký không còn chờ duyệt.'),{status:404});
+  await audit(env,user,'REJECT_GOOGLE_USER');return json({ok:true});
+ }
  if(method==='POST'&&path==='/api/users'){
   needRole(user,'ADMIN');const b=await requestJSON(req);
   if(!['ADMIN','SALE','PACKER','SHIPPER'].includes(b.role))throw Error('Vai trò không hợp lệ.');
