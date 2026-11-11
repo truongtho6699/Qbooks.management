@@ -36,5 +36,7 @@ export async function verifyGoogleCredential(credential,clientId,fetcher=fetch){
  const key=await crypto.subtle.importKey('jwk',jwk,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
  const verified=await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,decode64url(parts[2]),encoder.encode(parts[0]+'.'+parts[1]));
  if(!verified)throw Error('Chữ ký xác thực Google không hợp lệ.');
- return {sub:String(claims.sub),email:String(claims.email).toLowerCase().trim(),name:String(claims.name||claims.email).slice(0,150)};
+ const email=String(claims.email).toLowerCase().trim(),domain=email.split('@')[1];
+ const authoritativeEmail=['gmail.com','googlemail.com'].includes(domain)||(typeof claims.hd==='string'&&claims.hd.toLowerCase()===domain);
+ return {sub:String(claims.sub),email,name:String(claims.name||claims.email).slice(0,150),authoritativeEmail};
 }
