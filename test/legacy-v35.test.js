@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {V35_COLUMNS,displayVND,normalizeV35Row,splitInvoiceCodes,detectDuplicateInvoices,shippingTotal,validateShippingForm,canGroup} from '../src/legacy-v35.js';
+import {V35_COLUMNS,displayVND,normalizeV35Row,splitInvoiceCodes,detectDuplicateInvoices,shippingTotal,validateShippingForm,canGroup,parseVNDate} from '../src/legacy-v35.js';
 
 test('Nguồn Google Sheets V35 có 42 cột, hai tên thời gian gộp trùng',()=>{
  assert.equal(V35_COLUMNS.length,42);
@@ -38,4 +38,10 @@ test('Ánh xạ trục dữ liệu 42 cột DATA_TONG',()=>{
 test('Không tạo nhóm cho đơn đã gộp hoặc hoàn thành',()=>{
  assert.equal(canGroup([{id:'1',status:'CHỜ ĐÓNG HÀNG'},{id:'2',status:'CHỜ VẬN ĐƠN'}]),true);
  assert.throws(()=>canGroup([{id:'1',status:'HOÀN THÀNH'},{id:'2',status:'CHỜ VẬN ĐƠN'}]));
+});
+
+test('Đọc ngày tạo đơn tại Google Sheets và xếp thứ tự bằng D1',()=>{
+ assert.equal(parseVNDate('15/10/2026 16:54:48'),'2026-10-15 16:54:48');
+ assert.equal(parseVNDate('07/11/2026 21:37:09'),'2026-11-07 21:37:09');
+ assert.equal(parseVNDate('31/02/2026 11:00:00'),'');
 });
