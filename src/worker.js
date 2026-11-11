@@ -141,7 +141,7 @@ async function handle(req,env){
   const offset=Math.max(0,Math.min(900,Math.floor(Number(b.offset)||0)));
   const limit=Math.max(1,Math.min(100,Math.floor(Number(b.limit)||50)));
   const rowStart=offset+2,rowEnd=rowStart+limit-1;
-  const ranges=['DATA_TONG!A1:AP1','DATA_TONG!A'+rowStart+':AP'+rowEnd];
+  const ranges=['DATA_TONG!A1:AP1','DATA_TONG!A'+rowStart+':AP'+rowEnd,'DM_NHAN_SU!A1:F301'];
   const query=ranges.map(r=>'ranges='+encodeURIComponent(r)).join('&');
   const google=await fetch('https://sheets.googleapis.com/v4/spreadsheets/1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw/values:batchGet?'+query+'&valueRenderOption=FORMATTED_VALUE',
     {headers:{Authorization:'Bearer '+token},cache:'no-store'});
@@ -151,6 +151,19 @@ async function handle(req,env){
   if(header[0]!=='ID_DON'||header[3]!=='MA_HOA_DON'||header[23]!=='TRANG_THAI'||header[41]!=='NHA_XE_SALE')
    throw Error('Tiêu đề DATA_TONG không khớp cấu trúc 42 cột V35. Đã từ chối nhập.');
   const rawRows=valueRanges[1]?.values||[];
+  const staffHeader=valueRanges[2]?.values?.[0]||[];
+  const staffRows=staffHeader[0]==='EMAIL'&&staffHeader[1]==='HO_TEN'?
+   (valueRanges[2]?.values||[]).slice(1):[];
+  const yes=v=>['true','1','có','x','yes'].includes(String(v||'').trim().toLowerCase());
+  let staffImported=0;
+  for(const person of staffRows){
+   const email=String(person[0]||'').trim().toLowerCase(),name=String(person[1]||'').trim();
+   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!name)continue;
+   const active=String(person[5]||'').trim().toUpperCase()==='HOẠT ĐỘNG'?1:0;
+   await env.DB.prepare('INSERT INTO legacy_staff_catalog(email,name,can_pack,can_ship,can_admin,active) VALUES(?,?,?,?,?,?) ON CONFLICT(email) DO UPDATE SET name=excluded.name,can_pack=excluded.can_pack,can_ship=excluded.can_ship,can_admin=excluded.can_admin,active=excluded.active,imported_at=CURRENT_TIMESTAMP')
+    .bind(email,name,yes(person[2])?1:0,yes(person[3])?1:0,yes(person[4])?1:0,active).run();
+   staffImported++;
+  }
   const report={new:0,updated:0,unchanged:0,conflicts:0,errors:0,details:[],readOnlyGoogle:true};
   const fields=[
    'id','invoice_codes','original_content','delivery_time','transport','customer','quantity','address',
@@ -196,7 +209,7 @@ async function handle(req,env){
    }catch(err){report.errors++;report.details.push({row:rowStart+i,error:err.message.slice(0,160)});}
   }
   await audit(env,user,'IMPORT_GOOGLE_SHEETS','',JSON.stringify({offset,limit,new:report.new,updated:report.updated,conflicts:report.conflicts,errors:report.errors}));
-  return json(report);
+  return json({...report,staffCatalog:staffImported});
  }
  if(method==='GET'&&path==='/api/legacy/status'){
   needRole(user,'ADMIN');
@@ -282,7 +295,7 @@ async function handle(req,env){
  }
  if(method==='GET'&&path==='/api/packing-people'){
   needRole(user,'PACKER','SHIPPER');
-  const r=await env.DB.prepare('SELECT id,email,name FROM users WHERE active=1 AND (role IN (\'PACKER\',\'ADMIN\') OR can_pack=1) ORDER BY name LIMIT 300').all();
+  const r=await env.DB.prepare("SELECT email,name FROM users WHERE active=1 AND (role IN ('PACKER','ADMIN') OR can_pack=1) UNION SELECT email,name FROM legacy_staff_catalog WHERE active=1 AND can_pack=1 ORDER BY name LIMIT 300").all();
   return json({people:r.results||[]});
  }
  if(method==='POST'&&path==='/api/users'){
