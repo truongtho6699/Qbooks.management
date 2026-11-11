@@ -31,3 +31,5 @@
 .admin-table th{background:#f0f5fb;color:#43546e;position:sticky;top:0}
 .admin-table tr:hover td{background:#f8fbff}
 #staffList .order{font-weight:600;font-size:13px;text-align:left}
+
+.video-shortcut{margin:0 0 17px}.video-shortcut a{display:flex;justify-content:space-between;align-items:center;border:1px solid #bcd2fa;background:linear-gradient(110deg,#eef5ff,#f7faff);border-radius:12px;color:#164c9f;font-weight:800;padding:14px 17px;text-decoration:none}.video-shortcut span{font-size:20px}
