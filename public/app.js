@@ -110,7 +110,7 @@ async function loadPendingGoogle(){
  }catch(e){notice('Không tải được đăng ký Google: '+e.message);}
 }
 async function bootstrap(){
- try{const r=await api('GET','/api/bootstrap');state.user=r.user;$('userInfo').textContent=r.user.name+' · '+r.user.role;show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;renderTabs();await loadOrders();}
+ try{const r=await api('GET','/api/bootstrap');state.user=r.user;$('userInfo').textContent=r.user.name+' · '+r.user.role;show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;const rights=capabilities();state.tab=rights.pack?'pack':rights.ship?'ship':r.user.role==='SALE'?'sale':'orders';renderTabs();show('ordersView',['pack','ship','orders'].includes(state.tab));show('saleView',state.tab==='sale');show('staffView',false);if(state.tab==='sale')await loadGroupOptions();else await loadOrders();}
  catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;notice(e.message);}
 }
 function capabilities(){const r=state.user?.rights||{};return {pack:r.dongHang||['PACKER','ADMIN'].includes(state.user?.role),ship:r.vanDon||['SHIPPER','ADMIN'].includes(state.user?.role),admin:r.admin||state.user?.role==='ADMIN'};}
@@ -326,7 +326,7 @@ async function loadGroupOptions(){
 }
 $('setupForm').addEventListener('submit',async e=>{e.preventDefault();const fields=Object.fromEntries(new FormData(e.target));try{await api('POST','/api/setup',fields);notice('Đã tạo tài khoản quản trị. Đang đăng nhập...',true);await login(fields.email,fields.pin);e.target.reset();}catch(error){notice('Chưa thiết lập được quản trị: '+error.message)}});
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
@@ -335,6 +335,27 @@ $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 $('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
 $('staffForm').addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('POST','/api/users',Object.fromEntries(new FormData(e.target)));notice('Đã tạo nhân sự '+r.id,true);e.target.reset()}catch(err){notice(err.message)}});
+async function checkLegacy(){
+ const node=$('legacyStatus');node.textContent='Đang kiểm tra...';
+ try{
+  const x=await api('GET','/api/legacy/status');
+  node.textContent=x.configured?'Đã có cầu nối, CHỈ ĐỌC. Chưa cho phép ghi về Sheets/Drive.':'Chưa có cầu nối Google Sheets. Cần triển khai cầu nối Apps Script riêng, cấu hình secret rồi mới đọc được dữ liệu thật.';
+ }catch(e){node.textContent=e.message;}
+}
+async function previewLegacy(){
+ const box=$('legacyPreview');box.replaceChildren(el('p','Đang lấy bản xem trước...'));
+ try{
+  const r=await api('GET','/api/legacy/preview?offset=0&limit=50');
+  box.replaceChildren(el('p','Google Sheets: '+r.total+' đơn · Đọc '+r.preview.length+' dòng · Mới '+r.summary.new+' · Đã khớp '+r.summary.unchanged+' · Thay đổi '+r.summary.changed+' · Xung đột '+r.summary.conflicts+' · Lỗi '+r.summary.errors));
+  for(const item of r.preview){
+   const div=el('div',null,'order');
+   div.append(el('div',item.error||[item.id,item.invoice_codes,item.customer,item.status].filter(Boolean).join(' · ')));
+   div.append(el('span',item.action,'tag'));box.append(div);
+  }
+ }catch(e){box.replaceChildren(el('p','Chưa thể đối chiếu: '+e.message));}
+}
+$('checkLegacy').onclick=checkLegacy;
+$('previewLegacy').onclick=previewLegacy;
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 initGoogleSignIn();
 if(state.token)bootstrap();
