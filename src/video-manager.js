@@ -12,6 +12,7 @@ async function log(db,u,action,id='',details=''){await db.prepare('INSERT INTO v
 async function getOne(db,id){const v=await db.prepare('SELECT * FROM video_items WHERE id=?').bind(id).first();if(!v)throw err('Không tìm thấy video.',404);return v;}
 export async function videoApi(req,env,u){
  const url=new URL(req.url),path=url.pathname,method=req.method,db=env.DB,rights=await roles(db,u);
+ if(!rights.admin&&!rights.film&&!rights.edit&&!rights.manage)throw err('Tài khoản chưa được cấp quyền sử dụng Quản lý video sách.',403);
  const requireRight=r=>{if(!rights[r]&&!rights.admin)throw err('Tài khoản chưa được cấp quyền chức năng này.',403);};
  const body=async()=>{try{return await req.json()}catch{throw err('Nội dung gửi lên không hợp lệ.')}};
  if(method==='GET'&&path==='/api/video/bootstrap')return j({user:{id:u.id,name:u.name,email:u.email,role:u.role},rights});
