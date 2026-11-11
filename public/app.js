@@ -251,32 +251,64 @@ async function uploadSelection(orderId,items){
   await uploadOne(orderId,stage,file);
  }
 }
+function v(id){return $(id).value.trim()}
+function updateShippingTotal(){
+ const fields=['shippingFee','heavyFee','terminalFee','extraFee'];
+ const total=fields.reduce((sum,id)=>sum+(Number($(id).value)||0),0);
+ $('shippingTotal').textContent=new Intl.NumberFormat('vi-VN').format(total)+' đ';
+}
+function showShippingGroup(order){
+ const group=order.group_id;
+ const siblings=group?state.orders.filter(o=>o.group_id===group&&o.status==='CHỜ VẬN ĐƠN'):[];
+ show('shipGroupArea',siblings.length>1);
+ const list=$('shipGroupMembers');list.replaceChildren();
+ for(const o of siblings){
+  const row=el('label',null,'check');
+  const input=document.createElement('input');input.type='checkbox';input.className='shippingGroupCheck';input.value=o.id;input.checked=o.id===order.id;
+  row.append(input,document.createTextNode(o.title));list.append(row);
+ }
+}
 async function savePack(){
  if(state.saving||!state.selected)return;
  const id=state.selected.id,uploads=[];
  for(const f of $('invoicePics').files)uploads.push(['ANH_HOA_DON',f]);
  for(const f of $('goodsPics').files)uploads.push(['HANG_HOA',f]);
  for(const f of $('videos').files)uploads.push(['VIDEO_DONG_HANG',f]);
- if(!uploads.length){notice('Vui lòng chọn ít nhất một ảnh hoặc video đóng hàng.');return;}
  setBusy(true);
  try{
-  notice('Đang tải ảnh/video vào R2, sau đó lưu đơn...');
+  notice('Đang tải hồ sơ R2 (nếu có), sau đó lưu đóng hàng...');
   await uploadSelection(id,uploads);
-  await api('POST','/api/orders/'+id+'/pack',{boxes:Number($('boxes').value)||0,note:$('packNote').value});
-  notice('Đã tải đầy đủ ảnh/video và lưu đóng hàng.',true);show('detailView',false);show('ordersView',true);await loadOrders();
- }catch(e){notice('Chưa lưu đơn: '+e.message);}
+  const nguoiDongCung=$all('.packHelperChoice:checked').map(x=>x.value);
+  await api('POST','/api/orders/'+id+'/pack',{boxes:Number($('boxes').value),nguoiDongCung,note:$('packNote').value});
+  state.lockedOrderIds.delete(id);
+  notice('Đã lưu đóng hàng trên D1. Chưa đồng bộ Google Sheets/Drive.',true);
+  show('detailView',false);show('ordersView',true);await loadOrders();
+ }catch(e){notice('Chưa lưu đóng hàng: '+e.message);}
  finally{setBusy(false);}
 }
 async function saveShip(){
  if(state.saving||!state.selected)return;
  setBusy(true);
  try{
-  const id=state.selected.id;
+  const id=state.selected.id,groupIds=$all('.shippingGroupCheck:checked').map(x=>x.value);
+  const orderIds=groupIds.length?[...new Set(groupIds.concat(id))]:[id];
+  const loaiShip=v('shippingType'),tenShip=v('shippingPerson'),sdtShip=v('shippingPhone');
+  if(!['Ship ruột','Kiot','App'].includes(loaiShip))throw Error('Vui lòng chọn loại ship.');
+  if(loaiShip==='Ship ruột'&&!tenShip)throw Error('Tên ship bắt buộc khi chọn Ship ruột.');
+  const costs=['shippingFee','heavyFee','terminalFee','extraFee'].map(id=>Number($(id).value)||0);
+  if(costs.some(x=>!Number.isSafeInteger(x)||x<0))throw Error('Các khoản phí phải là số nguyên không âm.');
+  for(const other of orderIds.filter(x=>x!==id)){
+   await api('POST','/api/orders/'+other+'/lock',{stage:'VAN_DON'});
+   state.lockedOrderIds.add(other);
+  }
   const uploads=[...$('shippingPics').files].map(f=>['GIAO_HANG',f]);
-  notice('Đang tải ảnh bàn giao, sau đó lưu vận đơn...');
+  notice('Đang tải ảnh bàn giao (nếu có) và lưu vận đơn...');
   await uploadSelection(id,uploads);
-  await api('POST','/api/shipments',{orderIds:[id],transport:$('shippingTransport').value,note:$('shippingNote').value});
-  notice('Đã lưu vận đơn.',true);show('detailView',false);show('ordersView',true);await loadOrders();
+  await api('POST','/api/shipments',{orderIds,loaiShip,tenShip,sdtShip,
+   tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:v('shippingStatus'),note:v('shippingNote')});
+  for(const key of orderIds)state.lockedOrderIds.delete(key);
+  notice('Đã lưu vận đơn trên D1. Chưa đồng bộ Google Sheets/Drive.',true);
+  show('detailView',false);show('ordersView',true);await loadOrders();
  }catch(e){notice('Chưa lưu vận đơn: '+e.message)}
  finally{setBusy(false)}
 }
@@ -297,8 +329,9 @@ $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Ob
 $('logoutBtn').onclick=async()=>{try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
-$('backBtn').onclick=()=>tab('orders');
+$('backBtn').onclick=()=>tab(state.tab);
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
+['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
 $('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
 $('staffForm').addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('POST','/api/users',Object.fromEntries(new FormData(e.target)));notice('Đã tạo nhân sự '+r.id,true);e.target.reset()}catch(err){notice(err.message)}});
