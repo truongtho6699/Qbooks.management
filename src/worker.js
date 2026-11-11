@@ -47,7 +47,7 @@ async function checkUploads(env,orderId,stages){
  return data.filter(x=>stages.includes(x.stage)&&x.status==='COMPLETE');
 }
 function mustStageAccess(user,u,o){
- if(!canUploadStage(user.role,u.stage,o.status)&&!(hasRole(user,u.stage==='GIAO_HANG'?'SHIPPER':'PACKER')))throw Object.assign(new Error('Không được tải tệp vào đơn hoặc giai đoạn này.'),{status:403});
+ if(o.status!==(u.stage==='GIAO_HANG'?STATUS.SHIP:STATUS.PACK)||!hasRole(user,u.stage==='GIAO_HANG'?'SHIPPER':'PACKER'))throw Object.assign(new Error('Không được tải tệp vào đơn hoặc giai đoạn này.'),{status:403});
 }
 function filePath(orderId,stage,name){return 'orders/'+encodeURIComponent(orderId)+'/'+stage+'/'+uid()+'-'+name.replace(/[^\w.\-]/g,'_');}
 async function handle(req,env){
@@ -258,7 +258,7 @@ async function handle(req,env){
  }
  if(method==='POST'&&path==='/api/uploads'){
   const b=await requestJSON(req),order=await orderById(env,b.orderId);
-  if(!canUploadStage(user.role,b.stage,order.status)&&!(hasRole(user,b.stage==='GIAO_HANG'?'SHIPPER':'PACKER')))throw Object.assign(new Error('Không có quyền tải lên đơn này.'),{status:403});
+  if(order.status!==(b.stage==='GIAO_HANG'?STATUS.SHIP:STATUS.PACK)||!hasRole(user,b.stage==='GIAO_HANG'?'SHIPPER':'PACKER'))throw Object.assign(new Error('Không có quyền tải lên đơn này.'),{status:403});
   const size=Number(b.size),name=clean(b.filename),type=clean(b.contentType);
   validateUpload({stage:b.stage,filename:name,contentType:type,size});
   const id=uid(),key=filePath(order.id,b.stage,name),multipart=b.stage==='VIDEO_DONG_HANG';
