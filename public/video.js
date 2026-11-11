@@ -4,6 +4,7 @@ const NAV=[
  {id:'dashboard',text:'Bảng điều khiển',icon:'▦',group:'CHUNG'},
  {id:'filmOverview',text:'Tổng quan quay',icon:'▣',group:'QUAY VIDEO'},
  {id:'film',text:'Quay bài',icon:'◉',group:'QUAY VIDEO'},
+ {id:'createVideo',text:'Lập kế hoạch video',icon:'＋',group:'QUAY VIDEO'},
  {id:'postOverview',text:'Tổng quan hậu kỳ',icon:'◫',group:'HẬU KỲ'},
  {id:'edit',text:'Xử lý video',icon:'✎',group:'HẬU KỲ'},
  {id:'production',text:'Sản lượng hằng ngày',icon:'▤',group:'QUẢN LÝ'},
@@ -30,6 +31,7 @@ function can(section){
  if(state.rights.admin)return true;
  if(['dashboard','filmOverview','postOverview','production','booksProgress','report'].includes(section))return !!state.user;
  if(section==='film')return !!state.rights.film;
+ if(section==='createVideo')return !!state.rights.manage;
  if(section==='edit')return !!state.rights.edit;
  return !!state.rights.manage;
 }
@@ -101,7 +103,7 @@ function filmingOverview(){
 function makeVideoRows(items,action){
  return items.map(v=>[E(v.book_code),'<strong>'+E(v.title)+'</strong><div class="mini-note">'+E(v.lesson||'')+'</div>',E(v.teacher||'—'),E(v.camera_name||'—'),badge(v.status),'<button type="button" class="link-action" data-action="'+action+'" data-id="'+E(v.id)+'">'+(action==='film'?'Quay / Chi tiết':'Xử lý / Chi tiết')+'</button>']);
 }
-function filmList(){return panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items,'film'),'Chưa có video')+'</div>');}
+function filmList(){return (state.rights.manage||state.rights.admin?'<div class="actions" style="margin-bottom:15px"><button class="btn primary" data-goto="createVideo">＋ Lập kế hoạch video</button></div>':'')+panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items,'film'),'Chưa có video')+'</div>');}
 function filmDetail(v){
  return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+'</div>')+
  panel('Quay bài · cập nhật tiến độ','<form id="filmForm" class="form-grid">'+
@@ -175,7 +177,7 @@ function permissions(){
 }
 function auditView(){return panel('Lịch sử thao tác',table(['Ngày','Nhân sự','Hành động','Video'],(state.audit||[]).map(a=>[date(a.created_at),E(a.actor_name||'—'),E(a.action),E(a.video_id||'—')])));}
 function render(){
- const screen={dashboard,filmOverview,film:filmList,postOverview,edit:editList,production,booksProgress,report,books:booksAdmin,staff:staffAdmin,permissions,audit:auditView};
+ const screen={dashboard,filmOverview,film:filmList,createVideo,postOverview,edit:editList,production,booksProgress,report,books:booksAdmin,staff:staffAdmin,permissions,audit:auditView};
  let html=screen[state.view]?.()||'<p>Chưa có nội dung.</p>';
  if(state.view==='film'&&state.selected)html=filmDetail(state.selected);
  if(state.view==='edit'&&state.selected)html=editDetail(state.selected);
@@ -195,6 +197,7 @@ function csvExport(){
  const a=document.createElement('a');a.href=url;a.download='QBOOK_BAO_CAO_VIDEO.csv';a.click();URL.revokeObjectURL(url);
 }
 function wire(){
+ document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>navigate(b.dataset.goto));
  bindForm('bookForm',b=>api('POST','/api/video/books',b));
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
  bindForm('filmForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'film',...b}));
