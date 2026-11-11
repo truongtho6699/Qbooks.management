@@ -30,6 +30,84 @@ async function login(email,pin){
  state.token=res.token;sessionStorage.setItem('qbooks_token',res.token);
  await bootstrap();
 }
+async function loadGoogleSdk(){
+ if(window.google?.accounts?.id)return;
+ await new Promise((resolve,reject)=>{
+  const script=document.createElement('script');
+  script.src='https://accounts.google.com/gsi/client';
+  script.async=true;script.defer=true;
+  script.onload=resolve;script.onerror=()=>reject(Error('Không tải được Google Identity Services. Hãy thử mở bằng Chrome/Safari.'));
+  document.head.append(script);
+ });
+ if(!window.google?.accounts?.id)throw Error('Trình duyệt không hỗ trợ đăng nhập Google.');
+}
+async function initGoogleSignIn(){
+ try{
+  const cfg=await api('GET','/api/google/config');
+  if(!cfg.enabled||!cfg.clientId){
+   $('googleStatus').textContent='Google chưa được kết nối. Quản trị cần cấu hình GOOGLE_CLIENT_ID trên Cloudflare Pages.';
+   return;
+  }
+  await loadGoogleSdk();
+  window.google.accounts.id.initialize({
+   client_id:cfg.clientId,
+   ux_mode:'popup',
+   auto_select:false,
+   callback:async({credential})=>{
+    if(!credential)return notice('Google chưa trả thông tin đăng nhập.');
+    try{
+     $('googleStatus').textContent='Đang kiểm tra tài khoản Google...';
+     const result=await api('POST','/api/google/login',{credential});
+     if(result.pending){
+      $('googleStatus').textContent=result.message;
+      return notice(result.message,true);
+     }
+     if(!result.token)throw Error('Máy chủ chưa cấp phiên đăng nhập.');
+     state.token=result.token;
+     sessionStorage.setItem('qbooks_token',result.token);
+     await bootstrap();
+    }catch(e){notice('Đăng nhập Google thất bại: '+e.message);}
+    finally{if(!state.user)$('googleStatus').textContent='Tài khoản mới cần quản trị phê duyệt trước khi sử dụng.';}
+   }
+  });
+  $('googleUnavailable').hidden=true;
+  window.google.accounts.id.renderButton($('googleSignIn'),{type:'standard',theme:'outline',size:'large',shape:'rectangular',text:'continue_with',width:290});
+  $('googleStatus').textContent='Dùng tài khoản Google đã được cấp quyền hoặc đăng ký mới để chờ quản trị duyệt.';
+ }catch(e){$('googleStatus').textContent=e.message;}
+}
+async function loadPendingGoogle(){
+ const container=$('googlePendingList');
+ if(!state.user||state.user.role!=='ADMIN')return;
+ try{
+  const res=await api('GET','/api/google/pending');
+  container.replaceChildren();
+  if(!res.registrations.length)return container.append(el('p','Không có đăng ký Google chờ duyệt.'));
+  for(const person of res.registrations){
+   const row=el('div',null,'order google-pending');
+   const info=el('div');
+   info.append(el('strong',person.name),meta(person.email),meta('Đăng ký: '+person.requested_at));
+   const controls=el('div',null,'google-actions');
+   const select=document.createElement('select');
+   [['PACKER','Đóng hàng'],['SHIPPER','Vận đơn'],['SALE','Sale']].forEach(([value,title])=>{
+    const opt=document.createElement('option');opt.value=value;opt.textContent=title;select.append(opt);
+   });
+   const approve=button('Duyệt',async()=>{
+    approve.disabled=true;
+    try{
+     await api('POST','/api/google/approve',{sub:person.google_sub,role:select.value});
+     notice('Đã duyệt tài khoản '+person.email+'.',true);
+     await loadPendingGoogle();
+    }catch(e){notice(e.message);}finally{approve.disabled=false;}
+   },'primary');
+   const reject=button('Từ chối',async()=>{
+    reject.disabled=true;
+    try{await api('POST','/api/google/reject',{sub:person.google_sub});notice('Đã từ chối yêu cầu '+person.email+'.',true);await loadPendingGoogle();}
+    catch(e){notice(e.message);}finally{reject.disabled=false;}
+   },'secondary');
+   controls.append(select,approve,reject);row.append(info,controls);container.append(row);
+  }
+ }catch(e){notice('Không tải được đăng ký Google: '+e.message);}
+}
 async function bootstrap(){
  try{const r=await api('GET','/api/bootstrap');state.user=r.user;$('userInfo').textContent=r.user.name+' · '+r.user.role;show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;renderTabs();await loadOrders();}
  catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;notice(e.message);}
@@ -40,7 +118,7 @@ function renderTabs(){
  if(role==='ADMIN')buttons.push(['staff','Nhân sự']);
  $('tabs').replaceChildren(...buttons.map(([key,text])=>{const b=button(text,()=>tab(key),key===state.tab?'selected':'');return b;}));
 }
-function tab(key){state.tab=key;show('ordersView',key==='orders');show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);show('newSalePanel',state.user.role!=='SHIPPER');renderTabs();if(key==='sale')loadGroupOptions();}
+function tab(key){state.tab=key;show('ordersView',key==='orders');show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);show('newSalePanel',state.user.role!=='SHIPPER');renderTabs();if(key==='sale')loadGroupOptions();if(key==='staff')loadPendingGoogle();}
 async function loadOrders(){
  const q=$('search').value.trim();const r=await api('GET','/api/orders?q='+encodeURIComponent(q));
  state.orders=r.orders;$('listTitle').textContent=statusTitle[state.user.role]||'Đơn hàng';
@@ -167,4 +245,6 @@ $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 $('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
 $('staffForm').addEventListener('submit',async e=>{e.preventDefault();try{const r=await api('POST','/api/users',Object.fromEntries(new FormData(e.target)));notice('Đã tạo nhân sự '+r.id,true);e.target.reset()}catch(err){notice(err.message)}});
+$('refreshGooglePending').onclick=()=>loadPendingGoogle();
+initGoogleSignIn();
 if(state.token)bootstrap();
