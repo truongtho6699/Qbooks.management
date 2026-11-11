@@ -1,6 +1,7 @@
 
 import {STATUS,CHUNK_BYTES,STAGES,MAX_VIDEO,MAX_IMAGE,canUploadStage,validateUpload,partBounds,partsCount,orderTitle} from './domain.js';
 import {verifyGoogleCredential} from './google-auth.js';
+import {normalizeV35Row} from './legacy-v35.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const fail=(message,status=400)=>json({error:message},status);
@@ -124,6 +125,50 @@ async function handle(req,env){
   return json({ok:true});
  }
  if(method==='GET'&&path==='/api/bootstrap')return json({user:{id:user.id,name:user.name,email:user.email,role:user.role},statuses:STATUS});
+ if(method==='GET'&&path==='/api/legacy/status'){
+  needRole(user,'ADMIN');
+  return json({sheetId:'1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw',
+   configured:!!(env.QBOOKS_BRIDGE_URL&&env.QBOOKS_SYNC_SECRET),
+   mode:'READ_ONLY_PREVIEW',writeBackEnabled:false,driveMirrorEnabled:false});
+ }
+ if(method==='GET'&&path==='/api/legacy/preview'){
+  needRole(user,'ADMIN');
+  if(!env.QBOOKS_BRIDGE_URL||!env.QBOOKS_SYNC_SECRET)
+   throw Object.assign(new Error('Chưa cấu hình cầu nối Google Sheets. Bản Cloudflare chưa được phép đọc dữ liệu thật.'),{status:503});
+  const endpoint=String(env.QBOOKS_BRIDGE_URL);
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(endpoint))
+   throw Object.assign(new Error('URL cầu nối không hợp lệ.'),{status:503});
+  const offset=Math.max(0,Math.min(100000,Math.floor(Number(url.searchParams.get('offset'))||0)));
+  const limit=Math.max(1,Math.min(100,Math.floor(Number(url.searchParams.get('limit'))||50)));
+  const response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},
+   body:JSON.stringify({action:'snapshot',secret:env.QBOOKS_SYNC_SECRET,timestamp:Date.now(),nonce:uid(),offset,limit})});
+  if(!response.ok)throw Object.assign(new Error('Không thể đọc Google Sheets qua cầu nối.'),{status:502});
+  const data=await response.json();
+  if(!data.success||data.readOnly!==true||!Array.isArray(data.rows))
+   throw Object.assign(new Error('Cầu nối Google Sheets từ chối yêu cầu hoặc trả dữ liệu không hợp lệ.'),{status:502});
+  const parsed=data.rows.map((row,i)=>{try{return{record:normalizeV35Row(row),error:null};}catch(e){return{record:null,error:'Dòng '+(offset+i+2)+': '+e.message};}});
+  const valid=parsed.filter(x=>x.record).map(x=>x.record);
+  const ids=valid.map(x=>x.id);
+  let known=[];
+  if(ids.length){
+   const existing=await env.DB.prepare('SELECT id,status,source_system,source_updated_at FROM orders WHERE id IN ('+ids.map(()=>'?').join(',')+')').bind(...ids).all();
+   known=existing.results||[];
+  }
+  const index=new Map(known.map(x=>[x.id,x]));
+  const preview=parsed.map(x=>{
+   if(!x.record)return{error:x.error,action:'ERROR'};
+   const current=index.get(x.record.id);
+   const action=!current?'NEW':current.source_system!=='GOOGLE_SHEETS'?'CONFLICT':current.source_updated_at===x.record.source_updated_at?'UNCHANGED':'CHANGED';
+   return {id:x.record.id,invoice_codes:x.record.invoice_codes,customer:x.record.customer,
+    status:x.record.status,group_id:x.record.group_id,source_updated_at:x.record.source_updated_at,
+    action,existingStatus:current?.status||null};
+  });
+  return json({readOnly:true,total:Number(data.total)||0,offset,limit,preview,
+   summary:{new:preview.filter(x=>x.action==='NEW').length,changed:preview.filter(x=>x.action==='CHANGED').length,
+    unchanged:preview.filter(x=>x.action==='UNCHANGED').length,conflicts:preview.filter(x=>x.action==='CONFLICT').length,
+    errors:preview.filter(x=>x.action==='ERROR').length}});
+ }
+
  if(method==='GET'&&path==='/api/google/pending'){
   needRole(user,'ADMIN');
   const rows=await env.DB.prepare("SELECT r.google_sub,r.email,r.name,r.requested_at,CASE WHEN u.id IS NULL THEN 0 ELSE 1 END existing_user FROM google_registrations r LEFT JOIN users u ON u.email=r.email WHERE r.status='PENDING' ORDER BY r.requested_at DESC LIMIT 100").all();
