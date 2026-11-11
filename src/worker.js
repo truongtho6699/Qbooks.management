@@ -309,6 +309,7 @@ async function handle(req,env){
   await audit(env,user,'CREATE_USER','',id);return json({id},201);
  }
  if(method==='GET'&&path==='/api/orders'){
+  needRole(user,'PACKER','SHIPPER');
   const query=clean(url.searchParams.get('q')).slice(0,120);
   let status=clean(url.searchParams.get('status'));
   if(user.role==='PACKER'&&!user.can_ship&&!user.can_admin)status=STATUS.PACK;
@@ -386,6 +387,7 @@ async function handle(req,env){
   const id=uMatch[1],action=uMatch[2]||'',u=await pendingUpload(env,id),o=await orderById(env,u.order_id);
   const isFile=action==='file';
   if(isFile){
+   needRole(user,'PACKER','SHIPPER');
    if(method!=='GET')return fail('Không hỗ trợ.',405);
    const object=await env.MEDIA.get(u.object_key);
    if(!object||u.status!=='COMPLETE')return fail('Tệp chưa sẵn sàng.',404);
