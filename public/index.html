@@ -4,7 +4,25 @@
 <header class="top"><div class="brand"><span class="symbol">Q</span><div><strong>QBooks Management</strong><small>Đơn hàng · Đóng hàng · Vận đơn</small></div></div><div class="profile"><span id="userInfo"></span><button class="ghost" id="logoutBtn" hidden>Thoát</button></div></header>
 <main class="container"><div id="notice" class="notice" role="status" aria-live="polite"></div>
 <section id="loginPage" class="auth"><div class="auth-card"><h1>Đăng nhập QBooks</h1><p>Sử dụng tài khoản được quản trị cấp quyền.</p><form id="loginForm"><label>Email nhân sự<input name="email" type="email" autocomplete="username" required placeholder="email@congty.vn"></label><label>Mã PIN<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="3" maxlength="12" required></label><button class="primary" type="submit">ĐĂNG NHẬP</button></form><div class="google-section"><div class="google-separator">Hoặc tiếp tục bằng Google</div><div id="googleSignIn" class="google-sign-in"></div><button type="button" id="googleUnavailable" class="secondary" disabled>Đăng nhập / Đăng ký bằng Google (chưa cấu hình)</button><p class="hint" id="googleStatus">Tài khoản mới cần quản trị viên phê duyệt trước khi dùng.</p></div></section>
-<section id="appPage" hidden><div class="video-shortcut"><a href="/video.html">▣ &nbsp; Quản lý sản xuất video sách <span>→</span></a></div><div class="tabs" id="tabs"></div>
+<section id="appPage" hidden>
+<div class="shipping-shell">
+ <aside class="shipping-sidebar">
+  <div class="shipping-logo"><strong>QBOOK</strong><small>QUẢN LÝ CHUYỂN HÀNG</small></div>
+  <div class="shipping-nav-title">CHỨC NĂNG</div>
+  <nav class="tabs" id="tabs" aria-label="Menu quản lý chuyển hàng"></nav>
+  <div class="shipping-sidebar-footer">QBOOKS · 2026</div>
+ </aside>
+ <div class="shipping-workspace">
+ <div class="shipping-heading"><div><small>QUẢN LÝ CHUYỂN HÀNG</small><h1 id="shippingHeading">Tổng quan</h1><p id="shippingSubheading">Theo dõi toàn bộ quá trình xử lý đơn</p></div><span id="shippingUserBadge"></span></div>
+ <section id="overviewView" hidden>
+  <div id="shippingKpis" class="shipping-kpis"></div>
+  <div class="panel"><div class="section-heading"><div><h2>Hồ sơ và tiến độ các đơn hàng</h2><p>Tra cứu mã đơn, người bán, trạng thái, ảnh và video theo từng đơn</p></div><button type="button" class="secondary" id="overviewRefresh">Làm mới</button></div>
+   <div class="shipping-overview-filters"><input id="overviewSearch" placeholder="Tìm mã hóa đơn, khách hàng, sale…" autocomplete="off"><select id="overviewStatus"><option value="">Tất cả trạng thái</option><option>CHỜ ĐÓNG HÀNG</option><option>CHỜ VẬN ĐƠN</option><option>ĐANG GIAO</option><option>HOÀN THÀNH</option></select></div>
+   <div class="shipping-table-scroll"><table class="shipping-table"><thead><tr><th>Mã đơn / Hóa đơn</th><th>Khách hàng / Sale</th><th>Trạng thái</th><th>Hồ sơ và liên kết</th><th>Chi tiết</th></tr></thead><tbody id="overviewRows"></tbody></table></div>
+   <div class="shipping-mobile-cards" id="overviewCards"></div>
+   <p class="hint" id="overviewHint"></p>
+  </div>
+ </section>
 <section id="ordersView">
 <div class="section-heading"><div><h1 id="listTitle">Danh sách đơn</h1><p id="listSub">Chỉ hiển thị các đơn đang chờ thao tác</p></div><button id="reloadBtn" class="secondary">Làm mới</button></div>
 <div class="filters"><input id="search" placeholder="Tìm mã hóa đơn, tên khách, Sale…" autocomplete="off"></div>
@@ -49,5 +67,8 @@
 <div class="panel"><h2>Quản trị nhân sự / PIN</h2><p class="hint">Một nhân sự có thể có nhiều quyền cùng lúc. Chọn nhân sự để sửa; không cần nhập lại PIN nếu chỉ đổi quyền.</p><div id="staffList" class="cards compact"></div>
 <form id="staffForm" class="fields"><label>Họ tên<input name="name" required></label><label>Email<input name="email" type="email" required></label><label>Vai trò chính<select name="role"><option>PACKER</option><option>SHIPPER</option><option>SALE</option><option>ADMIN</option></select></label><label>PIN (3–8 chữ số, bỏ trống khi sửa)<input name="pin" type="password" inputmode="numeric" minlength="3" maxlength="8"></label><label class="check"><input type="checkbox" name="dongHang"> Đóng hàng</label><label class="check"><input type="checkbox" name="vanDon"> Vận đơn</label><label class="check"><input type="checkbox" name="admin"> Quản trị</label><label class="check"><input type="checkbox" name="active" checked> Hoạt động</label>
 <button class="primary" id="saveStaffBtn">TẠO NHÂN SỰ</button><button type="button" id="cancelStaffEdit" class="secondary">Nhập mới</button></form></div></section>
+ </div>
+</div>
+<nav class="shipping-mobile-nav" id="mobileShippingTabs" aria-label="Menu dưới trên điện thoại"></nav>
 </section>
 </main><footer>QBooks · Workers + D1 + R2 · Dữ liệu thử nghiệm độc lập</footer><script type="module" src="/app.js"></script></body></html>
