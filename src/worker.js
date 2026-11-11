@@ -347,11 +347,15 @@ async function handle(req,env){
   needRole(user,'PACKER');const id=pMatch[1],o=await orderById(env,id),b=await requestJSON(req);
   if(o.status!==STATUS.PACK)throw Error('Đơn đã đóng hoặc không còn ở trạng thái chờ.');
   await assertOrderLock(env,user,id,'DONG_HANG');
-  const media=await checkUploads(env,id,['ANH_HOA_DON','VIDEO_DONG_HANG','HANG_HOA']);
-  if(!media.length)throw Error('Chưa có ảnh/video xác nhận đóng hàng.');
-  const result=await env.DB.prepare("UPDATE orders SET status=?,boxes=?,packing_note=?,packed_by=?,packed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?")
-   .bind(STATUS.SHIP,Math.max(0,Number(b.boxes)||0),clean(b.note),user.id,id,STATUS.PACK).run();
+  await checkUploads(env,id,['ANH_HOA_DON','VIDEO_DONG_HANG','HANG_HOA']);
+  const helpers=Array.isArray(b.nguoiDongCung)?b.nguoiDongCung.map(clean).filter(Boolean):[];
+  if(helpers.length>100)throw Error('Số lượng người đóng cùng vượt giới hạn.');
+  const boxes=Number(b.boxes);
+  if(!Number.isSafeInteger(boxes)||boxes<0)throw Error('Số thùng không hợp lệ.');
+  const result=await env.DB.prepare("UPDATE orders SET status=?,boxes=?,packing_helpers=?,packing_note=?,packed_by=?,packed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?")
+   .bind(STATUS.SHIP,boxes,JSON.stringify(helpers),clean(b.note),user.id,id,STATUS.PACK).run();
   if(!result.meta.changes)throw Error('Đơn đã được người khác xử lý.');
+  await env.DB.prepare('DELETE FROM order_locks WHERE order_id=? AND user_id=?').bind(id,user.id).run();
   await audit(env,user,'PACK',id);return json({ok:true,status:STATUS.SHIP});
  }
  if(method==='POST'&&path==='/api/shipments'){
@@ -362,14 +366,19 @@ async function handle(req,env){
   const groupIds=[...new Set(orders.results.map(o=>o.group_id).filter(Boolean))];
   if(groupIds.length>1)throw Error('Các đơn đang nằm ở nhiều nhóm khác nhau.');
   for(const id of ids){await assertOrderLock(env,user,id,'VAN_DON');await checkUploads(env,id,['GIAO_HANG']);}
-  const groupId=groupIds[0]||('VD'+Date.now());
+  const form=validateShippingForm({loaiShip:b.loaiShip,sdtShip:b.sdtShip,tenShip:b.tenShip,
+   tienShip:b.tienShip,hangNang:b.hangNang,phiBen:b.phiBen,phuPhi:b.phuPhi});
+  const target=b.status===STATUS.MOVING?STATUS.MOVING:STATUS.DONE;
+  const groupId=groupIds[0]||('VD_'+new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14)+'_'+uid().slice(0,4));
   const stmts=[];
   if(!groupIds.length)stmts.push(env.DB.prepare('INSERT INTO shipping_groups(id,created_by) VALUES(?,?)').bind(groupId,user.id));
-  for(const id of ids)stmts.push(env.DB.prepare("UPDATE orders SET status=?,group_id=?,transport=?,shipping_note=?,shipped_by=?,shipped_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?")
-    .bind(STATUS.DONE,groupId,clean(b.transport),clean(b.note),user.id,id,STATUS.SHIP));
+  for(const id of ids)stmts.push(env.DB.prepare("UPDATE orders SET status=?,group_id=?,shipping_type=?,shipping_phone=?,shipping_person=?,shipping_fee=?,heavy_fee=?,terminal_fee=?,extra_fee=?,total_fee=?,shipping_note=?,shipped_by=?,shipped_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?")
+    .bind(target,groupId,form.loaiShip,form.sdtShip,form.tenShip,form.tienShip,form.hangNang,form.phiBen,form.phuPhi,form.tongTien,clean(b.note),user.id,id,STATUS.SHIP));
   const updates=await env.DB.batch(stmts);
   if(updates.slice(groupIds.length?0:1).some(result=>result.meta.changes!==1))throw Error('Trạng thái đơn thay đổi khi lưu; cần đối chiếu.');
-  await audit(env,user,'SHIP_GROUP','',JSON.stringify({groupId,ids}));return json({ok:true,groupId});
+  for(const id of ids)await env.DB.prepare('DELETE FROM order_locks WHERE order_id=? AND user_id=?').bind(id,user.id).run();
+  await audit(env,user,'SHIP_GROUP','',JSON.stringify({groupId,ids,total:form.tongTien}));
+  return json({ok:true,groupId,status:target,total:form.tongTien});
  }
  return fail('Không tìm thấy chức năng.',404);
 }
