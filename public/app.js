@@ -177,7 +177,7 @@ function tab(key){
  show('newSalePanel',state.user.role!=='SHIPPER');
  renderTabs();
  if(key==='sale')loadGroupOptions();
- if(key==='staff'){loadPendingGoogle();loadStaffUsers();}
+ if(key==='staff'){loadPendingGoogle();loadStaffUsers();refreshGoogleSync();}
  if(['pack','ship','orders'].includes(key))loadOrders().catch(e=>notice(e.message));
 }
 async function loadOrders(){
@@ -367,7 +367,7 @@ async function loadGroupOptions(){
  }catch(e){notice(e.message)}
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
@@ -470,6 +470,79 @@ async function importGoogleSheets(){
  }catch(e){$('legacyStatus').textContent='Không nhập được D1: '+e.message;}
  finally{btn.disabled=!$('confirmImport').checked;}
 }
+async function refreshGoogleSync(){
+ if(!capabilities().admin)return;
+ const status=$('syncMessage');
+ try{
+  const r=await api('GET','/api/sync/status');
+  status.textContent='Còn '+r.orders.length+' đơn thay đổi, '+r.uploads.filter(u=>!u.drive_file_id).length+' tệp R2 chưa chuyển sang Drive. Chỉ thao tác khi đã cấp quyền Google.';
+  const media=$('syncUploads');media.replaceChildren();
+  if(!r.uploads.length)media.append(el('p','Không có ảnh/video mới cần kiểm tra.'));
+  for(const file of r.uploads){
+   const div=el('div',null,'order');
+   const label=el('div',(file.order_id+' · '+file.stage+' · '+file.filename+' · '+(file.bytes/1048576).toFixed(1)+' MB'));
+   const span=el('span',file.drive_file_id?'Đã có trên Drive':(file.drive_offset?'Đã chuyển '+Math.floor(100*file.drive_offset/file.bytes)+'%':'Chưa chuyển'),'tag');
+   div.append(label,span);
+   if(!file.drive_file_id){
+    const btn=button(file.drive_offset?'Tiếp tục chuyển':'Chuyển sang Drive',()=>mirrorGoogleFile(file.id,btn),'secondary');
+    div.append(btn);
+   }
+   media.append(div);
+  }
+  const orders=$('syncOrders');orders.replaceChildren();
+  if(!r.orders.length)orders.append(el('p','Không có đơn nào đánh dấu chờ đồng bộ.'));
+  for(const order of r.orders){
+   const files=r.uploads.filter(f=>f.order_id===order.id);
+   const pending=files.some(f=>!f.drive_file_id);
+   const row=el('div',null,'order');
+   row.append(el('div',order.id+' · '+order.invoice_codes+' · '+order.status));
+   const btn=button(pending?'Cần chuyển đủ tệp trước':'Ghi đơn về DATA_TONG',()=>pushGoogleOrder(order.id,btn),'primary');
+   btn.disabled=pending;
+   row.append(btn);orders.append(row);
+  }
+ }catch(e){status.textContent='Lỗi kiểm tra đồng bộ: '+e.message;}
+}
+function googleWriteSession(){
+ if(!state.googleWriteToken||!state.googleWriteUntil||Date.now()>=state.googleWriteUntil)
+  throw Error('Chưa kết nối hoặc quyền Google đã hết hạn. Bấm "Kết nối Google" để cấp quyền lại.');
+ return state.googleWriteToken;
+}
+function connectGoogleWrite(){
+ sourceAuth('https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',async(token,expires)=>{
+  state.googleWriteToken=token;
+  state.googleWriteUntil=Date.now()+Math.max(60,expires-120)*1000;
+  $('syncMessage').textContent='Đã kết nối quyền Google Sheets và Drive trong phiên này. Xác nhận riêng từng thao tác để thực hiện.';
+  await refreshGoogleSync();
+ });
+}
+async function mirrorGoogleFile(uploadId,btn){
+ if(!$('syncDriveApprove').checked)return $('syncMessage').textContent='Cần tích xác nhận đồng ý chuyển tệp lên Drive.';
+ let token;try{token=googleWriteSession()}catch(e){return $('syncMessage').textContent=e.message;}
+ btn.disabled=true;
+ const status=$('syncMessage');
+ try{
+  let info=await api('POST','/api/sync/drive/init',{uploadId,googleAccessToken:token});
+  let cycles=0;
+  while(!info.done){
+   if(Date.now()>=state.googleWriteUntil)throw Error('Phiên Google hết hạn; hãy cấp quyền lại để tiếp tục.');
+   info=await api('POST','/api/sync/drive/chunk',{uploadId,googleAccessToken:token});
+   status.textContent='Đang chuyển tệp '+uploadId+': '+Math.floor(info.offset/info.total*100)+'% ('+(info.offset/1048576).toFixed(1)+' MB / '+(info.total/1048576).toFixed(1)+' MB).';
+   if(++cycles>350)throw Error('Đã dừng vì vượt số lần tải dự kiến. Kiểm tra phiên tải.');
+  }
+  status.textContent='Đã chuyển và xác minh tệp trên Google Drive: '+uploadId+'. Tệp R2 vẫn được giữ nguyên.';
+ }catch(e){status.textContent='Chưa hoàn tất chuyển tệp: '+e.message+' Có thể bấm Tiếp tục sau khi xử lý.';}
+ finally{btn.disabled=false;await refreshGoogleSync();}
+}
+async function pushGoogleOrder(orderId,btn){
+ if(!$('syncSheetApprove').checked)return $('syncMessage').textContent='Cần tích xác nhận ghi các thay đổi về DATA_TONG.';
+ let token;try{token=googleWriteSession()}catch(e){return $('syncMessage').textContent=e.message;}
+ btn.disabled=true;
+ try{
+  const r=await api('POST','/api/sync/sheets/commit',{orderId,googleAccessToken:token,confirmation:'XAC_NHAN_GHI_DATA_TONG'});
+  $('syncMessage').textContent=r.ok?'Đã cập nhật '+r.cells+' ô của đơn '+orderId+' vào DATA_TONG; đã kiểm tra đọc lại.':'Chưa hoàn tất đồng bộ.';
+ }catch(e){$('syncMessage').textContent='Chưa ghi được DATA_TONG: '+e.message;}
+ finally{btn.disabled=false;await refreshGoogleSync();}
+}
 async function checkLegacy(){
  const node=$('legacyStatus');node.textContent='Đang kiểm tra...';
  try{
@@ -489,6 +562,8 @@ async function previewLegacy(){
   }
  }catch(e){box.replaceChildren(el('p','Chưa thể đối chiếu: '+e.message));}
 }
+$('syncRefresh').onclick=refreshGoogleSync;
+$('syncConnect').onclick=connectGoogleWrite;
 $('connectGoogleSheets').onclick=connectGoogleSheets;
 $('connectGoogleDrive').onclick=connectGoogleDrive;
 $('confirmImport').onchange=()=>{$('importGoogleSheets').disabled=!$('confirmImport').checked;};
