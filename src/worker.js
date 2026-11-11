@@ -3,6 +3,7 @@ import {STATUS,CHUNK_BYTES,STAGES,MAX_VIDEO,MAX_IMAGE,canUploadStage,validateUpl
 import {verifyGoogleCredential} from './google-auth.js';
 import {normalizeV35Row,validateShippingForm,canGroup,parseVNDate} from './legacy-v35.js';
 import {syncStatus,driveInit,driveChunk,sheetCommit} from './sync-google.js';
+import {videoApi} from './video-manager.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const fail=(message,status=400)=>json({error:message},status);
@@ -130,6 +131,7 @@ async function handle(req,env){
   await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha(token)).run();
   return json({ok:true});
  }
+ if(path.startsWith('/api/video/'))return videoApi(req,env,user);
  if(method==='GET'&&path==='/api/bootstrap')return json({user:{id:user.id,name:user.name,email:user.email,role:user.role,rights:{dongHang:hasRole(user,'PACKER'),vanDon:hasRole(user,'SHIPPER'),admin:hasRole(user,'ADMIN')}},statuses:STATUS});
  if(method==='POST'&&path==='/api/legacy/import'){
   needRole(user,'ADMIN');
