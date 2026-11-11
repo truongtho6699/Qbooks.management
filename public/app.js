@@ -78,7 +78,7 @@ async function initGoogleSignIn(){
 }
 async function loadPendingGoogle(){
  const container=$('googlePendingList');
- if(!state.user||state.user.role!=='ADMIN')return;
+ if(!state.user||!capabilities().admin)return;
  try{
   const res=await api('GET','/api/google/pending');
   container.replaceChildren();
@@ -327,7 +327,7 @@ async function loadGroupOptions(){
 }
 $('setupForm').addEventListener('submit',async e=>{e.preventDefault();const fields=Object.fromEntries(new FormData(e.target));try{await api('POST','/api/setup',fields);notice('Đã tạo tài khoản quản trị. Đang đăng nhập...',true);await login(fields.email,fields.pin);e.target.reset();}catch(error){notice('Chưa thiết lập được quản trị: '+error.message)}});
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
