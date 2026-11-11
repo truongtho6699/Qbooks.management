@@ -383,8 +383,8 @@ async function googleRead(url,token){
  if(!res.ok)throw Error(data.error?.message||'Google API trả lỗi '+res.status);
  return data;
 }
-function sourceAuth(scope,done){
- const status=$('legacyStatus');
+function sourceAuth(scope,done,statusId='legacyStatus'){
+ const status=$(statusId);
  if(!capabilities().admin)return notice('Chỉ Admin được kết nối dữ liệu Google.');
  if(!state.googleClientId||!window.google?.accounts?.oauth2){
   status.textContent='Google chưa sẵn sàng. Hãy tải lại trang hoặc kiểm tra Client ID.';
@@ -513,7 +513,7 @@ function connectGoogleWrite(){
   state.googleWriteUntil=Date.now()+Math.max(60,expires-120)*1000;
   $('syncMessage').textContent='Đã kết nối quyền Google Sheets và Drive trong phiên này. Xác nhận riêng từng thao tác để thực hiện.';
   await refreshGoogleSync();
- });
+ },'syncMessage');
 }
 async function mirrorGoogleFile(uploadId,btn){
  if(!$('syncDriveApprove').checked)return $('syncMessage').textContent='Cần tích xác nhận đồng ý chuyển tệp lên Drive.';
