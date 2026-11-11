@@ -2,6 +2,7 @@
 import {STATUS,CHUNK_BYTES,STAGES,MAX_VIDEO,MAX_IMAGE,canUploadStage,validateUpload,partBounds,partsCount,orderTitle} from './domain.js';
 import {verifyGoogleCredential} from './google-auth.js';
 import {normalizeV35Row,validateShippingForm,canGroup,parseVNDate} from './legacy-v35.js';
+import {syncStatus,driveInit,driveChunk,sheetCommit} from './sync-google.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const fail=(message,status=400)=>json({error:message},status);
@@ -211,6 +212,26 @@ async function handle(req,env){
   }
   await audit(env,user,'IMPORT_GOOGLE_SHEETS','',JSON.stringify({offset,limit,new:report.new,updated:report.updated,conflicts:report.conflicts,errors:report.errors}));
   return json({...report,staffCatalog:staffImported});
+ }
+ if(method==='GET'&&path==='/api/sync/status'){
+  needRole(user,'ADMIN');
+  return json(await syncStatus(env));
+ }
+ if(method==='POST'&&path==='/api/sync/drive/init'){
+  needRole(user,'ADMIN');
+  return json(await driveInit(env,await requestJSON(req)));
+ }
+ if(method==='POST'&&path==='/api/sync/drive/chunk'){
+  needRole(user,'ADMIN');
+  return json(await driveChunk(env,await requestJSON(req)));
+ }
+ if(method==='POST'&&path==='/api/sync/sheets/commit'){
+  needRole(user,'ADMIN');
+  const b=await requestJSON(req);
+  if(b.confirmation!=='XAC_NHAN_GHI_DATA_TONG')throw Object.assign(new Error('Cần xác nhận ghi về trang tính.'),{status:403});
+  const result=await sheetCommit(env,b);
+  await audit(env,user,'SYNC_SHEET_BACK','',JSON.stringify({orderId:b.orderId,cells:result.cells,skipped:result.skipped}));
+  return json(result);
  }
  if(method==='GET'&&path==='/api/legacy/status'){
   needRole(user,'ADMIN');
