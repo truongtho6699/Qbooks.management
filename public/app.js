@@ -157,6 +157,7 @@ async function loadGroupOptions(){
   if(!options.length)list.append(el('p','Không có đơn chưa gộp.'));
  }catch(e){notice(e.message)}
 }
+$('setupForm').addEventListener('submit',async e=>{e.preventDefault();const fields=Object.fromEntries(new FormData(e.target));try{await api('POST','/api/setup',fields);notice('Đã tạo tài khoản quản trị. Đang đăng nhập...',true);await login(fields.email,fields.pin);e.target.reset();}catch(error){notice('Chưa thiết lập được quản trị: '+error.message)}});
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
 $('logoutBtn').onclick=async()=>{try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
