@@ -141,10 +141,11 @@ function filmList(){return (state.rights.manage||state.rights.admin?'<div class=
 function filmDetail(v){
  return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+'</div>')+
  panel('Quay bài · cập nhật tiến độ','<form id="filmForm" class="form-grid">'+
+ '<div class="field full"><label>Chọn video quay để tải trực tiếp lên Google Drive</label><input id="rawFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadRawVideo" style="margin-top:10px">↑ Tải video lên Drive</button><span class="mini-note" id="rawUploadStatus">Tệp tối đa 2 GB. Có thể dùng liên kết Drive bên dưới thay cho tải tệp.</span></div>'+
  '<div class="field full"><label>Liên kết video gốc trên Google Drive *</label><input name="raw_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.raw_url||'')+'" required></div>'+
  '<div class="field full"><label>Ghi chú quay</label><textarea name="note">'+E(v.note||'')+'</textarea></div>'+
  '<div class="actions full">'+btn('Quay lại danh sách','','backList')+btn('Lưu video đã quay','primary','','submit')+'</div></form>'+
- '<p class="mini-note">Phiên bản này lưu liên kết video gốc. Tải trực tiếp file lớn lên Drive sẽ được tích hợp sau khi cấp quyền phù hợp.</p>');
+ '<p class="mini-note">Video tải trực tiếp từ trình duyệt lên Google Drive, không đi qua máy chủ QBooks. Có thể nhập liên kết Drive nếu đã tải sẵn.</p>');
 }
 function postOverview(){
  const pending=state.items.filter(v=>['ĐÃ QUAY','ĐANG HẬU KỲ'].includes(v.status));
@@ -154,6 +155,7 @@ function postOverview(){
 function editList(){return panel('Danh sách video hậu kỳ','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, tên sách"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items.filter(v=>v.status!=='CHỜ QUAY'),'edit'),'Chưa có video hậu kỳ')+'</div>');}
 function editDetail(v){return panel('Video đang xử lý','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong>'+badge(v.status)+'<span class="mini-note">Video gốc: '+(v.raw_url?'<a href="'+E(v.raw_url)+'" target="_blank" rel="noopener noreferrer">Mở video gốc</a>':'Chưa có liên kết')+'</span></div>')+
  panel('Xử lý video / Phát hành','<form id="editForm" class="form-grid">'+
+ '<div class="field full"><label>Chọn video đã biên tập để tải lên Google Drive</label><input id="editedFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadEditedVideo" style="margin-top:10px">↑ Tải video hậu kỳ lên Drive</button><span class="mini-note" id="editedUploadStatus">Có thể nhập liên kết Drive hoặc YouTube mà không cần tải video mới.</span></div>'+
  '<div class="field full"><label>Link video sau biên tập</label><input name="output_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.output_url||'')+'"></div>'+
  '<div class="field"><label>Trạng thái *</label><select name="status"><option>ĐANG HẬU KỲ</option><option>CHỜ DUYỆT</option><option>ĐÃ PHÁT HÀNH</option></select></div>'+
  '<div class="field"><label>Link YouTube (bắt buộc khi phát hành)</label><input name="youtube_url" type="url" placeholder="https://www.youtube.com/..." value="'+E(v.youtube_url||'')+'"></div>'+
