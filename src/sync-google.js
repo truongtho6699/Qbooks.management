@@ -132,9 +132,10 @@ export async function driveChunk(env,data){
  },body:r2.body,duplex:'half',redirect:'manual'});
  if(res.status===308){
   const progress=res.headers.get('range');
-  const newOffset=progress?Number(progress.split('-').pop())+1:start+bytes;
-  if(!Number.isSafeInteger(newOffset)||newOffset<=start||newOffset>upload.bytes)throw Error('Drive trả tiến độ không hợp lệ.');
-  await env.DB.prepare('UPDATE uploads SET drive_offset=? WHERE id=? AND drive_offset=? AND drive_file_id IS NULL').bind(newOffset,upload.id,start).run();
+  const newOffset=progress?Number(progress.split('-').pop())+1:0;
+  if(!Number.isSafeInteger(newOffset)||newOffset<=start||newOffset>upload.bytes)throw Error('Drive chưa xác nhận đủ dữ liệu; cần kiểm tra phiên tải trước khi tiếp tục.');
+  const updated=await env.DB.prepare('UPDATE uploads SET drive_offset=? WHERE id=? AND drive_offset=? AND drive_file_id IS NULL').bind(newOffset,upload.id,start).run();
+  if(updated.meta.changes!==1)throw conflict('Có phiên khác đang chuyển tệp này; hãy tải lại trạng thái.');
   return {done:false,offset:newOffset,total:upload.bytes};
  }
  if(res.ok){
