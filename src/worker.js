@@ -17,7 +17,7 @@ async function hashPin(pin,salt){
 const randomToken=()=>hex(crypto.getRandomValues(new Uint8Array(32)));
 async function requestJSON(req){try{return await req.json();}catch{throw Error('Nội dung yêu cầu không phải JSON hợp lệ.');}}
 const authError=(m='Vui lòng đăng nhập lại.')=>Object.assign(new Error(m),{status:401});
-const hasRole=(user,...roles)=>user.role==='ADMIN'||user.can_admin===1||roles.some(r=>(r==='PACKER'&&user.can_pack===1)||(r==='SHIPPER'&&user.can_ship===1)||r===user.role);
+const hasRole=(user,...roles)=>user.can_admin===1||roles.some(r=>(r==='PACKER'&&user.can_pack===1)||(r==='SHIPPER'&&user.can_ship===1)||(r==='SALE'&&user.role==='SALE')||(r==='ADMIN'&&user.can_admin===1));
 function needRole(user,...roles){if(!hasRole(user,...roles))throw Object.assign(new Error('Tài khoản không có quyền thao tác.'),{status:403});}
 async function actor(req,env){
  const token=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
@@ -103,8 +103,8 @@ async function handle(req,env){
   if(count.n)throw Object.assign(new Error('Hệ thống đã có quản trị; không cho thiết lập lại.'),{status:409});
   if(!/^\d{3,12}$/.test(String(input.pin||'')))throw Error('PIN quản trị cần 3–12 chữ số.');
   const salt=uid(),id=uid();
-  await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash) VALUES(?,?,?,?,?,?)')
-   .bind(id,clean(input.email).toLowerCase(),clean(input.name)||'Admin','ADMIN',salt,await hashPin(input.pin,salt)).run();
+  await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?)')
+   .bind(id,clean(input.email).toLowerCase(),clean(input.name)||'Admin','ADMIN',salt,await hashPin(input.pin,salt),1,1,1).run();
   return json({ok:true,message:'Đã tạo tài khoản quản trị.'},201);
  }
  if(method==='POST'&&path==='/api/login'){
@@ -281,8 +281,8 @@ async function handle(req,env){
   const salt=uid(),id=uid();
   const unusablePinHash=await hashPin(randomToken(),salt);
   await env.DB.batch([
-   env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,google_sub) VALUES(?,?,?,?,?,?,?)')
-    .bind(id,requestRow.email,requestRow.name,role,salt,unusablePinHash,sub),
+   env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,google_sub,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?,?)')
+    .bind(id,requestRow.email,requestRow.name,role,salt,unusablePinHash,sub,role==='PACKER'?1:0,role==='SHIPPER'?1:0,0),
    env.DB.prepare("DELETE FROM google_registrations WHERE google_sub=? AND status='PENDING'").bind(sub)
   ]);
   await audit(env,user,'APPROVE_GOOGLE_USER','',JSON.stringify({id,role}));
