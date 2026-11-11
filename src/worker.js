@@ -450,7 +450,7 @@ async function handle(req,env){
   if(u.status!=='UPLOADING')throw Error('Phiên tải đã được hoàn tất hoặc hủy.');
   if(method==='PUT'&&!action){
    if(u.upload_id)throw Error('Video cần tải theo từng phần.');
-   if(Number(req.headers.get('content-length'))!==u.bytes)throw Error('Dung lượng ảnh không khớp.');
+   if(req.headers.has('content-length')&&Number(req.headers.get('content-length'))!==u.bytes)throw Error('Dung lượng ảnh không khớp.');
    const written=await env.MEDIA.put(u.object_key,req.body,{httpMetadata:{contentType:u.content_type}});
    if(!written||written.size!==u.bytes)throw Error('R2 chưa ghi đủ dữ liệu ảnh.');
    await env.DB.prepare("UPDATE uploads SET status='COMPLETE',completed_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
@@ -459,7 +459,7 @@ async function handle(req,env){
   if(method==='PUT'&&action.startsWith('parts/')){
    if(!u.upload_id)throw Error('Ảnh không dùng multipart.');
    const number=Number(uMatch[3]),bounds=partBounds(u.bytes,number,u.chunk_size);
-   if(Number(req.headers.get('content-length'))!==bounds.size)throw Error('Dung lượng phần video không khớp.');
+   if(req.headers.has('content-length')&&Number(req.headers.get('content-length'))!==bounds.size)throw Error('Dung lượng phần video không khớp.');
    const mp=env.MEDIA.resumeMultipartUpload(u.object_key,u.upload_id);
    const part=await mp.uploadPart(number,req.body);
    await env.DB.prepare('INSERT INTO upload_parts(upload_id,part_number,etag,bytes) VALUES(?,?,?,?) ON CONFLICT(upload_id,part_number) DO UPDATE SET etag=excluded.etag,bytes=excluded.bytes')
