@@ -261,7 +261,7 @@ async function handle(req,env){
   for(const id of ids)stmts.push(env.DB.prepare('UPDATE orders SET group_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND (group_id IS NULL OR group_id=?)').bind(groupId,id,groupId));
   await env.DB.batch(stmts);await audit(env,user,'GROUP_ORDERS','',JSON.stringify({groupId,ids}));return json({groupId,orderIds:ids});
  }
- const lockMatch=path.match(/^\/api\/orders\/([a-f0-9_-]+)\/lock$/);
+ const lockMatch=path.match(/^\/api\/orders\/([A-Za-z0-9_-]+)\/lock$/);
  if(lockMatch){
   const id=lockMatch[1],o=await orderById(env,id);
   if(method==='POST'){
@@ -342,7 +342,7 @@ async function handle(req,env){
    await audit(env,user,'UPLOAD_VIDEO',u.order_id,u.object_key);return json({ok:true,size:object.size});
   }
  }
- const pMatch=path.match(/^\/api\/orders\/([a-f0-9-]+)\/pack$/);
+ const pMatch=path.match(/^\/api\/orders\/([A-Za-z0-9_-]+)\/pack$/);
  if(method==='POST'&&pMatch){
   needRole(user,'PACKER');const id=pMatch[1],o=await orderById(env,id),b=await requestJSON(req);
   if(o.status!==STATUS.PACK)throw Error('Đơn đã đóng hoặc không còn ở trạng thái chờ.');
