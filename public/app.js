@@ -394,8 +394,8 @@ function sourceAuth(scope,done,statusId='legacyStatus'){
   client_id:state.googleClientId,scope,
   callback:response=>{
    if(response.error||!response.access_token){status.textContent='Google không cấp quyền: '+(response.error||'Đã hủy');return;}
-   if(!window.google.accounts.oauth2.hasGrantedAllScopes(response,scope)){
-    status.textContent='Chưa cấp đủ quyền chỉ đọc.';return;
+   if(!window.google.accounts.oauth2.hasGrantedAllScopes(response,...scope.trim().split(/\s+/))){
+    status.textContent='Google chưa cấp đủ các quyền được yêu cầu. Kiểm tra màn hình đồng ý Google Cloud.';return;
    }
    Promise.resolve(done(response.access_token,Number(response.expires_in)||3600)).catch(e=>{
     status.textContent='Không đọc được dữ liệu Google: '+e.message;
