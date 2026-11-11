@@ -1,7 +1,7 @@
 
 import {STATUS,CHUNK_BYTES,STAGES,MAX_VIDEO,MAX_IMAGE,canUploadStage,validateUpload,partBounds,partsCount,orderTitle} from './domain.js';
 import {verifyGoogleCredential} from './google-auth.js';
-import {normalizeV35Row,validateShippingForm,canGroup} from './legacy-v35.js';
+import {normalizeV35Row,validateShippingForm,canGroup,parseVNDate} from './legacy-v35.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const fail=(message,status=400)=>json({error:message},status);
@@ -171,9 +171,9 @@ async function handle(req,env){
    'shipping_person','shipping_phone','shipping_type','shipping_fee','heavy_fee','terminal_fee','extra_fee','total_fee',
    'packing_folder_url','shipping_folder_url','invoice_folder_url','video_folder_url','goods_folder_url',
    'source_system','source_updated_at','source_fingerprint','source_payload','source_creator','source_created_at',
-   'source_packed_by','source_shipped_by'
+   'source_packed_by','source_shipped_by','created_at'
   ];
-  const updates=fields.filter(k=>!['id','source_system'].includes(k));
+  const updates=fields.filter(k=>!['id','source_system','created_at'].includes(k));
   const seen=new Set();
   for(let i=0;i<rawRows.length;i++){
    const row=rawRows[i];
@@ -196,7 +196,8 @@ async function handle(req,env){
     const valueByKey={...parsed,packing_helpers:JSON.stringify(parsed.packing_helpers),
      source_system:'GOOGLE_SHEETS',source_fingerprint:hash,source_payload:JSON.stringify(row),
      source_creator:parsed.legacy_created_by,source_created_at:parsed.legacy_created_at,
-     source_packed_by:parsed.legacy_packed_by,source_shipped_by:parsed.legacy_shipped_by};
+     source_packed_by:parsed.legacy_packed_by,source_shipped_by:parsed.legacy_shipped_by,
+     created_at:parseVNDate(parsed.legacy_created_at)||new Date().toISOString().replace('T',' ').slice(0,19)};
     const binds=fields.map(k=>valueByKey[k]??null);
     if(!current){
      await env.DB.prepare('INSERT INTO orders ('+fields.join(',')+',synced_at) VALUES ('+fields.map(()=>'?').join(',')+',CURRENT_TIMESTAMP)').bind(...binds).run();
