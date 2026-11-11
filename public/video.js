@@ -232,10 +232,94 @@ function csvExport(){
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='QBOOK_BAO_CAO_VIDEO.csv';a.click();URL.revokeObjectURL(url);
 }
+async function validateVideoFile(file){
+ if(!file||!file.type.startsWith('video/'))throw Error('Vui lòng chọn tệp video hợp lệ.');
+ if(file.size>2*1024*1024*1024||!file.size)throw Error('Mỗi video phải có dữ liệu và không vượt 2 GB.');
+ const video=document.createElement('video'),url=URL.createObjectURL(file);
+ try{
+  await new Promise((resolve,reject)=>{video.preload='metadata';video.onloadedmetadata=resolve;video.onerror=()=>reject(Error('Không đọc được thông tin video.'));video.src=url});
+  if(Number.isFinite(video.duration)&&video.duration>3600)throw Error('Video tối đa 60 phút.');
+ }finally{URL.revokeObjectURL(url);video.removeAttribute('src');video.load();}
+}
+function askGoogleDriveToken(continueWith){
+ if(!window.google?.accounts?.oauth2)throw Error('Google chưa sẵn sàng, vui lòng tải lại trang trong Chrome hoặc Safari.');
+ fetch('/api/google/config').then(r=>r.json()).then(config=>{
+  if(!config.clientId)throw Error('Chưa cấu hình Google Client ID.');
+  const client=window.google.accounts.oauth2.initTokenClient({
+   client_id:config.clientId,scope:'https://www.googleapis.com/auth/drive',
+   callback:r=>{if(r.error||!r.access_token)return toast('Google chưa cấp quyền Drive: '+(r.error||'Đã hủy'));continueWith(r.access_token).catch(e=>toast(e.message));},
+   error_callback:r=>toast('Không thể mở Google: '+(r.type||'Lỗi trình duyệt'))
+  });
+  client.requestAccessToken({prompt:'consent'});
+ }).catch(e=>toast(e.message));
+}
+function googleFolderId(bookId){
+ const b=state.books.find(x=>x.id===bookId);
+ if(!b?.drive_url)return null;
+ try{
+  const url=new URL(b.drive_url);
+  if(url.hostname!=='drive.google.com')return null;
+  const match=url.pathname.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return match?.[1]||null;
+ }catch{return null;}
+}
+async function uploadToDriveFile(file,bookId,token,updateStatus){
+ await validateVideoFile(file);
+ const metadata={name:file.name,mimeType:file.type};
+ const folder=googleFolderId(bookId);if(folder)metadata.parents=[folder];
+ const start=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,webViewLink',{
+  method:'POST',headers:{
+   Authorization:'Bearer '+token,'Content-Type':'application/json; charset=UTF-8',
+   'X-Upload-Content-Type':file.type,'X-Upload-Content-Length':String(file.size)
+  },body:JSON.stringify(metadata)
+ });
+ if(!start.ok)throw Error('Google Drive không khởi tạo được phiên tải: HTTP '+start.status+'. Kiểm tra quyền và thư mục Drive của đầu sách.');
+ const session=start.headers.get('Location');
+ if(!session||!session.startsWith('https://'))throw Error('Google Drive chưa cấp phiên tải. Kiểm tra quyền của ứng dụng.');
+ const chunkSize=8*1024*1024;let offset=0;
+ while(offset<file.size){
+  const end=Math.min(offset+chunkSize,file.size);
+  const response=await fetch(session,{method:'PUT',headers:{
+   'Content-Type':file.type,'Content-Range':'bytes '+offset+'-'+(end-1)+'/'+file.size
+  },body:file.slice(offset,end)});
+  if(response.status===308){
+   const range=response.headers.get('Range');
+   if(!range)throw Error('Google Drive chưa xác nhận tiến độ; vui lòng tải lại hoặc dùng liên kết Drive.');
+   const next=Number(range.split('-').pop())+1;
+   if(!Number.isFinite(next)||next<=offset||next>end)throw Error('Google Drive trả tiến độ không hợp lệ.');
+   offset=next;
+   updateStatus('Đã tải '+Math.round(100*offset/file.size)+'% · '+Math.round(offset/1048576)+' MB / '+Math.round(file.size/1048576)+' MB');
+  }else if(response.ok){
+   const result=await response.json();
+   if(!result.id||Number(result.size)!==file.size)throw Error('Tệp Drive chưa được xác nhận đủ dung lượng.');
+   updateStatus('Đã tải thành công. Bấm Lưu để cập nhật trạng thái video.');
+   return result.webViewLink||'https://drive.google.com/file/d/'+encodeURIComponent(result.id)+'/view';
+  }else throw Error('Google Drive lỗi HTTP '+response.status+'. Tệp chưa được ghi nhận vào QBooks.');
+ }
+ throw Error('Google Drive chưa trả kết quả hoàn tất tải tệp.');
+}
+function startUpload(sourceId,statusId,inputName){
+ const file=$(sourceId)?.files?.[0];
+ if(!file)return toast('Chọn tệp video trước khi tải.');
+ const status=$(statusId),form=state.selected&&$(sourceId==='rawFile'?'filmForm':'editForm');
+ if(!form)return;
+ status.textContent='Đang yêu cầu quyền Google Drive...';
+ // OAuth popup is requested from a user click, while transfer itself runs in its callback.
+ askGoogleDriveToken(async token=>{
+  const btn=$(sourceId==='rawFile'?'uploadRawVideo':'uploadEditedVideo');btn.disabled=true;
+  try{
+   const link=await uploadToDriveFile(file,state.selected.book_id,token,text=>status.textContent=text);
+   form.elements[inputName].value=link;
+  }catch(e){status.textContent=e.message;throw e;}
+  finally{btn.disabled=false;}
+ });
+}
 function wire(){
  document.querySelectorAll('[data-book]').forEach(b=>b.onclick=()=>{state.selectedBook=b.dataset.book;navigate('bookDetail')});
  const backBooks=$('backBooks');if(backBooks)backBooks.onclick=()=>navigate('booksProgress');
  document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>navigate(b.dataset.goto));
+ if($('uploadRawVideo'))$('uploadRawVideo').onclick=()=>startUpload('rawFile','rawUploadStatus','raw_url');
+ if($('uploadEditedVideo'))$('uploadEditedVideo').onclick=()=>startUpload('editedFile','editedUploadStatus','output_url');
  bindForm('bookForm',b=>api('POST','/api/video/books',b));
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
  bindForm('filmForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'film',...b}));
