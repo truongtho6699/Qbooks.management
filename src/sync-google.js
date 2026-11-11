@@ -161,7 +161,7 @@ const toVNTime=(value)=>{
  const m=Object.fromEntries(parts.map(x=>[x.type,x.value]));
  return m.day+'/'+m.month+'/'+m.year+' '+m.hour+':'+m.minute+':'+m.second;
 };
-function desiredSheetUpdates(order,files){
+export function desiredSheetUpdates(order,files){
  // Only update fields owned by the new QBooks workflow. Never touch source identity or Sale columns.
  const out=new Map();
  const put=(index,value)=>out.set(index,String(value??''));
