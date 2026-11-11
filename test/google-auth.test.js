@@ -16,6 +16,7 @@ test('Google claims must verify audience issuer expiry email and subject',()=>{
  assert.equal(validGoogleClaims({...claims,exp:now-1},clientId),false);
  assert.equal(validGoogleClaims({...claims,email_verified:false},clientId),false);
  assert.equal(validGoogleClaims({...claims,sub:''},clientId),false);
+ assert.equal(validGoogleClaims({...claims,hd:'example.com'},clientId),true);
 });
 test('Verify Google ID token signature with JWKS (reject tampering)',async()=>{
  const keys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
@@ -27,7 +28,7 @@ test('Verify Google ID token signature with JWKS (reject tampering)',async()=>{
  const signature=await crypto.subtle.sign('RSASSA-PKCS1-v1_5',keys.privateKey,new TextEncoder().encode(header+'.'+payload));
  const jwt=header+'.'+payload+'.'+Buffer.from(signature).toString('base64url');
  const identity=await verifyGoogleCredential(jwt,clientId,fetcher);
- assert.deepEqual(identity,{sub:claims.sub,email:claims.email,name:claims.email});
+ assert.deepEqual(identity,{sub:claims.sub,email:claims.email,name:claims.email,authoritativeEmail:true});
  await assert.rejects(()=>verifyGoogleCredential(jwt,clientId+'x',fetcher),/không dành cho QBooks/);
  const bad=jwt.slice(0,-2)+'aa';
  await assert.rejects(()=>verifyGoogleCredential(bad,clientId,fetcher),/Chữ ký/);
