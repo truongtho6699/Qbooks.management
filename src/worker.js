@@ -136,7 +136,7 @@ async function handle(req,env){
   if(b.confirmation!=='DONG_Y_NHAP_D1_CHI_MOT_CHIEU')
    throw Object.assign(new Error('Chưa xác nhận nhập dữ liệu vào D1.'),{status:403});
   const token=String(b.googleAccessToken||'').trim();
-  if(token.length<30||token.length>4096||!/^[A-Za-z0-9._~+\/-]+$/.test(token))
+  if(token.length<30||token.length>4096||!/^[A-Za-z0-9._~+\/_-]+$/.test(token))
    throw Error('Phiên Google không hợp lệ hoặc đã hết hạn.');
   const offset=Math.max(0,Math.min(900,Math.floor(Number(b.offset)||0)));
   const limit=Math.max(1,Math.min(100,Math.floor(Number(b.limit)||50)));
@@ -424,7 +424,7 @@ async function handle(req,env){
   if(helpers.length>100)throw Error('Số lượng người đóng cùng vượt giới hạn.');
   const boxes=Number(b.boxes);
   if(!Number.isSafeInteger(boxes)||boxes<0)throw Error('Số thùng không hợp lệ.');
-  const result=await env.DB.prepare("UPDATE orders SET status=?,boxes=?,packing_helpers=?,packing_note=?,packed_by=?,packed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?")
+  const result=await env.DB.prepare("UPDATE orders SET status=?,boxes=?,packing_helpers=?,packing_note=?,packed_by=?,packed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,local_dirty=CASE WHEN source_system='GOOGLE_SHEETS' THEN 1 ELSE local_dirty END WHERE id=? AND status=?")
    .bind(STATUS.SHIP,boxes,JSON.stringify(helpers),clean(b.note),user.id,id,STATUS.PACK).run();
   if(!result.meta.changes)throw Error('Đơn đã được người khác xử lý.');
   await env.DB.prepare('DELETE FROM order_locks WHERE order_id=? AND user_id=?').bind(id,user.id).run();
@@ -444,7 +444,7 @@ async function handle(req,env){
   const groupId=groupIds[0]||('VD_'+new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14)+'_'+uid().slice(0,4));
   const stmts=[];
   if(!groupIds.length)stmts.push(env.DB.prepare('INSERT INTO shipping_groups(id,created_by) VALUES(?,?)').bind(groupId,user.id));
-  for(const id of ids)stmts.push(env.DB.prepare("UPDATE orders SET status=?,group_id=?,shipping_type=?,shipping_phone=?,shipping_person=?,shipping_fee=?,heavy_fee=?,terminal_fee=?,extra_fee=?,total_fee=?,shipping_note=?,shipped_by=?,shipped_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?")
+  for(const id of ids)stmts.push(env.DB.prepare("UPDATE orders SET status=?,group_id=?,shipping_type=?,shipping_phone=?,shipping_person=?,shipping_fee=?,heavy_fee=?,terminal_fee=?,extra_fee=?,total_fee=?,shipping_note=?,shipped_by=?,shipped_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,local_dirty=CASE WHEN source_system='GOOGLE_SHEETS' THEN 1 ELSE local_dirty END WHERE id=? AND status=?")
     .bind(target,groupId,form.loaiShip,form.sdtShip,form.tenShip,form.tienShip,form.hangNang,form.phiBen,form.phuPhi,form.tongTien,clean(b.note),user.id,id,STATUS.SHIP));
   const updates=await env.DB.batch(stmts);
   if(updates.slice(groupIds.length?0:1).some(result=>result.meta.changes!==1))throw Error('Trạng thái đơn thay đổi khi lưu; cần đối chiếu.');
