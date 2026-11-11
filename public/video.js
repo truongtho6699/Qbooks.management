@@ -242,16 +242,14 @@ async function validateVideoFile(file){
  }finally{URL.revokeObjectURL(url);video.removeAttribute('src');video.load();}
 }
 function askGoogleDriveToken(continueWith){
- if(!window.google?.accounts?.oauth2)throw Error('Google chưa sẵn sàng, vui lòng tải lại trang trong Chrome hoặc Safari.');
- fetch('/api/google/config').then(r=>r.json()).then(config=>{
-  if(!config.clientId)throw Error('Chưa cấu hình Google Client ID.');
-  const client=window.google.accounts.oauth2.initTokenClient({
-   client_id:config.clientId,scope:'https://www.googleapis.com/auth/drive',
-   callback:r=>{if(r.error||!r.access_token)return toast('Google chưa cấp quyền Drive: '+(r.error||'Đã hủy'));continueWith(r.access_token).catch(e=>toast(e.message));},
-   error_callback:r=>toast('Không thể mở Google: '+(r.type||'Lỗi trình duyệt'))
-  });
-  client.requestAccessToken({prompt:'consent'});
- }).catch(e=>toast(e.message));
+ if(!window.google?.accounts?.oauth2)throw Error('Google chưa sẵn sàng. Vui lòng tải lại trang trong Chrome/Safari.');
+ if(!state.googleClientId)throw Error('Google Client ID chưa sẵn sàng; tải lại trang.');
+ const client=window.google.accounts.oauth2.initTokenClient({
+  client_id:state.googleClientId,scope:'https://www.googleapis.com/auth/drive',
+  callback:r=>{if(r.error||!r.access_token)return toast('Google chưa cấp quyền Drive: '+(r.error||'Đã hủy'));continueWith(r.access_token).catch(e=>toast(e.message));},
+  error_callback:r=>toast('Không thể mở Google: '+(r.type||'Lỗi trình duyệt'))
+ });
+ client.requestAccessToken({prompt:'consent'});
 }
 function googleFolderId(bookId){
  const b=state.books.find(x=>x.id===bookId);
@@ -352,6 +350,7 @@ async function boot(){
  try{
   const b=await api('GET','/api/video/bootstrap');state.user=b.user;state.rights=b.rights;
   $('currentUser').textContent=b.user.name;
+  const googleCfg=await fetch('/api/google/config').then(r=>r.json()).catch(()=>({}));state.googleClientId=googleCfg.clientId||'';
   await load();navigate('dashboard');
  }catch(err){if(err.message.includes('đăng nhập')||err.message.includes('401')){sessionStorage.removeItem('qbooks_token');window.location.href='/';return;}
   $('page').innerHTML='<div class="panel"><h2>Không mở được chương trình Video</h2><p>'+E(err.message)+'</p><a href="/">Quay về đăng nhập</a></div>';
