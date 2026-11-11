@@ -1,0 +1,47 @@
+-- Bổ sung dữ liệu V35; không xóa hay thay đổi cột cũ
+ALTER TABLE orders ADD COLUMN original_content TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN delivery_time TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN packing_helpers TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE orders ADD COLUMN shipping_type TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN shipping_phone TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN shipping_person TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN shipping_fee INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN heavy_fee INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN terminal_fee INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN extra_fee INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN total_fee INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN packing_folder_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN shipping_folder_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN invoice_folder_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN video_folder_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN goods_folder_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN source_system TEXT NOT NULL DEFAULT 'D1';
+ALTER TABLE orders ADD COLUMN source_updated_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN source_fingerprint TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN synced_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN can_pack INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN can_ship INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN can_admin INTEGER NOT NULL DEFAULT 0;
+UPDATE users SET can_pack=1 WHERE role='PACKER';
+UPDATE users SET can_ship=1 WHERE role='SHIPPER';
+UPDATE users SET can_admin=1,can_pack=1,can_ship=1 WHERE role='ADMIN';
+CREATE TABLE IF NOT EXISTS order_locks (
+ order_id TEXT PRIMARY KEY REFERENCES orders(id),
+ user_id TEXT NOT NULL REFERENCES users(id),
+ stage TEXT NOT NULL CHECK(stage IN ('DONG_HANG','VAN_DON')),
+ expires_at INTEGER NOT NULL,
+ locked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_order_locks_expiry ON order_locks(expires_at);
+CREATE TABLE IF NOT EXISTS sync_journal (
+ id TEXT PRIMARY KEY,
+ order_id TEXT NOT NULL,
+ direction TEXT NOT NULL CHECK(direction IN ('SHEET_TO_D1','D1_TO_SHEET','R2_TO_DRIVE')),
+ status TEXT NOT NULL CHECK(status IN ('PENDING','SUCCESS','FAILED','CONFLICT')),
+ source_version TEXT NOT NULL DEFAULT '',
+ target_version TEXT NOT NULL DEFAULT '',
+ error TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sync_journal_order ON sync_journal(order_id);
