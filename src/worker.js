@@ -1,7 +1,7 @@
 
 import {STATUS,CHUNK_BYTES,STAGES,MAX_VIDEO,MAX_IMAGE,canUploadStage,validateUpload,partBounds,partsCount,orderTitle} from './domain.js';
 import {verifyGoogleCredential} from './google-auth.js';
-import {normalizeV35Row} from './legacy-v35.js';
+import {normalizeV35Row,validateShippingForm,canGroup} from './legacy-v35.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const fail=(message,status=400)=>json({error:message},status);
@@ -17,12 +17,12 @@ async function hashPin(pin,salt){
 const randomToken=()=>hex(crypto.getRandomValues(new Uint8Array(32)));
 async function requestJSON(req){try{return await req.json();}catch{throw Error('Nội dung yêu cầu không phải JSON hợp lệ.');}}
 const authError=(m='Vui lòng đăng nhập lại.')=>Object.assign(new Error(m),{status:401});
-const hasRole=(user,...roles)=>user.role==='ADMIN'||roles.includes(user.role);
+const hasRole=(user,...roles)=>user.role==='ADMIN'||user.can_admin===1||roles.some(r=>(r==='PACKER'&&user.can_pack===1)||(r==='SHIPPER'&&user.can_ship===1)||r===user.role);
 function needRole(user,...roles){if(!hasRole(user,...roles))throw Object.assign(new Error('Tài khoản không có quyền thao tác.'),{status:403});}
 async function actor(req,env){
  const token=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
  if(!token)throw authError();
- const record=await env.DB.prepare('SELECT u.id,u.email,u.name,u.role,u.active,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?')
+ const record=await env.DB.prepare('SELECT u.id,u.email,u.name,u.role,u.active,u.can_pack,u.can_ship,u.can_admin,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?')
    .bind(await sha(token)).first();
  if(!record||!record.active||record.expires_at<now())throw authError();
  return record;
@@ -47,7 +47,7 @@ async function checkUploads(env,orderId,stages){
  return data.filter(x=>stages.includes(x.stage)&&x.status==='COMPLETE');
 }
 function mustStageAccess(user,u,o){
- if(!canUploadStage(user.role,u.stage,o.status))throw Object.assign(new Error('Không được tải tệp vào đơn hoặc giai đoạn này.'),{status:403});
+ if(!canUploadStage(user.role,u.stage,o.status)&&!(hasRole(user,u.stage==='GIAO_HANG'?'SHIPPER':'PACKER')))throw Object.assign(new Error('Không được tải tệp vào đơn hoặc giai đoạn này.'),{status:403});
 }
 function filePath(orderId,stage,name){return 'orders/'+encodeURIComponent(orderId)+'/'+stage+'/'+uid()+'-'+name.replace(/[^\w.\-]/g,'_');}
 async function handle(req,env){
@@ -124,7 +124,7 @@ async function handle(req,env){
   await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha(token)).run();
   return json({ok:true});
  }
- if(method==='GET'&&path==='/api/bootstrap')return json({user:{id:user.id,name:user.name,email:user.email,role:user.role},statuses:STATUS});
+ if(method==='GET'&&path==='/api/bootstrap')return json({user:{id:user.id,name:user.name,email:user.email,role:user.role,rights:{dongHang:hasRole(user,'PACKER'),vanDon:hasRole(user,'SHIPPER'),admin:hasRole(user,'ADMIN')}},statuses:STATUS});
  if(method==='GET'&&path==='/api/legacy/status'){
   needRole(user,'ADMIN');
   return json({sheetId:'1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw',
@@ -207,6 +207,11 @@ async function handle(req,env){
   if(!result.meta.changes)throw Object.assign(new Error('Đăng ký không còn chờ duyệt.'),{status:404});
   await audit(env,user,'REJECT_GOOGLE_USER');return json({ok:true});
  }
+ if(method==='GET'&&path==='/api/packing-people'){
+  needRole(user,'PACKER','SHIPPER');
+  const r=await env.DB.prepare('SELECT id,email,name FROM users WHERE active=1 AND (role IN (\'PACKER\',\'ADMIN\') OR can_pack=1) ORDER BY name LIMIT 300').all();
+  return json({people:r.results||[]});
+ }
  if(method==='POST'&&path==='/api/users'){
   needRole(user,'ADMIN');const b=await requestJSON(req);
   if(!['ADMIN','SALE','PACKER','SHIPPER'].includes(b.role))throw Error('Vai trò không hợp lệ.');
@@ -219,8 +224,8 @@ async function handle(req,env){
  if(method==='GET'&&path==='/api/orders'){
   const query=clean(url.searchParams.get('q')).slice(0,120);
   let status=clean(url.searchParams.get('status'));
-  if(user.role==='PACKER')status=STATUS.PACK;
-  if(user.role==='SHIPPER')status=STATUS.SHIP;
+  if(user.role==='PACKER'&&!user.can_ship&&!user.can_admin)status=STATUS.PACK;
+  if(user.role==='SHIPPER'&&!user.can_pack&&!user.can_admin)status=STATUS.SHIP;
   const conditions=[],params=[];
   if(status){conditions.push('status=?');params.push(status);}
   if(query){conditions.push('(invoice_codes LIKE ? OR customer LIKE ? OR sale_name LIKE ?)');params.push(...Array(3).fill('%'+query+'%'));}
@@ -253,7 +258,7 @@ async function handle(req,env){
  }
  if(method==='POST'&&path==='/api/uploads'){
   const b=await requestJSON(req),order=await orderById(env,b.orderId);
-  if(!canUploadStage(user.role,b.stage,order.status))throw Object.assign(new Error('Không có quyền tải lên đơn này.'),{status:403});
+  if(!canUploadStage(user.role,b.stage,order.status)&&!(hasRole(user,b.stage==='GIAO_HANG'?'SHIPPER':'PACKER')))throw Object.assign(new Error('Không có quyền tải lên đơn này.'),{status:403});
   const size=Number(b.size),name=clean(b.filename),type=clean(b.contentType);
   validateUpload({stage:b.stage,filename:name,contentType:type,size});
   const id=uid(),key=filePath(order.id,b.stage,name),multipart=b.stage==='VIDEO_DONG_HANG';
