@@ -24,7 +24,7 @@ const driveUrl=(id)=>'https://drive.google.com/drive/folders/'+encodeURIComponen
 function safeName(name){return clean(name).replace(/[\\/\x00-\x1f]/g,'_').slice(0,160);}
 async function findFolder(token,parent,name){
  const q="mimeType = 'application/vnd.google-apps.folder' and trashed = false and name = '"+quoted(name)+"' and '"+quoted(parent)+"' in parents";
- const url=GOOGLE_BASE+'/drive/v3/files?'+new URLSearchParams({q,fields:'nextPageToken,files(id,name,mimeType)',page_size:'100'}).toString();
+ const url=GOOGLE_BASE+'/drive/v3/files?'+new URLSearchParams({q,fields:'nextPageToken,files(id,name,mimeType)',pageSize:'100'}).toString();
  const found=await gjson(url,token);
  if(found.files?.length>1)throw conflict('Có nhiều thư mục cùng tên: '+name+'. Cần xử lý thủ công.');
  return found.files?.[0]?.id||null;
@@ -57,7 +57,7 @@ async function storeFolderLinks(env,orderId,stage,folder){
 }
 async function findExistingDriveFile(token,folderId,filename){
  const q="name = '"+quoted(filename)+"' and trashed = false and '"+quoted(folderId)+"' in parents";
- const url=GOOGLE_BASE+'/drive/v3/files?'+new URLSearchParams({q,fields:'files(id,name,size,webViewLink),nextPageToken',page_size:'100'}).toString();
+ const url=GOOGLE_BASE+'/drive/v3/files?'+new URLSearchParams({q,fields:'files(id,name,size,webViewLink,appProperties),nextPageToken',pageSize:'100'}).toString();
  const result=await gjson(url,token);
  if(result.files?.length>1)throw conflict('Drive có nhiều tệp trùng tên. Cần đối chiếu.');
  return result.files?.[0]||null;
@@ -98,7 +98,7 @@ export async function driveInit(env,data){
  const filename=safeName('QBOOKS_'+upload.id+'_'+upload.filename);
  const old=await findExistingDriveFile(token,folder.id,filename);
  if(old){
-  if(Number(old.size)!==upload.bytes)throw conflict('Tệp Drive trùng tên nhưng khác dung lượng: '+upload.id);
+  if(Number(old.size)!==upload.bytes||old.appProperties?.qbooksUploadId!==upload.id)throw conflict('Tệp Drive trùng tên nhưng khác dữ liệu nguồn: '+upload.id);
   await env.DB.prepare("UPDATE uploads SET drive_file_id=?,drive_folder_url=?,drive_offset=?,drive_completed_at=CURRENT_TIMESTAMP WHERE id=? AND drive_file_id IS NULL").bind(old.id,folder.url,upload.bytes,upload.id).run();
   await storeFolderLinks(env,order.id,upload.stage,folder);
   return {done:true,uploadId:upload.id,fileId:old.id,offset:upload.bytes,total:upload.bytes};
@@ -223,7 +223,7 @@ export async function sheetCommit(env,data){
   const before=clean(snapshot[i]);
   if(current===value)continue;
   // Format-aware numeric equivalence; do not overwrite if source changed independently.
-  const numeric=i>=28&&i<=35;
+  const numeric=i===28||(i>=31&&i<=35);
   const norm=numeric?s=>s.replace(/[.,\s₫đ]/gi,''):s=>s;
   if(norm(current)!==norm(before))throw conflict('Xung đột tại DATA_TONG!'+col(i)+sheetRow+': dữ liệu nguồn đã thay đổi.');
   updates.push({range:'DATA_TONG!'+col(i)+sheetRow,values:[[value]]});
