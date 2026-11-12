@@ -390,6 +390,39 @@ function showDriveFolderPreview(folderUrl,label){
   });
  }catch(e){noticeNode.textContent=e.message;}
 }
+function makeDirectDriveLink(file,label){
+ const url=fileDriveUrl(file.id);
+ if(!url)return null;
+ const item=el('div',null,'drive-direct-item');
+ const link=el('a',label||file.name||'Mở tệp','overview-link');
+ link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+ link.title='Bấm để mở trực tiếp tệp này trên Google Drive';
+ item.append(link);
+ addCopyLink(item,url);
+ return item;
+}
+function showDriveFilesInline(host,folderUrl,folderLabel){
+ const folderId=driveFolderId(folderUrl);
+ if(!folderId)return notice('Không có mã thư mục Drive hợp lệ.');
+ host.replaceChildren(el('span','Đang lấy đường dẫn từng tệp Drive…','muted'));
+ const load=async(token)=>{
+  const files=(await readDriveFolderFiles(folderId,token))
+   .filter(f=>f.mimeType!=='application/vnd.google-apps.folder');
+  host.replaceChildren();
+  if(!files.length){
+   host.append(el('span','Thư mục chưa có tệp','muted'));
+   return;
+  }
+  for(const f of files){
+   const direct=makeDirectDriveLink(f,(folderLabel||'Hồ sơ')+' · '+(f.name||'Tệp'));
+   if(direct)host.append(direct);
+  }
+  if(!host.children.length)host.append(el('span','Không đọc được mã các tệp','muted'));
+ };
+ try{
+  driveFolderToken(load);
+ }catch(e){host.replaceChildren(el('span','Không thể đọc Drive: '+e.message,'muted'));}
+}
 function addMediaLinks(container,order){
  const media=order.media||[];
  const unique=new Set();
@@ -417,9 +450,17 @@ function addMediaLinks(container,order){
   if(driveFolderId(href)){
    const names={packing_folder_url:'Hồ sơ đóng hàng',shipping_folder_url:'Ảnh giao hàng',
     invoice_folder_url:'Ảnh hóa đơn',video_folder_url:'Video đóng hàng',goods_folder_url:'Ảnh hàng hóa'};
-   const preview=button('Xem '+(names[key]||label),()=>showDriveFolderPreview(href,names[key]||label),'overview-link');
-   preview.title='Xem trực tiếp ảnh/video đang lưu trong thư mục Drive';
-   container.append(preview);
+   const holder=el('div',null,'drive-folder-item');
+   const details=el('div',null,'drive-inline-files');
+   const open=button('Lấy link '+(names[key]||label),()=>{
+    showDriveFilesInline(details,href,names[key]||label);
+    open.disabled=true;
+   },'overview-link');
+   open.title='Đọc từng ảnh/video trên Drive để mở trực tiếp và sao chép link từng tệp';
+   const folder=el('a','Mở thư mục','overview-link');
+   folder.href=href;folder.target='_blank';folder.rel='noopener noreferrer';
+   holder.append(open,folder,details);
+   container.append(holder);
   }else appendDrive(label,href,true);
  }
  if(!container.children.length)container.append(el('span','Chưa có hồ sơ','muted'));
