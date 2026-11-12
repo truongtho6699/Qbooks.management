@@ -365,14 +365,14 @@ async function handle(req,env){
    return json({headers:['THOI_GIAN','HANH_DONG','ID_DON','CHI_TIET'],rows:(result.results||[]).map(x=>[x.created_at,x.action,x.order_id,x.details])});
   }
   if(kind==='STAFF'){
-   const result=await env.DB.prepare('SELECT email,name,role,can_pack,can_ship,can_admin,active FROM users ORDER BY name LIMIT 300').all();
+   const result=await env.DB.prepare("SELECT u.email,u.name,CASE WHEN vr.user_id IS NOT NULL THEN 'VIEW' ELSE u.role END AS role,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_pack END AS can_pack,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_ship END AS can_ship,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_admin END AS can_admin,u.active FROM users u LEFT JOIN user_view_roles vr ON vr.user_id=u.id ORDER BY u.name LIMIT 300").all();
    return json({headers:['EMAIL','HO_TEN','VAI_TRO','DONG_HANG','VAN_DON','ADMIN','TRANG_THAI'],rows:(result.results||[]).map(x=>[x.email,x.name,x.role,x.can_pack,x.can_ship,x.can_admin,x.active?'HOẠT ĐỘNG':'NGỪNG'])});
   }
   throw Error('Loại báo cáo không hợp lệ.');
  }
  if(method==='GET'&&path==='/api/users'){
   needRole(user,'ADMIN');
-  const r=await env.DB.prepare('SELECT id,email,name,role,can_pack,can_ship,can_admin,active FROM users ORDER BY name LIMIT 300').all();
+  const r=await env.DB.prepare("SELECT u.id,u.email,u.name,CASE WHEN vr.user_id IS NOT NULL THEN 'VIEW' ELSE u.role END AS role,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_pack END AS can_pack,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_ship END AS can_ship,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_admin END AS can_admin,u.active FROM users u LEFT JOIN user_view_roles vr ON vr.user_id=u.id ORDER BY u.name LIMIT 300").all();
   return json({users:r.results||[]});
  }
  const staffMatch=path.match(/^\/api\/users\/([a-f0-9-]+)$/);
@@ -380,35 +380,46 @@ async function handle(req,env){
   needRole(user,'ADMIN');const id=staffMatch[1],b=await requestJSON(req);
   const target=await env.DB.prepare('SELECT id,email,role FROM users WHERE id=?').bind(id).first();
   if(!target)throw Object.assign(new Error('Không tìm thấy nhân sự.'),{status:404});
+  const role=clean(b.role);
+  if(!['VIEW','ADMIN','SALE','PACKER','SHIPPER'].includes(role))throw Error('Vai trò không hợp lệ.');
   const active=b.active!==false;
-  const pack=!!b.dongHang,ship=!!b.vanDon,admin=!!b.admin;
-  if(user.id===id&&(!active||!admin))throw Error('Không thể tự vô hiệu hóa hoặc bỏ quyền quản trị của chính mình.');
-  const name=clean(b.name);
+  const isView=role==='VIEW',pack=!isView&&(!!b.dongHang||role==='PACKER'||role==='ADMIN'),
+   ship=!isView&&(!!b.vanDon||role==='SHIPPER'||role==='ADMIN'),
+   admin=!isView&&(!!b.admin||role==='ADMIN');
+  if(user.id===id&&(!active||!admin||isView))throw Error('Không thể tự vô hiệu hóa hoặc bỏ quyền quản trị của chính mình.');
+  const name=clean(b.name),pin=String(b.pin||'').trim();
   if(!name)throw Error('Tên nhân sự không được trống.');
-  const pin=String(b.pin||'').trim();
-  if(pin&&!/^\d{3,8}$/.test(pin))throw Error('PIN mới phải có 3–8 chữ số.');
+  if(pin&&!/^\\d{3,8}$/.test(pin))throw Error('PIN mới phải có 3–8 chữ số.');
+  const baseRole=isView?'SALE':role;
+  const statements=[];
   if(pin){
    const salt=uid(),hashed=await hashPin(pin,salt);
-   await env.DB.prepare('UPDATE users SET name=?,can_pack=?,can_ship=?,can_admin=?,active=?,pin_salt=?,pin_hash=? WHERE id=?')
-    .bind(name,pack?1:0,ship?1:0,admin?1:0,active?1:0,salt,hashed,id).run();
+   statements.push(env.DB.prepare('UPDATE users SET name=?,role=?,can_pack=?,can_ship=?,can_admin=?,active=?,pin_salt=?,pin_hash=? WHERE id=?')
+    .bind(name,baseRole,pack?1:0,ship?1:0,admin?1:0,active?1:0,salt,hashed,id));
   }else{
-   await env.DB.prepare('UPDATE users SET name=?,can_pack=?,can_ship=?,can_admin=?,active=? WHERE id=?')
-    .bind(name,pack?1:0,ship?1:0,admin?1:0,active?1:0,id).run();
+   statements.push(env.DB.prepare('UPDATE users SET name=?,role=?,can_pack=?,can_ship=?,can_admin=?,active=? WHERE id=?')
+    .bind(name,baseRole,pack?1:0,ship?1:0,admin?1:0,active?1:0,id));
   }
-  await audit(env,user,'UPDATE_STAFF','',target.email);
-  return json({ok:true,id});
+  if(isView)statements.push(env.DB.prepare('INSERT OR IGNORE INTO user_view_roles(user_id) VALUES(?)').bind(id));
+  else statements.push(env.DB.prepare('DELETE FROM user_view_roles WHERE user_id=?').bind(id));
+  await env.DB.batch(statements);
+  await audit(env,user,'UPDATE_STAFF','',JSON.stringify({email:target.email,role}));
+  return json({ok:true,id,role});
  }
  if(method==='POST'&&path==='/api/users'){
   needRole(user,'ADMIN');const b=await requestJSON(req);
-  if(!['ADMIN','SALE','PACKER','SHIPPER'].includes(b.role))throw Error('Vai trò không hợp lệ.');
-  if(!/^\d{3,12}$/.test(String(b.pin||'')))throw Error('PIN cần 3–12 chữ số.');
-  const salt=uid(),id=uid();
-  await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?)')
-   .bind(id,clean(b.email).toLowerCase(),clean(b.name),b.role,salt,await hashPin(b.pin,salt),
-    b.dongHang||['PACKER','ADMIN'].includes(b.role)?1:0,
-    b.vanDon||['SHIPPER','ADMIN'].includes(b.role)?1:0,
-    b.admin||b.role==='ADMIN'?1:0).run();
-  await audit(env,user,'CREATE_USER','',id);return json({id},201);
+  const role=clean(b.role||'VIEW');
+  if(!['VIEW','ADMIN','SALE','PACKER','SHIPPER'].includes(role))throw Error('Vai trò không hợp lệ.');
+  if(!/^\\d{3,8}$/.test(String(b.pin||'')))throw Error('PIN cần 3–8 chữ số.');
+  const salt=uid(),id=uid(),isView=role==='VIEW';
+  const queries=[env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?)')
+   .bind(id,clean(b.email).toLowerCase(),clean(b.name),isView?'SALE':role,salt,await hashPin(b.pin,salt),
+    isView?0:(b.dongHang||['PACKER','ADMIN'].includes(role)?1:0),
+    isView?0:(b.vanDon||['SHIPPER','ADMIN'].includes(role)?1:0),
+    isView?0:(b.admin||role==='ADMIN'?1:0))];
+  if(isView)queries.push(env.DB.prepare('INSERT INTO user_view_roles(user_id) VALUES(?)').bind(id));
+  await env.DB.batch(queries);
+  await audit(env,user,'CREATE_USER','',JSON.stringify({id,role}));return json({id,role},201);
  }
  if(method==='GET'&&path==='/api/shipping/overview'){
   if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
