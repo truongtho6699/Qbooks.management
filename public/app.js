@@ -30,17 +30,20 @@ function statusBadge(value){
 function firstInvoice(value){
  return String(value||'').split(',').map(s=>s.trim()).find(Boolean)||'Chưa có mã hóa đơn';
 }
-function makeCard(order,fn){
- const card=el('button',null,'order shipping-order-card status-border-'+statusClass(order.status));
- card.type='button';
+function orderCardContents(order){
+ const fragment=document.createDocumentFragment();
  const titleRow=el('div',null,'shipping-card-title');
  titleRow.append(el('strong',firstInvoice(order.invoice_codes)+' · Sale: '+(order.sale_name||'Chưa rõ')),statusBadge(order.status));
  const info=el('div',null,'shipping-card-details');
  const time=String(order.delivery_time||'').trim()||(order.urgent?'GẤP':'Chưa có giờ giao');
  const invoices=String(order.invoice_codes||'').trim();
  info.textContent=[time,invoices,order.customer,order.address].filter(Boolean).join(' · ');
- card.append(titleRow,info);
- card.onclick=fn;
+ fragment.append(titleRow,info);
+ return fragment;
+}
+function makeCard(order,fn){
+ const card=el('button',null,'order shipping-order-card status-border-'+statusClass(order.status));
+ card.type='button';card.append(orderCardContents(order));card.onclick=fn;
  return card;
 }
 async function login(email,pin){
@@ -615,9 +618,11 @@ async function loadGroupOptions(){
   const r=await api('GET','/api/orders');const list=$('groupList');list.replaceChildren();
   const options=r.orders.filter(o=>state.user.role==='SHIPPER'?o.status==='CHỜ VẬN ĐƠN':['CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN'].includes(o.status)&&!o.group_id);
   for(const o of options){
-   const row=el('label',null,'order');row.style.display='flex';
+   const row=el('label',null,'order shipping-order-card shipping-group-card status-border-'+statusClass(o.status));
    const ck=document.createElement('input');ck.type='checkbox';ck.className='groupCheck';ck.value=o.id;
-   row.append(ck,el('div',o.title));list.append(row);
+   ck.setAttribute('aria-label','Chọn gộp đơn '+firstInvoice(o.invoice_codes));
+   const details=el('div',null,'shipping-group-details');details.append(orderCardContents(o));
+   row.append(ck,details);list.append(row);
   }
   if(!options.length)list.append(el('p','Không có đơn chưa gộp.'));
  }catch(e){notice(e.message)}
