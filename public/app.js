@@ -447,10 +447,10 @@ async function uploadOne(orderId,stage,file){
   const result=await api('POST','/api/uploads',{orderId,stage,filename:file.name,contentType:file.type|| (video?'video/mp4':'image/jpeg'),size:file.size});
   id=result.id;localStorage.setItem(key,id);info={status:'UPLOADING',chunkSize:result.chunkSize,parts:[]};
  }
- if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return}
+ if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id}
  if(!video){
   progress(file.name,0,file.size);await api('PUT','/api/uploads/'+id,file,true);
-  progress(file.name,file.size,file.size);localStorage.removeItem(key);return;
+  progress(file.name,file.size,file.size);localStorage.removeItem(key);return id;
  }
  const chunk=info.chunkSize||CHUNK_BYTES;
  const count=Math.ceil(file.size/chunk),parts=new Set((info.parts||[]).map(p=>p.part_number));
@@ -469,13 +469,17 @@ async function uploadOne(orderId,stage,file){
  await api('POST','/api/uploads/'+id+'/complete',{});
  localStorage.removeItem(key);
  progress(file.name,file.size,file.size);
+ return id;
 }
 async function uploadSelection(orderId,items){
  let index=0,total=items.length;
+ const uploaded=[];
  for(const [stage,file] of items){
   $('uploadLabel').textContent='Tệp '+(++index)+'/'+total+': '+file.name;
-  await uploadOne(orderId,stage,file);
+  const id=await uploadOne(orderId,stage,file);
+  uploaded.push({id,stage,filename:file.name});
  }
+ return uploaded;
 }
 function v(id){return $(id).value.trim()}
 function updateShippingTotal(){
