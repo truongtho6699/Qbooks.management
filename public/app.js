@@ -498,6 +498,70 @@ function showShippingGroup(order){
   row.append(input,document.createTextNode(o.title));list.append(row);
  }
 }
+function operationalDriveStatus(id,text){
+ const node=$(id);if(node)node.textContent=text;
+}
+function connectOperationalDrive(statusId){
+ if(!state.googleClientId||!window.google?.accounts?.oauth2){
+  operationalDriveStatus(statusId,'Google chưa sẵn sàng. Tải lại QBooks và kiểm tra cấu hình Client ID.');
+  return;
+ }
+ const scope='https://www.googleapis.com/auth/drive';
+ const oauth=window.google.accounts.oauth2.initTokenClient({
+  client_id:state.googleClientId,scope,
+  callback:response=>{
+   if(response.error||!response.access_token||!window.google.accounts.oauth2.hasGrantedAllScopes(response,scope)){
+    operationalDriveStatus(statusId,'Chưa cấp quyền tạo tệp trên Google Drive.');
+    return;
+   }
+   state.operationalDriveToken=response.access_token;
+   state.operationalDriveUntil=Date.now()+(Math.max(60,Number(response.expires_in)||3600)-45)*1000;
+   operationalDriveStatus(statusId,'Đã kết nối Drive. Khi bấm Lưu, hồ sơ mới sẽ được chuyển lên Drive và tạo liên kết sao chép.');
+  },
+  error_callback:error=>operationalDriveStatus(statusId,'Không mở được Google: '+(error.type||'vui lòng thử lại'))
+ });
+ oauth.requestAccessToken({prompt:'consent'});
+}
+async function mirrorOperationalFiles(uploads,statusId){
+ const result={synced:0,pending:0,files:[],errors:[]};
+ const token=state.operationalDriveToken;
+ if(!uploads.length)return result;
+ if(!token||Date.now()>=state.operationalDriveUntil){
+  operationalDriveStatus(statusId,'Tệp đã lưu trên R2. Chưa có quyền Google Drive nên chưa tạo liên kết chia sẻ.');
+  result.pending=uploads.length;
+  result.files=uploads.map(f=>({...f,drive_file_id:null}));
+  return result;
+ }
+ for(const f of uploads){
+  try{
+   operationalDriveStatus(statusId,'Đang chuyển '+f.filename+' lên Drive…');
+   let data=await api('POST','/api/sync/drive/init',{uploadId:f.id,googleAccessToken:token});
+   let steps=0;
+   while(!data.done){
+    if(Date.now()>=state.operationalDriveUntil)throw Error('Phiên Google hết hạn, cần kết nối lại để tiếp tục.');
+    data=await api('POST','/api/sync/drive/chunk',{uploadId:f.id,googleAccessToken:token});
+    const pct=data.total?Math.floor(data.offset*100/data.total):0;
+    operationalDriveStatus(statusId,'Đang chuyển '+f.filename+': '+pct+'%');
+    if(++steps>350)throw Error('Tệp lớn vượt quá lượt chuyển, cần tiếp tục từ phần còn lại.');
+   }
+   if(!data.fileId)throw Error('Drive chưa trả mã tệp để tạo liên kết.');
+   result.synced++;
+   result.files.push({...f,drive_file_id:data.fileId});
+  }catch(e){
+   result.pending++;result.errors.push(f.filename+': '+e.message);
+   result.files.push({...f,drive_file_id:null});
+  }
+ }
+ const summary='Đã lưu trên Drive '+result.synced+'/'+uploads.length+' tệp.'+
+ (result.pending?' Còn '+result.pending+' tệp trên R2 cần đồng bộ tiếp.':' Có thể mở hoặc sao chép liên kết.');
+ operationalDriveStatus(statusId,summary);
+ return result;
+}
+function showSavedMediaLinks(order,result,newStatus){
+ if(!result.files.length)return;
+ const summary={...order,status:newStatus,media:result.files};
+ showOrderSummary(summary);
+}
 async function savePack(){
  if(state.saving||!state.selected)return;
  const id=state.selected.id,uploads=[];
