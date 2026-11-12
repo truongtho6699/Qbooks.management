@@ -454,7 +454,6 @@ function addMediaLinks(container,order){
    const details=el('div',null,'drive-inline-files');
    const open=button('Lấy link '+(names[key]||label),()=>{
     showDriveFilesInline(details,href,names[key]||label);
-    open.disabled=true;
    },'overview-link');
    open.title='Đọc từng ảnh/video trên Drive để mở trực tiếp và sao chép link từng tệp';
    const folder=el('a','Mở thư mục','overview-link');
