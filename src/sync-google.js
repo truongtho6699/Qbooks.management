@@ -64,8 +64,11 @@ async function findExistingDriveFile(token,folderId,filename){
 }
 export async function syncStatus(env){
  const dirty=await env.DB.prepare("SELECT id,invoice_codes,status,local_dirty,source_system FROM orders WHERE local_dirty=1 ORDER BY updated_at DESC LIMIT 100").all();
- const uploads=await env.DB.prepare("SELECT id,order_id,stage,filename,bytes,status,drive_file_id,drive_offset,drive_folder_url FROM uploads WHERE status='COMPLETE' AND (drive_file_id IS NULL OR order_id IN (SELECT id FROM orders WHERE local_dirty=1)) ORDER BY created_at").all();
- return {orders:dirty.results||[],uploads:uploads.results||[],canWriteBack:true,automatic:false};
+ const uploads=await env.DB.prepare("SELECT id,order_id,stage,filename,bytes,status,drive_file_id,drive_offset,drive_folder_url,auto_attempts,auto_next_attempt,auto_error FROM uploads WHERE status='COMPLETE' ORDER BY created_at DESC LIMIT 300").all();
+ const last=await env.DB.prepare("SELECT started_at,finished_at,status,processed_files,completed_files,failed_files,notes FROM drive_sync_runs ORDER BY started_at DESC LIMIT 1").first();
+ const pending=(uploads.results||[]).filter(x=>!x.drive_file_id);
+ return {orders:dirty.results||[],uploads:uploads.results||[],canWriteBack:true,
+  auto:{configured:!!last,lastRun:last,pending:pending.length,failed:pending.filter(x=>x.auto_attempts>0&&x.auto_error).length}};
 }
 export async function driveInit(env,data){
  const token=access(data);
