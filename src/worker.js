@@ -219,13 +219,26 @@ async function handle(req,env){
   needRole(user,'ADMIN');
   return json(await syncStatus(env));
  }
+ async function checkDriveUploadPermission(uploadId){
+  if(hasRole(user,'ADMIN'))return;
+  const upload=await env.DB.prepare('SELECT id,order_id,stage,status FROM uploads WHERE id=?').bind(uploadId).first();
+  if(!upload||upload.status!=='COMPLETE')throw Object.assign(new Error('Tệp chưa được tải đủ lên R2.'),{status:404});
+  const stage=upload.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG';
+  if(!hasRole(user,stage==='VAN_DON'?'SHIPPER':'PACKER'))
+   throw Object.assign(new Error('Không có quyền chuyển hồ sơ này lên Drive.'),{status:403});
+  const lock=await env.DB.prepare('SELECT user_id,stage,expires_at FROM order_locks WHERE order_id=?').bind(upload.order_id).first();
+  if(!lock||lock.user_id!==user.id||lock.stage!==stage||lock.expires_at<now())
+   throw Object.assign(new Error('Cần giữ khóa đơn của chính mình khi chuyển tệp lên Drive.'),{status:409});
+ }
  if(method==='POST'&&path==='/api/sync/drive/init'){
-  needRole(user,'ADMIN');
-  return json(await driveInit(env,await requestJSON(req)));
+  const b=await requestJSON(req);
+  await checkDriveUploadPermission(clean(b.uploadId));
+  return json(await driveInit(env,b));
  }
  if(method==='POST'&&path==='/api/sync/drive/chunk'){
-  needRole(user,'ADMIN');
-  return json(await driveChunk(env,await requestJSON(req)));
+  const b=await requestJSON(req);
+  await checkDriveUploadPermission(clean(b.uploadId));
+  return json(await driveChunk(env,b));
  }
  if(method==='POST'&&path==='/api/sync/sheets/commit'){
   needRole(user,'ADMIN');
