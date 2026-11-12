@@ -297,6 +297,99 @@ function fileDriveUrl(id){
  if(!/^[A-Za-z0-9_-]{10,200}$/.test(String(id||'')))return null;
  return 'https://drive.google.com/file/d/'+encodeURIComponent(id)+'/view';
 }
+function driveFolderId(url){
+ try{
+  const parsed=new URL(url);
+  if(parsed.protocol!=='https:'||parsed.hostname!=='drive.google.com')return null;
+  return parsed.pathname.match(/^\/drive\/folders\/([A-Za-z0-9_-]{10,200})\/?$/)?.[1]||null;
+ }catch{return null;}
+}
+function driveFolderToken(callback){
+ const token=state.driveBrowseToken;
+ if(token&&Date.now()<state.driveBrowseUntil)return callback(token);
+ if(!window.google?.accounts?.oauth2||!state.googleClientId)
+  throw Error('Google chưa sẵn sàng. Tải lại trang hoặc đăng nhập Chrome/Safari.');
+ const scope='https://www.googleapis.com/auth/drive.metadata.readonly';
+ const client=window.google.accounts.oauth2.initTokenClient({
+  client_id:state.googleClientId,scope,
+  callback:response=>{
+   if(response.error||!response.access_token||!window.google.accounts.oauth2.hasGrantedAllScopes(response,scope)){
+    $('drivePreviewNotice').textContent='Google chưa cấp quyền xem danh sách ảnh/video trong Drive.';
+    return;
+   }
+   state.driveBrowseToken=response.access_token;
+   state.driveBrowseUntil=Date.now()+Math.max(60,Number(response.expires_in||3600)-60)*1000;
+   callback(response.access_token).catch(e=>$('drivePreviewNotice').textContent=e.message);
+  },
+  error_callback:e=>$('drivePreviewNotice').textContent='Không thể xác thực Drive: '+(e.type||'Cửa sổ bị đóng')
+ });
+ client.requestAccessToken({prompt:'consent'});
+}
+function displayDrivePreview(file){
+ const box=$('drivePreviewMedia');box.replaceChildren();
+ if(!file?.id)return;
+ const iframe=document.createElement('iframe');
+ iframe.src='https://drive.google.com/file/d/'+encodeURIComponent(file.id)+'/preview';
+ iframe.title='Xem '+file.name;
+ iframe.loading='lazy';iframe.referrerPolicy='no-referrer';
+ iframe.setAttribute('allow','autoplay; fullscreen');
+ box.append(iframe);
+}
+async function readDriveFolderFiles(folderId,token){
+ let pageToken='',results=[];
+ do{
+  const query=new URLSearchParams({
+   q:"'"+folderId+"' in parents and trashed = false",
+   fields:'nextPageToken,files(id,name,mimeType,webViewLink,size)',
+   pageSize:'100',
+   spaces:'drive',
+   supportsAllDrives:'true',
+   includeItemsFromAllDrives:'true'
+  });
+  if(pageToken)query.set('pageToken',pageToken);
+  const response=await fetch('https://www.googleapis.com/drive/v3/files?'+query.toString(),{
+   headers:{Authorization:'Bearer '+token},cache:'no-store'
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(data.error?.message||'Không được quyền xem thư mục Google Drive này.');
+  results.push(...(data.files||[]));
+  pageToken=data.nextPageToken||'';
+  if(results.length>=300)break;
+ }while(pageToken);
+ return results;
+}
+function showDriveFolderPreview(folderUrl,label){
+ const id=driveFolderId(folderUrl);
+ if(!id)return notice('Liên kết thư mục Google Drive không hợp lệ.');
+ const dialog=$('drivePreviewDialog'),noticeNode=$('drivePreviewNotice');
+ $('drivePreviewTitle').textContent=label;
+ $('drivePreviewFiles').replaceChildren();$('drivePreviewMedia').replaceChildren();
+ noticeNode.textContent='Đang kết nối Google Drive để lấy đúng tệp ảnh/video…';
+ if(!dialog.open)dialog.showModal();
+ try{
+  driveFolderToken(async(token)=>{
+   const files=(await readDriveFolderFiles(id,token)).filter(file=>file.mimeType!=='application/vnd.google-apps.folder');
+   const list=$('drivePreviewFiles');list.replaceChildren();
+   if(!files.length){
+    noticeNode.textContent='Thư mục hiện chưa có tệp. Không có ảnh/video để xem.';
+    const link=el('a','Mở thư mục Drive','overview-link');
+    link.href=folderUrl;link.target='_blank';link.rel='noopener noreferrer';list.append(link);
+    return;
+   }
+   noticeNode.textContent='Có '+files.length+' tệp trong thư mục. Chọn tệp để xem ngay hoặc mở Google Drive.';
+   for(const file of files){
+    if(!/^[A-Za-z0-9_-]{10,200}$/.test(file.id||''))continue;
+    const row=el('div',null,'drive-preview-file');
+    const preview=button(file.name||'Xem tệp',()=>displayDrivePreview(file),'overview-link');
+    const direct=el('a','Mở trên Drive','overview-link');
+    direct.href=fileDriveUrl(file.id);
+    direct.target='_blank';direct.rel='noopener noreferrer';
+    row.append(preview,direct);list.append(row);
+   }
+   displayDrivePreview(files[0]);
+  });
+ }catch(e){noticeNode.textContent=e.message;}
+}
 function addMediaLinks(container,order){
  const media=order.media||[];
  const unique=new Set();
@@ -320,7 +413,14 @@ function addMediaLinks(container,order){
  }
  for(const [key,label] of LINK_LABELS){
   const href=safeDriveUrl(order[key]);
-  if(href)appendDrive(label+' · Thư mục',href,false);
+  if(!href)continue;
+  if(driveFolderId(href)){
+   const names={packing_folder_url:'Hồ sơ đóng hàng',shipping_folder_url:'Ảnh giao hàng',
+    invoice_folder_url:'Ảnh hóa đơn',video_folder_url:'Video đóng hàng',goods_folder_url:'Ảnh hàng hóa'};
+   const preview=button('Xem '+(names[key]||label),()=>showDriveFolderPreview(href,names[key]||label),'overview-link');
+   preview.title='Xem trực tiếp ảnh/video đang lưu trong thư mục Drive';
+   container.append(preview);
+  }else appendDrive(label,href,true);
  }
  if(!container.children.length)container.append(el('span','Chưa có hồ sơ','muted'));
 }
@@ -628,7 +728,7 @@ async function loadGroupOptions(){
  }catch(e){notice(e.message)}
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
@@ -840,5 +940,6 @@ $('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
 $('overviewSearch').oninput=renderOverview;
 $('overviewStatus').onchange=renderOverview;
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
+$('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
 initGoogleSignIn();
 if(state.token)bootstrap();
