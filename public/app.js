@@ -571,12 +571,14 @@ async function savePack(){
  setBusy(true);
  try{
   notice('Đang tải hồ sơ R2 (nếu có), sau đó lưu đóng hàng...');
-  await uploadSelection(id,uploads);
+  const uploaded=await uploadSelection(id,uploads);
+  const driveResult=await mirrorOperationalFiles(uploaded,'packingDriveStatus');
   const nguoiDongCung=$all('.packHelperChoice:checked').map(x=>x.value);
   await api('POST','/api/orders/'+id+'/pack',{boxes:Number($('boxes').value),nguoiDongCung,note:$('packNote').value});
   state.lockedOrderIds.delete(id);
-  notice('Đã lưu đóng hàng trên D1. Chưa đồng bộ Google Sheets/Drive.',true);
+  notice('Đã lưu đóng hàng trên D1 và R2. Drive: '+driveResult.synced+'/'+uploaded.length+' tệp; dữ liệu Google Sheets còn chờ đồng bộ.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
+  showSavedMediaLinks(state.selected,driveResult,'CHỜ VẬN ĐƠN');
  }catch(e){notice('Chưa lưu đóng hàng: '+e.message);}
  finally{setBusy(false);}
 }
@@ -597,12 +599,14 @@ async function saveShip(){
   }
   const uploads=[...$('shippingPics').files].map(f=>['GIAO_HANG',f]);
   notice('Đang tải ảnh bàn giao (nếu có) và lưu vận đơn...');
-  await uploadSelection(id,uploads);
+  const uploaded=await uploadSelection(id,uploads);
+  const driveResult=await mirrorOperationalFiles(uploaded,'shippingDriveStatus');
   await api('POST','/api/shipments',{orderIds,loaiShip,tenShip,sdtShip,
    tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:v('shippingStatus'),note:v('shippingNote')});
   for(const key of orderIds)state.lockedOrderIds.delete(key);
-  notice('Đã lưu vận đơn trên D1. Chưa đồng bộ Google Sheets/Drive.',true);
+  notice('Đã lưu vận đơn trên D1 và R2. Drive: '+driveResult.synced+'/'+uploaded.length+' tệp; dữ liệu Google Sheets còn chờ đồng bộ.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
+  showSavedMediaLinks(state.selected,driveResult,v('shippingStatus'));
  }catch(e){notice('Chưa lưu vận đơn: '+e.message)}
  finally{setBusy(false)}
 }
@@ -619,11 +623,13 @@ async function loadGroupOptions(){
  }catch(e){notice(e.message)}
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
+$('connectPackingDrive').onclick=()=>connectOperationalDrive('packingDriveStatus');
+$('connectShippingDrive').onclick=()=>connectOperationalDrive('shippingDriveStatus');
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
 $('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
