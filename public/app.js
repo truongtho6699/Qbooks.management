@@ -805,8 +805,6 @@ $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
-$('connectPackingDrive').onclick=()=>connectOperationalDrive('packingDriveStatus');
-$('connectShippingDrive').onclick=()=>connectOperationalDrive('shippingDriveStatus');
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
 $('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
