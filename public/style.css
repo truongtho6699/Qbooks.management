@@ -150,3 +150,8 @@ body{background:#eef2f9}
 .overview-media-links{gap:7px}
 .overview-copy-link{padding:6px 8px!important;min-height:31px!important;border:1px solid #c4d8f4!important;border-radius:6px!important;background:#fff!important;color:#2c659e!important;font-size:10px!important;font-weight:750!important}
 @media(max-width:530px){.shipping-card-title strong{font-size:13px}.shipping-card-title .shipment-status{font-size:9px!important;padding:5px 7px!important}.shipping-card-details{font-size:11px}}
+
+.drive-upload-control{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0 14px;padding:12px;background:#edf5ff;border:1px solid #d8e6fa;border-radius:10px}
+.drive-upload-control .connectDrive{margin:0!important;white-space:nowrap}
+.drive-upload-control .hint{margin:0;font-size:12px;line-height:1.5;flex:1 1 230px}
+@media(max-width:540px){.drive-upload-control{align-items:stretch}.drive-upload-control .connectDrive{width:100%}}
