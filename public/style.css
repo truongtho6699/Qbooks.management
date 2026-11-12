@@ -179,3 +179,32 @@ body{background:#eef2f9}
 .drive-direct-item{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:5px;border-radius:6px;background:#eef5ff;max-width:100%;min-width:0}
 .drive-direct-item>a{overflow-wrap:anywhere;white-space:normal}
 @media(max-width:600px){.drive-folder-item{width:100%}.drive-direct-item{width:100%}.drive-direct-item>a{flex:1;min-width:0}}
+
+
+/* VIEW is a static, data-free walk-through of QBOOK screens. */
+.view-only-banner{display:flex;flex-direction:column;gap:6px;padding:17px 20px;margin-bottom:18px;border:1px solid #cbdcf7;background:#edf4ff;border-radius:12px;color:#24528b}
+.view-only-banner strong{font-size:14px;letter-spacing:.02em}
+.view-only-banner span{font-size:12px}
+.view-only-content{display:grid;gap:16px}
+.view-only-section{background:#fff;border:1px solid #e3eaf4;border-radius:12px;padding:19px 21px}
+.view-only-section h2{font-size:16px;color:#263b59;margin:0 0 7px}
+.view-only-section>p{font-size:12px;color:#7b90a8;margin:0 0 17px}
+.view-only-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.view-only-kpi{display:grid;gap:10px;border-radius:10px;background:#eaf2ff;padding:17px}
+.view-only-kpi:nth-child(2){background:#fff3da}
+.view-only-kpi:nth-child(3){background:#e8f1ff}
+.view-only-kpi:nth-child(4){background:#eee9ff}
+.view-only-kpi:nth-child(5){background:#e2f6eb}
+.view-only-kpi small{font-size:11px;color:#5c7494}
+.view-only-kpi strong{font-size:26px;color:#8294a8}
+.view-only-table{display:grid;grid-template-columns:1fr 1.5fr 1fr 1.5fr;gap:9px;background:#eef4fc;padding:14px;border-radius:7px;color:#596e89;font-size:11px}
+.view-only-empty{padding:36px 12px;text-align:center;color:#8699b1;font-size:13px}
+.view-only-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.view-only-field{display:grid;gap:7px;min-width:0}
+.view-only-field>span{font-size:12px;font-weight:650;color:#536b88}
+.view-only-placeholder{height:39px;border-radius:7px;border:1px solid #e3e9f2;background:#f7f9fd;width:100%}
+.view-only-placeholder.short{width:65%}
+.view-only-card{border:1px dashed #d9e5f5;border-radius:10px;padding:17px;display:grid;gap:10px;margin-bottom:12px}
+.view-only-card small{color:#94a2b6;font-size:12px}
+.view-only-disabled{margin-top:17px;background:#ebeff5;color:#8897ae;padding:12px 18px;font-weight:700;font-size:12px;border-radius:7px;width:max-content;max-width:100%;cursor:not-allowed}
+@media(max-width:800px){.view-only-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.view-only-fields{grid-template-columns:1fr}.view-only-section{padding:17px}.view-only-table{font-size:10px;gap:5px;padding:11px}}
