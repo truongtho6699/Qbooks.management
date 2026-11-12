@@ -213,9 +213,8 @@ function renderTabs(){
   }
   parent.append(children);desktop.append(parent);
   addMobile('transfer','Chuyển hàng','▣',()=>{
-   // Tap the bottom-level operation item to cycle among permitted sub-tabs.
    if(!active)tab(state.lastOperationTab&&operations.some(x=>x[0]===state.lastOperationTab)?state.lastOperationTab:operations[0][0]);
-   else tab(operations[(operations.findIndex(x=>x[0]===state.tab)+1)%operations.length][0]);
+   else $('shippingOperationGroup').scrollIntoView({behavior:'smooth',block:'start'});
   },active);
  }
  if(r.admin){
