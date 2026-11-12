@@ -166,31 +166,67 @@ function capabilities(){
  const r=state.user?.rights||{};
  return {pack:!!r.dongHang,ship:!!r.vanDon,admin:!!r.admin,sale:state.user?.role==='SALE'||!!r.admin};
 }
-function menuItems(){
+const OPERATION_TABS=[['sale','Sale lên đơn','✎'],['pack','Đóng hàng','▣'],['ship','Vận đơn','▤']];
+function availableOperationTabs(){
  const r=capabilities();
- return [
-  ...(r.admin||r.pack||r.ship?[['overview','Tổng quan','▦']]:[]),
-  ...(r.sale?[['sale','Sale lên đơn','✎']]:[]),
-  ...(r.pack?[['pack','Đóng hàng','▣']]:[]),
-  ...(r.ship?[['ship','Vận đơn','▤']]:[]),
-  ...(r.admin?[['staff','Quản trị','⚙']]:[])
- ];
+ return OPERATION_TABS.filter(([key])=>key==='sale'?r.sale:key==='pack'?r.pack:r.ship);
 }
+function isOperationTab(key){return ['sale','pack','ship'].includes(key);}
 function renderTabs(){
- const items=menuItems(),dest=$('tabs'),mobile=$('mobileShippingTabs');
- dest.replaceChildren();mobile.replaceChildren();
- for(const [key,text,icon] of items){
-  const b=button(icon+'  '+text,()=>tab(key),key===state.tab?'selected':'');b.classList.add('shipping-nav-button');b.setAttribute('aria-current',key===state.tab?'page':'false');
-  dest.append(b);
-  const mobileText=key==='sale'?'Sale':key==='pack'?'Đóng hàng':key==='staff'?'Quản trị':text;
-  const m=button('',()=>tab(key),key===state.tab?'selected':'');
-  m.classList.add('shipping-mobile-item');
-  const iconNode=el('span',icon,'shipping-mobile-icon'),labelNode=el('span',mobileText,'shipping-mobile-label');
-  m.append(iconNode,labelNode);m.setAttribute('aria-label',text);mobile.append(m);
+ const r=capabilities(),operations=availableOperationTabs(),active=isOperationTab(state.tab);
+ const desktop=$('tabs'),mobile=$('mobileShippingTabs'),inner=$('shippingOperationTabs');
+ desktop.replaceChildren();mobile.replaceChildren();inner.replaceChildren();
+ const addDesktop=(key,label,icon,handler,selected=false)=>{
+  const b=button(icon+'  '+label,handler,selected?'selected':'');
+  b.classList.add('shipping-nav-button');
+  b.setAttribute('aria-current',selected?'page':'false');
+  desktop.append(b);
+  return b;
+ };
+ const addMobile=(key,label,icon,handler,selected=false)=>{
+  const b=button('',handler,selected?'selected':'');
+  b.classList.add('shipping-mobile-item');
+  b.append(el('span',icon,'shipping-mobile-icon'),el('span',label,'shipping-mobile-label'));
+  b.setAttribute('aria-label',label);
+  b.setAttribute('aria-current',selected?'page':'false');
+  mobile.append(b);
+ };
+ if(r.admin||r.pack||r.ship){
+  addDesktop('overview','Tổng quan','▦',()=>tab('overview'),state.tab==='overview');
+  addMobile('overview','Tổng quan','▦',()=>tab('overview'),state.tab==='overview');
  }
+ if(operations.length){
+  const parent=el('div',null,'shipping-parent-group');
+  const parentButton=button('▣  Chuyển hàng',()=>tab(state.lastOperationTab&&operations.some(x=>x[0]===state.lastOperationTab)?state.lastOperationTab:operations[0][0]),active?'selected':'');
+  parentButton.classList.add('shipping-nav-button','shipping-parent-button');
+  parentButton.setAttribute('aria-expanded',String(active));
+  parent.append(parentButton);
+  const children=el('div',null,'shipping-child-menu');
+  for(const [key,label,icon] of operations){
+   const child=button(icon+'  '+label,()=>tab(key),state.tab===key?'selected':'');
+   child.classList.add('shipping-nav-button','shipping-nav-child');
+   children.append(child);
+   const innerButton=button(label,()=>tab(key),state.tab===key?'selected':'');
+   innerButton.classList.add('shipping-operation-tab');
+   innerButton.setAttribute('aria-current',state.tab===key?'page':'false');
+   inner.append(innerButton);
+  }
+  parent.append(children);desktop.append(parent);
+  addMobile('transfer','Chuyển hàng','▣',()=>{
+   // Tap the bottom-level operation item to cycle among permitted sub-tabs.
+   if(!active)tab(state.lastOperationTab&&operations.some(x=>x[0]===state.lastOperationTab)?state.lastOperationTab:operations[0][0]);
+   else tab(operations[(operations.findIndex(x=>x[0]===state.tab)+1)%operations.length][0]);
+  },active);
+ }
+ if(r.admin){
+  addDesktop('staff','Quản trị','⚙',()=>tab('staff'),state.tab==='staff');
+  addMobile('staff','Quản trị','⚙',()=>tab('staff'),state.tab==='staff');
+ }
+ show('shippingOperationGroup',active);
 }
 function switchView(){
  const key=state.tab;
+ if(isOperationTab(key))state.lastOperationTab=key;
  show('overviewView',key==='overview');show('ordersView',key==='pack'||key==='ship');
  show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);
  show('newSalePanel',state.user.role!=='SHIPPER');
