@@ -750,13 +750,12 @@ async function savePack(){
  try{
   notice('Đang tải hồ sơ R2 (nếu có), sau đó lưu đóng hàng...');
   const uploaded=await uploadSelection(id,uploads);
-  const driveResult=await mirrorOperationalFiles(uploaded,'packingDriveStatus');
+  // R2 is the durable source. Background Cron mirrors files without staff Google permissions.
   const nguoiDongCung=$all('.packHelperChoice:checked').map(x=>x.value);
   await api('POST','/api/orders/'+id+'/pack',{boxes:Number($('boxes').value),nguoiDongCung,note:$('packNote').value});
   state.lockedOrderIds.delete(id);
-  notice('Đã lưu đóng hàng trên D1 và R2. Drive: '+driveResult.synced+'/'+uploaded.length+' tệp; dữ liệu Google Sheets còn chờ đồng bộ.',true);
+  notice('Đã lưu đóng hàng. '+uploaded.length+' tệp được giữ an toàn trên R2 và xếp hàng chờ tự chuyển Drive. Dữ liệu Sheets đồng bộ riêng.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
-  showSavedMediaLinks(state.selected,driveResult,'CHỜ VẬN ĐƠN');
  }catch(e){notice('Chưa lưu đóng hàng: '+e.message);}
  finally{setBusy(false);}
 }
@@ -778,13 +777,11 @@ async function saveShip(){
   const uploads=[...$('shippingPics').files].map(f=>['GIAO_HANG',f]);
   notice('Đang tải ảnh bàn giao (nếu có) và lưu vận đơn...');
   const uploaded=await uploadSelection(id,uploads);
-  const driveResult=await mirrorOperationalFiles(uploaded,'shippingDriveStatus');
   await api('POST','/api/shipments',{orderIds,loaiShip,tenShip,sdtShip,
    tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:v('shippingStatus'),note:v('shippingNote')});
   for(const key of orderIds)state.lockedOrderIds.delete(key);
-  notice('Đã lưu vận đơn trên D1 và R2. Drive: '+driveResult.synced+'/'+uploaded.length+' tệp; dữ liệu Google Sheets còn chờ đồng bộ.',true);
+  notice('Đã lưu vận đơn. '+uploaded.length+' tệp đã lưu R2 và xếp hàng chờ tự đồng bộ Drive. Dữ liệu Sheets đồng bộ riêng.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
-  showSavedMediaLinks(state.selected,driveResult,v('shippingStatus'));
  }catch(e){notice('Chưa lưu vận đơn: '+e.message)}
  finally{setBusy(false)}
 }
