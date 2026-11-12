@@ -155,3 +155,18 @@ body{background:#eef2f9}
 .drive-upload-control .connectDrive{margin:0!important;white-space:nowrap}
 .drive-upload-control .hint{margin:0;font-size:12px;line-height:1.5;flex:1 1 230px}
 @media(max-width:540px){.drive-upload-control{align-items:stretch}.drive-upload-control .connectDrive{width:100%}}
+
+/* Thẻ chọn Gộp đơn cùng bố cục Đóng hàng */
+.shipping-group-card{display:flex!important;flex-direction:row!important;align-items:center!important;gap:12px!important;cursor:pointer}
+.shipping-group-card>.groupCheck{flex:0 0 19px;width:19px;height:19px;accent-color:#1765d6;margin:0}
+.shipping-group-details{display:grid;gap:7px;flex:1;min-width:0}
+.shipping-group-details .shipping-card-title{width:100%}
+.shipping-group-card:has(input:checked){background:#ecf4ff!important;border-color:#3482e7!important;box-shadow:0 0 0 1px #3482e7}
+.drive-preview-dialog{width:min(850px,calc(100vw - 20px))}
+.drive-preview-files{display:flex;flex-wrap:wrap;gap:8px;margin:15px 0}
+.drive-preview-file{display:flex;align-items:center;gap:5px;padding:7px;border:1px solid #e2eaf7;background:#f7faff;border-radius:9px;max-width:100%;flex-wrap:wrap}
+.drive-preview-file .overview-link{max-width:350px;overflow-wrap:anywhere}
+.drive-preview-media{min-height:180px;background:#f4f7fc;border:1px solid #e3eaf3;border-radius:10px;overflow:hidden}
+.drive-preview-media:empty{min-height:0;border:0}
+.drive-preview-media iframe{display:block;width:100%;height:min(65vh,600px);border:0;background:#fff}
+@media(max-width:600px){.shipping-group-card{gap:9px!important}.shipping-group-details .shipping-card-title strong{font-size:12px}.drive-preview-media iframe{height:52vh}.drive-preview-file{width:100%}}
