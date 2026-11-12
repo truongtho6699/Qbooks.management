@@ -306,7 +306,7 @@ function driveFolderId(url){
 }
 function driveFolderToken(callback){
  const token=state.driveBrowseToken;
- if(token&&Date.now()<state.driveBrowseUntil)return callback(token);
+ if(token&&Date.now()<state.driveBrowseUntil)return Promise.resolve(callback(token)).catch(e=>$('drivePreviewNotice').textContent=e.message);
  if(!window.google?.accounts?.oauth2||!state.googleClientId)
   throw Error('Google chưa sẵn sàng. Tải lại trang hoặc đăng nhập Chrome/Safari.');
  const scope='https://www.googleapis.com/auth/drive.metadata.readonly';
@@ -384,7 +384,7 @@ function showDriveFolderPreview(folderUrl,label){
     const direct=el('a','Mở trên Drive','overview-link');
     direct.href=fileDriveUrl(file.id);
     direct.target='_blank';direct.rel='noopener noreferrer';
-    row.append(preview,direct);list.append(row);
+    row.append(preview,direct);addCopyLink(row,fileDriveUrl(file.id));list.append(row);
    }
    displayDrivePreview(files[0]);
   });
