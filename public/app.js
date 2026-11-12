@@ -277,21 +277,47 @@ async function downloadMedia(id,filename,btn){
  }catch(e){notice('Không tải được ảnh/video: '+e.message);}
  finally{btn.disabled=false;btn.textContent=old;}
 }
+function addCopyLink(container,url){
+ const copy=button('Sao chép link',async()=>{
+  try{
+   await navigator.clipboard.writeText(url);
+   notice('Đã sao chép liên kết Google Drive.',true);
+  }catch{
+   const dialog=window.prompt('Sao chép đường dẫn Google Drive:',url);
+   if(dialog!==null)notice('Có thể sao chép đường dẫn hiển thị trên màn hình.');
+  }
+ },'overview-copy-link');
+ copy.title='Sao chép liên kết tệp để gửi qua Zalo, email hoặc trang tính';
+ container.append(copy);
+}
+function fileDriveUrl(id){
+ if(!/^[A-Za-z0-9_-]{10,200}$/.test(String(id||'')))return null;
+ return 'https://drive.google.com/file/d/'+encodeURIComponent(id)+'/view';
+}
 function addMediaLinks(container,order){
  const media=order.media||[];
+ const unique=new Set();
+ const appendDrive=(label,url,copyable=false)=>{
+  if(!url||unique.has(url+'|'+label))return;
+  unique.add(url+'|'+label);
+  const a=el('a',label,'overview-link');
+  a.href=url;a.target='_blank';a.rel='noopener noreferrer';
+  a.title=copyable?'Mở đúng tệp đã lưu trên Google Drive':'Mở thư mục trên Google Drive';
+  container.append(a);
+  if(copyable)addCopyLink(container,url);
+ };
+ for(const item of media){
+  const link=fileDriveUrl(item.drive_file_id);
+  if(link)appendDrive((MEDIA_LABELS[item.stage]||'Tệp')+' · '+(item.filename||'Mở tệp'),link,true);
+  else{
+   const b=button((MEDIA_LABELS[item.stage]||'Tệp')+' · R2',()=>downloadMedia(item.id,item.filename,b),'overview-link');
+   b.title='Tệp chưa chuyển lên Drive, chỉ có thể tải từ R2: '+(item.filename||'');
+   container.append(b);
+  }
+ }
  for(const [key,label] of LINK_LABELS){
   const href=safeDriveUrl(order[key]);
-  if(href){const a=el('a',label,'overview-link');a.href=href;a.target='_blank';a.rel='noopener noreferrer';container.append(a);}
- }
- for(const item of media){
-  if(item.drive_file_id){
-   const a=el('a',(MEDIA_LABELS[item.stage]||'Tệp')+' · Drive','overview-link');
-   a.href='https://drive.google.com/file/d/'+encodeURIComponent(item.drive_file_id)+'/view';
-   a.target='_blank';a.rel='noopener noreferrer';container.append(a);
-  }else{
-   const b=button((MEDIA_LABELS[item.stage]||'Tệp')+' · Tải R2',()=>downloadMedia(item.id,item.filename,b),'overview-link');
-   b.title=item.filename;container.append(b);
-  }
+  if(href)appendDrive(label+' · Thư mục',href,false);
  }
  if(!container.children.length)container.append(el('span','Chưa có hồ sơ','muted'));
 }
@@ -300,13 +326,13 @@ function appendOverviewRow(order,table,cardHolder){
  const tr=document.createElement('tr');
  const orderTd=document.createElement('td');orderTd.append(el('strong',code),el('small',order.id));
  const customer=document.createElement('td');customer.append(el('strong',order.customer||'—'),el('small','Sale: '+(order.sale_name||'—')));
- const status=document.createElement('td');status.append(el('span',order.status,'tag'));
+ const status=document.createElement('td');status.append(statusBadge(order.status));
  const links=document.createElement('td');links.className='overview-media-links';addMediaLinks(links,order);
  const detail=document.createElement('td');
  const view=button('Xem đơn',()=>showOrderSummary(order),'secondary');detail.append(view);
  tr.append(orderTd,customer,status,links,detail);table.append(tr);
  const card=el('article',null,'overview-mobile-card');
- card.append(el('strong',code),el('small',(order.customer||'—')+' · '+(order.sale_name||'—')),el('span',order.status,'tag'));
+ card.append(el('strong',code),el('small',(order.customer||'—')+' · '+(order.sale_name||'—')),statusBadge(order.status));
  const linksMobile=el('div',null,'overview-media-links');addMediaLinks(linksMobile,order);card.append(linksMobile);
  card.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'));cardHolder.append(card);
 }
