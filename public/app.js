@@ -910,13 +910,19 @@ async function refreshGoogleSync(){
  const status=$('syncMessage');
  try{
   const r=await api('GET','/api/sync/status');
-  status.textContent='Còn '+r.orders.length+' đơn thay đổi, '+r.uploads.filter(u=>!u.drive_file_id).length+' tệp R2 chưa chuyển sang Drive. Chỉ thao tác khi đã cấp quyền Google.';
+  const waiting=r.uploads.filter(u=>!u.drive_file_id).length;
+  const last=r.auto?.lastRun;
+  status.textContent='D1: '+r.orders.length+' đơn chờ ghi Sheets · R2: '+waiting+' tệp chờ Drive. '+
+   (last?'Lần chạy tự động gần nhất: '+last.started_at+' ('+last.status+').':
+   'Bộ chạy tự động đang chờ thiết lập quyền Google ngoại tuyến của máy chủ.');
+
   const media=$('syncUploads');media.replaceChildren();
   if(!r.uploads.length)media.append(el('p','Không có ảnh/video mới cần kiểm tra.'));
   for(const file of r.uploads){
    const div=el('div',null,'order');
    const label=el('div',(file.order_id+' · '+file.stage+' · '+file.filename+' · '+(file.bytes/1048576).toFixed(1)+' MB'));
-   const span=el('span',file.drive_file_id?'Đã có trên Drive':(file.drive_offset?'Đã chuyển '+Math.floor(100*file.drive_offset/file.bytes)+'%':'Chưa chuyển'),'tag');
+   const span=el('span',file.drive_file_id?'Đã có trên Drive':file.auto_error?'Lỗi tạm thời – sẽ thử lại':(file.drive_offset?'Đã chuyển '+Math.floor(100*file.drive_offset/file.bytes)+'%':'Đang chờ đồng bộ'),'tag');
+   if(file.auto_error)span.title=file.auto_error;
    div.append(label,span);
    if(!file.drive_file_id){
     const btn=button(file.drive_offset?'Tiếp tục chuyển':'Chuyển sang Drive',()=>mirrorGoogleFile(file.id,btn),'secondary');
