@@ -19,12 +19,12 @@ async function hashPin(pin,salt){
 const randomToken=()=>hex(crypto.getRandomValues(new Uint8Array(32)));
 async function requestJSON(req){try{return await req.json();}catch{throw Error('Nội dung yêu cầu không phải JSON hợp lệ.');}}
 const authError=(m='Vui lòng đăng nhập lại.')=>Object.assign(new Error(m),{status:401});
-const hasRole=(user,...roles)=>user.can_admin===1||roles.some(r=>(r==='PACKER'&&user.can_pack===1)||(r==='SHIPPER'&&user.can_ship===1)||(r==='SALE'&&user.role==='SALE')||(r==='ADMIN'&&user.can_admin===1));
+const hasRole=(user,...roles)=>user.role!=='VIEW'&&(user.can_admin===1||roles.some(r=>(r==='PACKER'&&user.can_pack===1)||(r==='SHIPPER'&&user.can_ship===1)||(r==='SALE'&&user.role==='SALE')||(r==='ADMIN'&&user.can_admin===1)));
 function needRole(user,...roles){if(!hasRole(user,...roles))throw Object.assign(new Error('Tài khoản không có quyền thao tác.'),{status:403});}
 async function actor(req,env){
  const token=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
  if(!token)throw authError();
- const record=await env.DB.prepare('SELECT u.id,u.email,u.name,u.role,u.active,u.can_pack,u.can_ship,u.can_admin,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=?')
+ const record=await env.DB.prepare('SELECT u.id,u.email,u.name,CASE WHEN vr.user_id IS NOT NULL THEN 'VIEW' ELSE u.role END AS role,u.active,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_pack END AS can_pack,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_ship END AS can_ship,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_admin END AS can_admin,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN user_view_roles vr ON vr.user_id=u.id WHERE s.token_hash=?')
    .bind(await sha(token)).first();
  if(!record||!record.active||record.expires_at<now())throw authError();
  return record;
@@ -95,7 +95,8 @@ async function handle(req,env){
   if(!found.active)throw Object.assign(new Error('Tài khoản đã bị vô hiệu hóa.'),{status:403});
   const token=randomToken(),expires=now()+12*3600;
   await env.DB.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').bind(await sha(token),found.id,expires).run();
-  return json({token,user:{id:found.id,email:found.email,name:found.name,role:found.role},expires});
+  const view=await env.DB.prepare('SELECT user_id FROM user_view_roles WHERE user_id=?').bind(found.id).first();
+  return json({token,user:{id:found.id,email:found.email,name:found.name,role:view?'VIEW':found.role},expires});
  }
  if(method==='POST'&&path==='/api/setup'){
   if(!env.SETUP_KEY)throw Error('Chưa cấu hình mã thiết lập quản trị trong Worker secret.');
@@ -123,9 +124,12 @@ async function handle(req,env){
   await env.DB.prepare('UPDATE users SET failed_attempts=0,locked_until=0 WHERE id=?').bind(user.id).run();
   const token=randomToken(),expires=now()+12*3600;
   await env.DB.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)').bind(await sha(token),user.id,expires).run();
-  return json({token,user:{id:user.id,email:user.email,name:user.name,role:user.role},expires});
+  const view=await env.DB.prepare('SELECT user_id FROM user_view_roles WHERE user_id=?').bind(user.id).first();
+  return json({token,user:{id:user.id,email:user.email,name:user.name,role:view?'VIEW':user.role},expires});
  }
  const user=await actor(req,env);
+ if(user.role==='VIEW'&&!((method==='POST'&&path==='/api/logout')||(method==='GET'&&(path==='/api/bootstrap'||path==='/api/shipping/overview'||/^\/api\/uploads\/[a-f0-9-]+\/file$/.test(path)))))
+  throw Object.assign(new Error('Tài khoản VIEW chỉ được xem Tổng quan và hồ sơ; không có quyền thao tác.'),{status:403});
  if(method==='POST'&&path==='/api/logout'){
   const token=req.headers.get('authorization').replace(/^Bearer\s+/i,'');
   await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha(token)).run();
@@ -393,10 +397,10 @@ async function handle(req,env){
   await audit(env,user,'CREATE_USER','',id);return json({id},201);
  }
  if(method==='GET'&&path==='/api/shipping/overview'){
-  needRole(user,'PACKER','SHIPPER');
+  if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
   const isManager=hasRole(user,'ADMIN');
   // Overview is scoped to accessible operational orders for non-admin workers.
-  const where=isManager?'':hasRole(user,'PACKER')&&hasRole(user,'SHIPPER')?'':hasRole(user,'PACKER')?" WHERE status IN ('CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN')":" WHERE status IN ('CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH')";
+  const where=isManager||user.role==='VIEW'?'':hasRole(user,'PACKER')&&hasRole(user,'SHIPPER')?'':hasRole(user,'PACKER')?" WHERE status IN ('CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN')":" WHERE status IN ('CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH')";
   const data=await env.DB.prepare('SELECT id,invoice_codes,customer,sale_name,quantity,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').all();
   const orders=data.results||[];
   const byId=new Map(orders.map(o=>[o.id,{...o,media:[]}]));
@@ -495,7 +499,7 @@ async function handle(req,env){
   const id=uMatch[1],action=uMatch[2]||'',u=await pendingUpload(env,id),o=await orderById(env,u.order_id);
   const isFile=action==='file';
   if(isFile){
-   needRole(user,'PACKER','SHIPPER');
+   if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
    if(method!=='GET')return fail('Không hỗ trợ.',405);
    const object=await env.MEDIA.get(u.object_key);
    if(!object||u.status!=='COMPLETE')return fail('Tệp chưa sẵn sàng.',404);
