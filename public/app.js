@@ -181,6 +181,8 @@ async function bootstrap(){
   $('userInfo').textContent=r.user.name+' · '+r.user.role;
   $('shippingUserBadge').textContent=r.user.name;
   show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;
+  // Always drop operational data kept by a previous session before showing the new identity.
+  state.orders=[];state.overviewData=null;state.selected=null;state.lockedOrderIds.clear();
   const rights=capabilities();
   state.tab=rights.admin||r.user.role==='VIEW'?'overview':rights.pack?'pack':rights.ship?'ship':'sale';
   renderTabs();switchView();
@@ -193,7 +195,7 @@ function capabilities(){
 const OPERATION_TABS=[['sale','Sale lên đơn','✎'],['pack','Đóng hàng','▣'],['ship','Vận đơn','▤']];
 function availableOperationTabs(){
  const r=capabilities();
- return OPERATION_TABS.filter(([key])=>key==='sale'?r.sale:key==='pack'?r.pack:r.ship);
+ return OPERATION_TABS.filter(([key])=>r.view||(key==='sale'?r.sale:key==='pack'?r.pack:r.ship));
 }
 function isOperationTab(key){return ['sale','pack','ship'].includes(key);}
 function renderTabs(){
@@ -247,15 +249,45 @@ function renderTabs(){
  }
  show('shippingOperationGroup',active);
 }
+function viewOnlyLayout(key){
+ const content=$('viewOnlyContent');
+ const heading=(label)=>'<section class="view-only-section"><h2>'+label+'</h2><p>Chỉ xem bố cục. Không có dữ liệu hoặc quyền thao tác.</p>';
+ const field=(label)=>'<div class="view-only-field"><span>'+label+'</span><div class="view-only-placeholder" aria-hidden="true"></div></div>';
+ const exampleCard='<div class="view-only-card"><div class="view-only-placeholder"></div><div class="view-only-placeholder short"></div><small>Không hiển thị thông tin đơn hàng</small></div>';
+ const views={
+  overview:`<div class="view-only-kpis">${['Tổng số đơn','Chờ đóng hàng','Chờ vận đơn','Đang giao','Hoàn thành'].map(x=>'<div class="view-only-kpi"><small>'+x+'</small><strong>—</strong></div>').join('')}</div>
+   ${heading('Danh sách đơn hàng')}<div class="view-only-table"><strong>Mã hóa đơn</strong><strong>Khách hàng</strong><strong>Trạng thái</strong><strong>Hồ sơ ảnh/video</strong></div>
+   <div class="view-only-empty">Không có quyền xem dữ liệu đơn hàng, khách hàng hoặc hồ sơ.</div></section>`,
+  sale:`${heading('Sale lên đơn')}<div class="view-only-fields">${['Giờ giao / Gấp','Mã hóa đơn','Loại vận chuyển','Tên khách hàng','Số quyển','Địa chỉ','Nhà xe'].map(field).join('')}</div>
+   <div class="view-only-disabled">Lưu đơn (không khả dụng)</div></section>
+   ${heading('Gộp đơn')}${exampleCard}<div class="view-only-disabled">Gộp đơn (không khả dụng)</div></section>`,
+  pack:`${heading('Đơn chờ đóng hàng')}${exampleCard}</section>
+   ${heading('Chi tiết đóng hàng')}<div class="view-only-fields">${['Ảnh hóa đơn','Video đóng hàng','Ảnh hàng hóa','Số thùng','Người đóng cùng','Ghi chú'].map(field).join('')}</div>
+   <div class="view-only-disabled">Lưu và đóng hàng (không khả dụng)</div></section>`,
+  ship:`${heading('Đơn chờ vận đơn')}${exampleCard}</section>
+   ${heading('Thông tin vận đơn')}<div class="view-only-fields">${['Loại ship','Người giao','Số điện thoại','Tiền ship','Hàng nặng','Phí bến','Phụ phí','Ảnh bàn giao'].map(field).join('')}</div>
+   <div class="view-only-disabled">Lưu vận đơn (không khả dụng)</div></section>`
+ };
+ content.innerHTML=views[key]||views.overview;
+}
 function switchView(){
- const key=state.tab;
+ const key=state.tab,isView=capabilities().view;
  if(isOperationTab(key))state.lastOperationTab=key;
+ const title={overview:'Tổng quan chuyển hàng',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn',staff:'Quản trị hệ thống'};
+ $('shippingHeading').textContent=title[key]||'Quản lý chuyển hàng';
+ $('shippingSubheading').textContent=isView?'Chế độ VIEW – chỉ xem giao diện, không truy cập dữ liệu':
+  key==='overview'?'Tiến độ, chứng từ, ảnh và video của từng đơn':'Theo dõi và thực hiện nghiệp vụ QBooks';
+ if(isView){
+  show('viewOnlyPanel',true);
+  for(const id of ['overviewView','ordersView','saleView','staffView','detailView'])show(id,false);
+  viewOnlyLayout(key);
+  renderTabs();
+  return; // Security: VIEW never calls operational endpoints or loads real data.
+ }
+ show('viewOnlyPanel',false);
  show('overviewView',key==='overview');show('ordersView',key==='pack'||key==='ship');
  show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);
  show('newSalePanel',state.user.role!=='SHIPPER');
- const title={overview:'Tổng quan chuyển hàng',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn',staff:'Quản trị hệ thống'};
- $('shippingHeading').textContent=title[key]||'Quản lý chuyển hàng';
- $('shippingSubheading').textContent=key==='overview'?'Tiến độ, chứng từ, ảnh và video của từng đơn':'Theo dõi và thực hiện nghiệp vụ QBooks';
  renderTabs();
  if(key==='overview')loadOverview().catch(e=>notice('Không đọc được tổng quan: '+e.message));
  if(key==='sale')loadGroupOptions().catch(e=>notice(e.message));
@@ -771,7 +803,7 @@ async function loadGroupOptions(){
  }catch(e){notice(e.message)}
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
