@@ -81,16 +81,28 @@ async function handle(req,env){
    }
   }
   if(!found){
-   const existing=await env.DB.prepare('SELECT status FROM google_registrations WHERE google_sub=?').bind(identity.sub).first();
+   const existing=await env.DB.prepare('SELECT status FROM google_registrations WHERE google_sub=? OR email=?').bind(identity.sub,identity.email).first();
    if(existing?.status==='REJECTED')throw Object.assign(new Error('Yêu cầu đăng ký Google đã bị từ chối. Liên hệ quản trị.'),{status:403});
-   if(!existing){
-    await env.DB.prepare("INSERT INTO google_registrations(google_sub,email,name,status) VALUES(?,?,?,'PENDING')")
-     .bind(identity.sub,identity.email,identity.name).run();
-   }else{
-    await env.DB.prepare("UPDATE google_registrations SET name=?,updated_at=CURRENT_TIMESTAMP WHERE google_sub=? AND status='PENDING'")
-     .bind(identity.name,identity.sub).run();
+   // Email exists but Google is not authoritative? Do not link automatically or bypass approval.
+   const matching=await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(identity.email).first();
+   if(matching){
+    if(!existing){
+     await env.DB.prepare("INSERT INTO google_registrations(google_sub,email,name,status) VALUES(?,?,?,'PENDING')")
+      .bind(identity.sub,identity.email,identity.name).run();
+    }
+    return json({pending:true,message:'Email đã có trên QBOOK; cần quản trị xác minh trước khi liên kết Google.'},202);
    }
-   return json({pending:true,message:'Đã ghi nhận đăng ký Google. Vui lòng chờ quản trị viên duyệt và cấp quyền.'},202);
+   // First Google sign-in: auto-provision effective VIEW with NO operational rights.
+   // Legacy users.role CHECK accepts SALE/PACKER/SHIPPER/ADMIN; VIEW is held by user_view_roles.
+   const id=uid(),salt=uid(),disabledPin=await hashPin(randomToken(),salt);
+   await env.DB.batch([
+    env.DB.prepare("INSERT INTO users(id,email,name,role,pin_salt,pin_hash,google_sub,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?,?)")
+     .bind(id,identity.email,identity.name,'SALE',salt,disabledPin,identity.sub,0,0,0),
+    env.DB.prepare('INSERT INTO user_view_roles(user_id) VALUES(?)').bind(id)
+   ]);
+   await env.DB.prepare("DELETE FROM google_registrations WHERE google_sub=? OR (email=? AND status='PENDING')").bind(identity.sub,identity.email).run();
+   await audit(env,{id},'NEW_GOOGLE_VIEW','',identity.email);
+   found={id,email:identity.email,name:identity.name,role:'VIEW',active:1};
   }
   if(!found.active)throw Object.assign(new Error('Tài khoản đã bị vô hiệu hóa.'),{status:403});
   const token=randomToken(),expires=now()+12*3600;
@@ -304,7 +316,7 @@ async function handle(req,env){
  if(method==='POST'&&path==='/api/google/approve'){
   needRole(user,'ADMIN');
   const input=await requestJSON(req),sub=clean(input.sub),role=clean(input.role);
-  if(!['SALE','PACKER','SHIPPER'].includes(role))throw Error('Chỉ được phê duyệt nhân sự theo vai trò nghiệp vụ.');
+  if(!['VIEW','SALE','PACKER','SHIPPER'].includes(role))throw Error('Chỉ được phê duyệt nhân sự theo vai trò nghiệp vụ.');
   const requestRow=await env.DB.prepare("SELECT google_sub,email,name FROM google_registrations WHERE google_sub=? AND status='PENDING'").bind(sub).first();
   if(!requestRow)throw Object.assign(new Error('Đăng ký không còn chờ duyệt.'),{status:404});
   const existing=await env.DB.prepare('SELECT id,email,role,google_sub FROM users WHERE email=? OR google_sub=?').bind(requestRow.email,sub).first();
@@ -320,11 +332,13 @@ async function handle(req,env){
   }
   const salt=uid(),id=uid();
   const unusablePinHash=await hashPin(randomToken(),salt);
-  await env.DB.batch([
+  const inserts=[
    env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,google_sub,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?,?)')
-    .bind(id,requestRow.email,requestRow.name,role,salt,unusablePinHash,sub,role==='PACKER'?1:0,role==='SHIPPER'?1:0,0),
-   env.DB.prepare("DELETE FROM google_registrations WHERE google_sub=? AND status='PENDING'").bind(sub)
-  ]);
+    .bind(id,requestRow.email,requestRow.name,role==='VIEW'?'SALE':role,salt,unusablePinHash,sub,role==='PACKER'?1:0,role==='SHIPPER'?1:0,0)
+  ];
+  if(role==='VIEW')inserts.push(env.DB.prepare('INSERT INTO user_view_roles(user_id) VALUES(?)').bind(id));
+  inserts.push(env.DB.prepare("DELETE FROM google_registrations WHERE google_sub=? AND status='PENDING'").bind(sub));
+  await env.DB.batch(inserts);
   await audit(env,user,'APPROVE_GOOGLE_USER','',JSON.stringify({id,role}));
   return json({ok:true,id,role});
  }
