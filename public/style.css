@@ -170,3 +170,12 @@ body{background:#eef2f9}
 .drive-preview-media:empty{min-height:0;border:0}
 .drive-preview-media iframe{display:block;width:100%;height:min(65vh,600px);border:0;background:#fff}
 @media(max-width:600px){.shipping-group-card{gap:9px!important}.shipping-group-details .shipping-card-title strong{font-size:12px}.drive-preview-media iframe{height:52vh}.drive-preview-file{width:100%}}
+
+
+/* Liên kết Drive theo đúng từng tệp, xem trực tiếp và sao chép URL */
+.drive-folder-item{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;max-width:100%;border:1px solid #e6edf8;border-radius:8px;padding:6px;background:#f9fbff}
+.drive-inline-files{flex-basis:100%;display:flex;flex-direction:column;gap:6px;min-width:0}
+.drive-inline-files:empty{display:none}
+.drive-direct-item{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:5px;border-radius:6px;background:#eef5ff;max-width:100%;min-width:0}
+.drive-direct-item>a{overflow-wrap:anywhere;white-space:normal}
+@media(max-width:600px){.drive-folder-item{width:100%}.drive-direct-item{width:100%}.drive-direct-item>a{flex:1;min-width:0}}
