@@ -24,7 +24,7 @@ function needRole(user,...roles){if(!hasRole(user,...roles))throw Object.assign(
 async function actor(req,env){
  const token=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
  if(!token)throw authError();
- const record=await env.DB.prepare('SELECT u.id,u.email,u.name,CASE WHEN vr.user_id IS NOT NULL THEN 'VIEW' ELSE u.role END AS role,u.active,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_pack END AS can_pack,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_ship END AS can_ship,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_admin END AS can_admin,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN user_view_roles vr ON vr.user_id=u.id WHERE s.token_hash=?')
+ const record=await env.DB.prepare("SELECT u.id,u.email,u.name,CASE WHEN vr.user_id IS NOT NULL THEN 'VIEW' ELSE u.role END AS role,u.active,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_pack END AS can_pack,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_ship END AS can_ship,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_admin END AS can_admin,s.expires_at FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN user_view_roles vr ON vr.user_id=u.id WHERE s.token_hash=?")
    .bind(await sha(token)).first();
  if(!record||!record.active||record.expires_at<now())throw authError();
  return record;
