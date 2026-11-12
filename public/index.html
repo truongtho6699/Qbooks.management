@@ -78,6 +78,13 @@
 <nav class="shipping-mobile-nav" id="mobileShippingTabs" aria-label="Menu dưới trên điện thoại"></nav>
 </section>
 </main>
+<dialog id="drivePreviewDialog" class="order-summary-dialog drive-preview-dialog">
+ <div class="summary-header"><h2 id="drivePreviewTitle">Xem hồ sơ Google Drive</h2>
+  <button type="button" id="closeDrivePreview" class="secondary">Đóng ✕</button></div>
+ <p class="hint" id="drivePreviewNotice">Đang đọc danh sách tệp từ Google Drive…</p>
+ <div id="drivePreviewFiles" class="drive-preview-files"></div>
+ <div id="drivePreviewMedia" class="drive-preview-media"></div>
+</dialog>
 <dialog id="orderSummaryDialog" class="order-summary-dialog">
  <div class="summary-header"><h2>Chi tiết đơn hàng</h2><button type="button" id="closeOrderSummary" class="secondary" aria-label="Đóng">Đóng ✕</button></div>
  <div id="orderSummaryInfo"></div>
