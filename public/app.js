@@ -20,10 +20,28 @@ function setBusy(value){state.saving=value;['savePacking','saveShipping','create
 function el(tag,text,cls){const n=document.createElement(tag);if(text!=null)n.textContent=text;if(cls)n.className=cls;return n}
 function meta(text){return el('small',text)}
 function button(text,fn,cls='secondary'){const b=el('button',text,cls);b.type='button';b.onclick=fn;return b}
+function statusClass(value){
+ const names={'CHỜ ĐÓNG HÀNG':'waiting-pack','CHỜ VẬN ĐƠN':'waiting-ship','ĐANG GIAO':'moving','HOÀN THÀNH':'completed'};
+ return names[String(value||'').trim()]||'unknown';
+}
+function statusBadge(value){
+ return el('span',value||'Chưa xác định','tag shipment-status status-'+statusClass(value));
+}
+function firstInvoice(value){
+ return String(value||'').split(',').map(s=>s.trim()).find(Boolean)||'Chưa có mã hóa đơn';
+}
 function makeCard(order,fn){
- const b=el('button',null,'order');b.type='button';
- const info=el('div');info.append(el('strong',order.title),meta(order.customer+' · '+order.quantity+' quyển · '+(order.carrier||order.transport||'Chưa có nhà xe')),meta(order.invoice_codes));
- b.append(info,el('span',order.status,'tag'));b.onclick=fn;return b;
+ const card=el('button',null,'order shipping-order-card status-border-'+statusClass(order.status));
+ card.type='button';
+ const titleRow=el('div',null,'shipping-card-title');
+ titleRow.append(el('strong',firstInvoice(order.invoice_codes)+' · Sale: '+(order.sale_name||'Chưa rõ')),statusBadge(order.status));
+ const info=el('div',null,'shipping-card-details');
+ const time=String(order.delivery_time||'').trim()||(order.urgent?'GẤP':'Chưa có giờ giao');
+ const invoices=String(order.invoice_codes||'').trim();
+ info.textContent=[time,invoices,order.customer,order.address].filter(Boolean).join(' · ');
+ card.append(titleRow,info);
+ card.onclick=fn;
+ return card;
 }
 async function login(email,pin){
  const res=await api('POST','/api/login',{email,pin});
