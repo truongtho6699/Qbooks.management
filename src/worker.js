@@ -140,7 +140,7 @@ async function handle(req,env){
   return json({token,user:{id:user.id,email:user.email,name:user.name,role:view?'VIEW':user.role},expires});
  }
  const user=await actor(req,env);
- if(user.role==='VIEW'&&!((method==='POST'&&path==='/api/logout')||(method==='GET'&&(path==='/api/bootstrap'||path==='/api/shipping/overview'||/^\/api\/uploads\/[a-f0-9-]+\/file$/.test(path)))))
+ if(user.role==='VIEW'&&!((method==='POST'&&path==='/api/logout')||(method==='GET'&&path==='/api/bootstrap')))
   throw Object.assign(new Error('Tài khoản VIEW chỉ được xem Tổng quan và hồ sơ; không có quyền thao tác.'),{status:403});
  if(method==='POST'&&path==='/api/logout'){
   const token=req.headers.get('authorization').replace(/^Bearer\s+/i,'');
