@@ -55,18 +55,26 @@ const booksTable=()=>table(['Mã sách','Tên đầu sách','Giảng viên','K�
  return ['<button class="link-action" data-book="'+E(b.id)+'">'+E(b.code)+'</button>',E(b.name),E(b.teacher||'—'),count(target),count(b.total),count(pub),'<div class="progress"><span style="width:'+rate+'%"></span></div><span class="mini-note">'+rate+'%</span>'];
 }));
 function renderNav(){
- const nav=$('desktopNav');let group='';
- nav.innerHTML=NAV.filter(n=>can(n.id)).map(item=>{
-  const heading=group!==item.group?(group=item.group,'<span class="nav-heading">'+E(item.group)+'</span>'):'';
-  return heading+'<button class="nav-item '+(item.id===state.view?'active':'')+'" data-view="'+item.id+'"><span class="nav-icon">'+item.icon+'</span><span>'+E(item.text)+'</span></button>';
- }).join('');
+ if(!window.QbookNavigation)throw Error('Thiếu bộ điều hướng QBOOK');
+ window.QbookNavigation.render({
+  desktop:$('desktopNav'),mobileTree:$('qbnMobileTree'),drawer:$('qbnDrawer'),toggle:$('qbnToggle'),
+  area:'media',activeView:state.view,
+  orders:[['overview','Tổng hợp'],['sale','Sale lên đơn'],['pack','Đóng hàng'],['ship','Vận đơn']],
+  admin:!!state.rights.admin,canMedia:id=>can(id),
+  onOrder:id=>{window.location.href='/?nav=orders&tab='+encodeURIComponent(id);},
+  onMedia:id=>navigate(id),
+  onAdmin:()=>{window.location.href='/?nav=admin';}
+ });
  const active=state.view;
  $('mobileNav').innerHTML=mobile.map(item=>{
- const current=item.id==='more'?['books','staff','permissions','audit','report','production','filmOverview','postOverview'].includes(active):active===item.id;
- return '<button class="mobile-item '+(current?'active':'')+'" data-view="'+item.id+'"><span class="nav-icon">'+item.icon+'</span><span>'+E(item.text)+'</span></button>';
+  const current=item.id==='more'?['books','catalog','staff','permissions','audit','report','production','filmOverview','postOverview'].includes(active):active===item.id;
+  return '<button class="mobile-item '+(current?'active':'')+'" data-view="'+item.id+'"><span class="nav-icon">'+item.icon+'</span><span>'+E(item.text)+'</span></button>';
  }).join('');
- document.querySelectorAll('[data-view]').forEach(el=>el.onclick=()=>navigate(el.dataset.view));
+ document.querySelectorAll('#mobileNav [data-view]').forEach(el=>el.onclick=()=>navigate(el.dataset.view));
+ const close=$('qbnClose');if(close)close.onclick=()=>{window.QbookNavigation.closeDrawer();renderNav();};
+ const drawer=$('qbnDrawer');if(drawer)drawer.onclick=e=>{if(e.target===drawer){window.QbookNavigation.closeDrawer();renderNav();}};
 }
+
 async function load(){
  const [bs,vs,ov,ls]=await Promise.all([api('GET','/api/video/books'),api('GET','/api/video/items'),api('GET','/api/video/overview'),api('GET','/api/video/lessons')]);
  state.books=bs.books;state.items=vs.items;state.overview=ov;state.lessons=ls.lessons||[];
@@ -80,7 +88,7 @@ function navigate(view){
   $('viewTitle').textContent='Danh mục chức năng';$('viewSubtitle').textContent='Các phân hệ quản lý và báo cáo';renderNav();return;
  }
  if(!can(view))return toast('Tài khoản chưa được cấp quyền chức năng này.');
- state.view=view;state.selected=null;
+ state.view=view;state.selected=null;window.QbookNavigation?.focusMedia(view);
  const title=NAV.find(x=>x.id===view)?.text||'Quản lý video';
  $('viewTitle').textContent=title;
  $('viewSubtitle').textContent=view==='dashboard'?'Theo dõi toàn bộ tiến độ sản xuất video sách':'Dữ liệu thực tế · QBOOK Video Manager';
@@ -424,7 +432,7 @@ async function boot(){
   const b=await api('GET','/api/video/bootstrap');state.user=b.user;state.rights=b.rights;
   $('currentUser').textContent=b.user.name;
   const googleCfg=await fetch('/api/google/config').then(r=>r.json()).catch(()=>({}));state.googleClientId=googleCfg.clientId||'';
-  await load();navigate('dashboard');
+  await load();const requested=new URLSearchParams(window.location.search).get('view');navigate(requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:'dashboard');
  }catch(err){if(err.message.includes('đăng nhập')||err.message.includes('401')){sessionStorage.removeItem('qbooks_token');window.location.href='/';return;}
   $('page').innerHTML='<div class="panel"><h2>Không mở được chương trình Video</h2><p>'+E(err.message)+'</p><a href="/">Quay về đăng nhập</a></div>';
  }
