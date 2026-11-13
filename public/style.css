@@ -208,3 +208,9 @@ body{background:#eef2f9}
 .view-only-card small{color:#94a2b6;font-size:12px}
 .view-only-disabled{margin-top:17px;background:#ebeff5;color:#8897ae;padding:12px 18px;font-weight:700;font-size:12px;border-radius:7px;width:max-content;max-width:100%;cursor:not-allowed}
 @media(max-width:800px){.view-only-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.view-only-fields{grid-template-columns:1fr}.view-only-section{padding:17px}.view-only-table{font-size:10px;gap:5px;padding:11px}}
+
+/* Qbook video portal entry — supplementary to the existing shipping navigation */
+.qbook-video-link{display:flex;align-items:center;gap:10px;margin:18px 12px 8px;padding:13px 14px;border:1px solid rgba(147,197,253,.22);border-radius:10px;background:rgba(30,93,175,.18);color:#ecf5ff;text-decoration:none;font-weight:700;font-size:13px;transition:background .18s ease}
+.qbook-video-link:hover,.qbook-video-link:focus-visible{background:rgba(30,93,175,.35);outline:2px solid #82b7f8;outline-offset:2px}
+.qbook-video-mobile-link{display:none;color:#17529c;border:1px solid #bbd2ee;border-radius:9px;padding:10px 12px;text-decoration:none;font-size:12px;font-weight:700}
+@media(max-width:800px){.qbook-video-mobile-link{display:inline-flex;align-items:center;white-space:nowrap}.qbook-video-link{display:none}}
