@@ -19,3 +19,14 @@
 .qbn-close{border:1px solid #53729d;border-radius:7px;background:#1b416f;color:white;padding:8px 11px}
 @media(max-width:800px){.qbn-drawer-toggle{display:inline-flex}.qbn-tree{gap:3px}}
 @media(prefers-reduced-motion:reduce){.qbn-tree button{scroll-behavior:auto}}
+
+/* Override former flat tabs: preserve navy accordion appearance. */
+.shipping-sidebar .tabs.qbn-tree{display:grid;align-content:start;overflow-y:auto;max-height:calc(100dvh - 218px)}
+.shipping-sidebar .tabs.qbn-tree button.qbn-branch,.shipping-sidebar .tabs.qbn-tree button.qbn-leaf{background:transparent;color:#d8e7fc;border-radius:8px;font-size:13px;padding:11px 12px;min-height:40px;white-space:normal}
+.shipping-sidebar .tabs.qbn-tree button.qbn-open{background:#1d477c;color:#fff}
+.shipping-sidebar .tabs.qbn-tree button.qbn-active{background:#1b65c5;color:#fff}
+.shipping-sidebar .tabs.qbn-tree button:hover{background:#173e70;color:#fff}
+.shipping-sidebar .tabs.qbn-tree .qbn-depth-2{font-size:12px}
+.shipping-sidebar .tabs.qbn-tree .qbn-depth-3{font-size:11px;min-height:34px;padding:9px 10px}
+@media(max-width:840px){.qbn-drawer-toggle{display:inline-flex}.qbn-mobile-pane{width:min(355px,92vw)}}
+@media(max-width:420px){.shipping-heading .qbn-drawer-toggle{padding:8px;font-size:12px}.studio-top .qbn-drawer-toggle{font-size:12px;padding:8px}}
