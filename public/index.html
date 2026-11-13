@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><title>QBOOK · Quản lý chuyển hàng</title><link rel="stylesheet" href="/style.css"></head>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><title>QBOOK · Quản lý chuyển hàng</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/navigation.css"></head>
 <body>
 <header class="top"><div class="brand"><span class="symbol">Q</span><div><strong>QBOOK · Chuyển hàng</strong><small>Sale lên đơn · Đóng hàng · Vận đơn</small></div></div><div class="profile"><span id="userInfo"></span><button class="ghost" id="logoutBtn" hidden>Thoát</button></div></header>
 <main class="container"><div id="notice" class="notice" role="status" aria-live="polite"></div>
@@ -9,12 +9,11 @@
  <aside class="shipping-sidebar">
   <div class="shipping-logo"><strong>QBOOK</strong><small>QUẢN LÝ ĐƠN HÀNG</small></div>
   <div class="shipping-nav-title">CHỨC NĂNG</div>
-  <nav class="tabs" id="tabs" aria-label="Menu quản lý chuyển hàng"></nav>
-  <a href="/video.html" class="qbook-video-link" aria-label="Mở phân hệ Quản lý sản xuất video sách">🎬 <span>Quản lý video sách</span></a>
+  <nav class="tabs qbn-tree" id="tabs" aria-label="Điều hướng quản trị QBOOK"></nav>
   <div class="shipping-sidebar-footer">QBOOKS · 2026</div>
  </aside>
  <div class="shipping-workspace">
- <div class="shipping-heading"><div><small>QUẢN LÝ ĐƠN HÀNG</small><h1 id="shippingHeading">Tổng quan</h1><p id="shippingSubheading">Theo dõi toàn bộ quá trình xử lý đơn</p></div><span id="shippingUserBadge"></span><a href="/video.html" class="qbook-video-mobile-link">🎬 Video sách</a></div>
+ <div class="shipping-heading"><button id="qbnToggle" type="button" class="qbn-drawer-toggle" aria-label="Mở menu chức năng" aria-expanded="false">☰ Menu</button><div><small>QUẢN LÝ ĐƠN HÀNG</small><h1 id="shippingHeading">Tổng quan</h1><p id="shippingSubheading">Theo dõi toàn bộ quá trình xử lý đơn</p></div><span id="shippingUserBadge"></span><a href="/video.html" class="qbook-video-mobile-link">🎬 Video sách</a></div>
  <section id="shippingOperationGroup" hidden>
    <div class="shipping-operation-title"><strong>Quản lý đơn hàng</strong><small>Chọn chức năng nghiệp vụ</small></div>
    <nav id="shippingOperationTabs" class="shipping-operation-tabs" aria-label="Các chức năng quản lý đơn hàng"></nav>
@@ -95,4 +94,6 @@
  <div id="orderSummaryInfo"></div>
  <h3>Hồ sơ ảnh/video & liên kết</h3>
  <div id="orderSummaryMedia" class="overview-media-links"></div>
-</dialog><footer>QBOOK · Quản lý chuyển hàng · Google Sheets · Drive · D1 · R2</footer><script type="module" src="/app.js"></script></body></html>
+</dialog><footer>QBOOK · Quản lý chuyển hàng · Google Sheets · Drive · D1 · R2</footer><script src="/navigation.js"></script>
+<script type="module" src="/app.js"></script><div id="qbnDrawer" class="qbn-drawer" hidden aria-hidden="true"><div class="qbn-mobile-pane"><div class="qbn-mobile-head"><span>QBOOK · CHỨC NĂNG</span><button id="qbnClose" class="qbn-close" type="button">Đóng ✕</button></div><nav id="qbnMobileTree" class="qbn-tree" aria-label="Điều hướng trên điện thoại"></nav></div></div>
+</body></html>
