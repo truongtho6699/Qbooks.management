@@ -185,6 +185,11 @@ async function bootstrap(){
   state.orders=[];state.overviewData=null;state.selected=null;state.lockedOrderIds.clear();
   const rights=capabilities();
   state.tab=rights.admin||r.user.role==='VIEW'?'overview':rights.pack?'pack':rights.ship?'ship':'sale';
+  const requested=new URLSearchParams(window.location.search);
+  const target=requested.get('tab'),toAdmin=requested.get('nav')==='admin';
+  if(toAdmin&&rights.admin)state.tab='staff';
+  else if(['overview','sale','pack','ship'].includes(target)&&((target==='overview'&&(rights.admin||rights.pack||rights.ship||rights.view))||(target==='sale'&&(rights.sale||rights.view))||(target==='pack'&&(rights.pack||rights.view))||(target==='ship'&&(rights.ship||rights.view))))state.tab=target;
+  if(target||toAdmin)window.QbookNavigation?.focusOrders();
   renderTabs();switchView();
  }catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;notice(e.message);}
 }
@@ -199,62 +204,39 @@ function availableOperationTabs(){
 }
 function isOperationTab(key){return ['sale','pack','ship'].includes(key);}
 function renderTabs(){
- const r=capabilities(),operations=availableOperationTabs(),orderTabs=[
-  ...(r.admin||r.pack||r.ship||r.view?[['overview','Tổng hợp','▦']]:[]),
-  ...operations
- ];
+ const r=capabilities(),operations=availableOperationTabs();
+ const orderTabs=[...(r.admin||r.pack||r.ship||r.view?[['overview','Tổng hợp']]:[]),...operations.map(([id,label])=>[id,label])];
  const desktop=$('tabs'),mobile=$('mobileShippingTabs'),inner=$('shippingOperationTabs');
  desktop.replaceChildren();mobile.replaceChildren();inner.replaceChildren();
- const expanded=!!state.orderMenuExpanded;
- const addMobile=(key,label,icon,handler,selected=false)=>{
-  const b=button('',handler,selected?'selected':'');
-  b.classList.add('shipping-mobile-item');
-  b.append(el('span',icon,'shipping-mobile-icon'),el('span',label,'shipping-mobile-label'));
-  b.setAttribute('aria-label',label);
-  b.setAttribute('aria-current',selected?'page':'false');
-  mobile.append(b);
+ if(!window.QbookNavigation)throw Error('Thiếu bộ điều hướng QBOOK');
+ window.QbookNavigation.render({
+   desktop,mobileTree:$('qbnMobileTree'),drawer:$('qbnDrawer'),toggle:$('qbnToggle'),
+   area:state.tab==='staff'?'admin':'orders',activeView:state.tab,orders:orderTabs,admin:r.admin,
+   onOrder:key=>tab(key),
+   onMedia:key=>{window.location.href='/video.html?view='+encodeURIComponent(key);},
+   onAdmin:()=>tab('staff')
+ });
+ const active=['overview','sale','pack','ship'].includes(state.tab);
+ const addMobile=(id,label,icon,fn,isActive)=>{
+   const b=button('',fn,isActive?'selected':'');b.classList.add('shipping-mobile-item');
+   b.append(el('span',icon,'shipping-mobile-icon'),el('span',label,'shipping-mobile-label'));
+   b.setAttribute('aria-label',label);b.setAttribute('aria-current',isActive?'page':'false');mobile.append(b);
  };
  if(orderTabs.length){
-  const parent=el('div',null,'shipping-parent-group');
-  const parentButton=button('▣  Quản lý đơn hàng',()=>{
-   state.orderMenuExpanded=!state.orderMenuExpanded;
-   renderTabs();
-  },expanded?'selected':'');
-  parentButton.classList.add('shipping-nav-button','shipping-parent-button');
-  parentButton.setAttribute('aria-expanded',String(expanded));
-  parentButton.setAttribute('aria-controls','orderSidebarChildren');
-  parentButton.setAttribute('aria-label','Quản lý đơn hàng, '+(expanded?'thu gọn':'mở rộng'));
-  parentButton.append(el('span',expanded?'▾':'▸','shipping-menu-chevron'));
-  parent.append(parentButton);
-  const children=el('div',null,'shipping-child-menu');
-  children.id='orderSidebarChildren';
-  children.hidden=!expanded;
-  for(const [key,label,icon] of orderTabs){
-   const child=button(icon+'  '+label,()=>tab(key),state.tab===key?'selected':'');
-   child.classList.add('shipping-nav-button','shipping-nav-child');
-   child.setAttribute('aria-current',state.tab===key?'page':'false');
-   children.append(child);
-   const sub=button(label,()=>tab(key),state.tab===key?'selected':'');
-   sub.classList.add('shipping-operation-tab');
-   sub.setAttribute('aria-current',state.tab===key?'page':'false');
-   inner.append(sub);
-  }
-  parent.append(children);
-  desktop.append(parent);
-  addMobile('orders','Đơn hàng','▣',()=>{
-   state.orderMenuExpanded=!state.orderMenuExpanded;
-   renderTabs();
-   if(state.orderMenuExpanded)$('shippingOperationGroup').scrollIntoView({behavior:'smooth',block:'start'});
-  },expanded);
+   addMobile('orders','Giao hàng','▣',()=>{
+     window.QbookNavigation.focusOrders();state.orderMenuExpanded=!state.orderMenuExpanded;
+     if(state.orderMenuExpanded){const first=orderTabs.find(x=>x[0]===state.tab)||orderTabs[0];tab(first[0]);}
+     else renderTabs();
+   },active);
  }
- if(r.admin){
-  const staffButton=button('⚙  Quản trị hệ thống',()=>tab('staff'),state.tab==='staff'?'selected':'');
-  staffButton.classList.add('shipping-nav-button');
-  staffButton.setAttribute('aria-current',state.tab==='staff'?'page':'false');
-  desktop.append(staffButton);
-  addMobile('staff','Quản trị','⚙',()=>tab('staff'),state.tab==='staff');
- }
- show('shippingOperationGroup',expanded&&orderTabs.length>0);
+ addMobile('media','Media','◉',()=>window.location.href='/video.html',false);
+ if(r.admin)addMobile('admin','Quản trị','⚙',()=>tab('staff'),state.tab==='staff');
+ for(const [id,label]of orderTabs){const b=button(label,()=>tab(id),state.tab===id?'selected':'');b.classList.add('shipping-operation-tab');inner.append(b);}
+ show('shippingOperationGroup',state.orderMenuExpanded&&active&&orderTabs.length>0);
+ const close=$('qbnClose');
+ if(close)close.onclick=()=>{window.QbookNavigation.closeDrawer();renderTabs();};
+ const drawer=$('qbnDrawer');
+ if(drawer)drawer.onclick=e=>{if(e.target===drawer){window.QbookNavigation.closeDrawer();renderTabs();}};
 }
 
 function viewOnlyLayout(key){
@@ -306,7 +288,7 @@ async function releaseLocks(){
  const ids=[...state.lockedOrderIds];state.lockedOrderIds.clear();
  await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
 }
-function tab(key){if(state.lockedOrderIds.size)releaseLocks();state.tab=key;state.orderMenuExpanded=key!=='staff';switchView();}
+function tab(key){if(state.lockedOrderIds.size)releaseLocks();state.tab=key;state.orderMenuExpanded=key!=='staff';if(key==='staff')window.QbookNavigation?.focusAdmin();else window.QbookNavigation?.focusOrders();switchView();}
 const MEDIA_LABELS={ANH_HOA_DON:'Ảnh hóa đơn',VIDEO_DONG_HANG:'Video đóng hàng',HANG_HOA:'Ảnh hàng hóa',GIAO_HANG:'Ảnh bàn giao'};
 const LINK_LABELS=[['packing_folder_url','Thư mục đóng hàng'],['shipping_folder_url','Thư mục vận đơn'],['invoice_folder_url','Thư mục ảnh hóa đơn'],['video_folder_url','Thư mục video'],['goods_folder_url','Thư mục ảnh hàng hóa']];
 function safeDriveUrl(value){
