@@ -1,0 +1,21 @@
+/* Shared QBOOK shipping / media accordion navigation */
+.qbn-tree{display:grid;gap:5px;align-content:start}
+.qbn-tree button{font-family:inherit;cursor:pointer;width:100%;border:0;border-radius:8px;text-align:left}
+.qbn-branch,.qbn-leaf{display:flex;align-items:center;justify-content:space-between;gap:9px;padding:11px 12px;font-size:13px;line-height:1.35;min-height:42px;color:#d8e7fc;background:transparent;font-weight:680}
+.qbn-branch:hover,.qbn-leaf:hover{background:#173e70;color:#fff}
+.qbn-branch.qbn-open{background:#1d477c;color:#fff}
+.qbn-leaf.qbn-active{background:#1b65c5;color:#fff;font-weight:800}
+.qbn-chevron{margin-left:auto;color:#afcfff;font-size:16px}
+.qbn-depth-2{font-size:12px;min-height:39px;padding-left:15px}
+.qbn-depth-3{font-size:12px;min-height:34px;padding-left:14px;font-weight:550}
+.qbn-children{margin:0 0 5px 12px;padding:2px 0 3px 8px;border-left:1px solid #4d6c98;display:grid;gap:3px}
+.qbn-children .qbn-children{margin-left:10px;border-color:#5578a7}
+.qbn-tree button:focus-visible{outline:2px solid #a7d2ff;outline-offset:2px}
+.qbn-drawer-toggle{display:none;align-items:center;justify-content:center;gap:7px;background:#eaf2ff;color:#174c91;border:1px solid #bfd4f1;border-radius:9px;padding:9px 12px;font-weight:760;font-size:13px}
+.qbn-drawer{position:fixed;inset:0;z-index:9000;background:#061b38b8;display:none}
+.qbn-drawer:not([hidden]){display:block}
+.qbn-mobile-pane{position:absolute;top:0;left:0;bottom:0;max-width:min(355px,92vw);width:345px;background:#0b2348;overflow:auto;padding:18px 13px 30px;box-shadow:15px 0 45px #061b3855}
+.qbn-mobile-head{display:flex;justify-content:space-between;align-items:center;color:white;font-weight:850;padding:2px 5px 14px}
+.qbn-close{border:1px solid #53729d;border-radius:7px;background:#1b416f;color:white;padding:8px 11px}
+@media(max-width:800px){.qbn-drawer-toggle{display:inline-flex}.qbn-tree{gap:3px}}
+@media(prefers-reduced-motion:reduce){.qbn-tree button{scroll-behavior:auto}}
