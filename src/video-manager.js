@@ -16,6 +16,12 @@ export async function videoApi(req,env,u){
  const requireRight=r=>{if(!rights[r]&&!rights.admin)throw err('Tài khoản chưa được cấp quyền chức năng này.',403);};
  const body=async()=>{try{return await req.json()}catch{throw err('Nội dung gửi lên không hợp lệ.')}};
  if(method==='GET'&&path==='/api/video/bootstrap')return j({user:{id:u.id,name:u.name,email:u.email,role:u.role},rights});
+ if(method==='GET'&&path==='/api/video/lessons'){
+  const book=str(url.searchParams.get('book'),60);
+  const sql='SELECT id,book_code,week,lesson_no,period,title,page FROM video_lessons'+(book?' WHERE book_code=?':'')+' ORDER BY book_code,id LIMIT 2500';
+  const data=await db.prepare(sql).bind(...(book?[book]:[])).all();
+  return j({lessons:data.results||[]});
+ }
  if(method==='GET'&&path==='/api/video/overview'){
   const totals=await db.prepare("SELECT COUNT(*) total, SUM(CASE WHEN status!='CHỜ QUAY' THEN 1 ELSE 0 END) filmed,SUM(CASE WHEN status IN ('CHỜ DUYỆT','ĐÃ PHÁT HÀNH') THEN 1 ELSE 0 END) edited,SUM(CASE WHEN status='ĐÃ PHÁT HÀNH' THEN 1 ELSE 0 END) published FROM video_items").first();
   const books=await db.prepare("SELECT b.id,b.code,b.name,b.target_count,COUNT(v.id) total,SUM(CASE WHEN v.status!='CHỜ QUAY' THEN 1 ELSE 0 END) filmed,SUM(CASE WHEN v.status='ĐÃ PHÁT HÀNH' THEN 1 ELSE 0 END) published FROM video_books b LEFT JOIN video_items v ON b.id=v.book_id GROUP BY b.id ORDER BY b.created_at DESC LIMIT 150").all();
@@ -44,9 +50,9 @@ export async function videoApi(req,env,u){
  if(method==='POST'&&path==='/api/video/items'){
   requireRight('manage');const b=await body(),book=str(b.book_id,100),title=str(b.title,300);
   if(!book||!title)throw err('Chọn đầu sách và nhập tên video.');
-  if(!(await db.prepare('SELECT id FROM video_books WHERE id=?').bind(book).first()))throw err('Đầu sách không tồn tại.');
+  const bookRecord=await db.prepare('SELECT id,code FROM video_books WHERE id=?').bind(book).first();if(!bookRecord)throw err('Đầu sách không tồn tại.');const lessonId=str(b.lesson_id,100);if(lessonId&&!await db.prepare('SELECT id FROM video_lessons WHERE id=? AND book_code=?').bind(lessonId,bookRecord.code).first())throw err('Bài học không thuộc đầu sách đã chọn.');
   const id=crypto.randomUUID();
-  await db.prepare('INSERT INTO video_items(id,book_id,title,lesson,lesson_group,teacher,note) VALUES(?,?,?,?,?,?,?)').bind(id,book,title,str(b.lesson,150),str(b.lesson_group,150),str(b.teacher,200),str(b.note,2000)).run();
+  await db.prepare('INSERT INTO video_items(id,book_id,title,lesson,lesson_group,teacher,note,lesson_id) VALUES(?,?,?,?,?,?,?,?)').bind(id,book,title,str(b.lesson,150),str(b.lesson_group,150),str(b.teacher,200),str(b.note,2000),lessonId||null).run();
   await log(db,u,'CREATE_VIDEO',id,title);return j({id},201);
  }
  const match=path.match(/^\/api\/video\/items\/([a-f0-9-]{36})$/);
