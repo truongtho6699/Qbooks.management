@@ -189,7 +189,7 @@ async function bootstrap(){
   const target=requested.get('tab'),toAdmin=requested.get('nav')==='admin';
   if(toAdmin&&rights.admin)state.tab='staff';
   else if(['overview','sale','pack','ship'].includes(target)&&((target==='overview'&&(rights.admin||rights.pack||rights.ship||rights.view))||(target==='sale'&&(rights.sale||rights.view))||(target==='pack'&&(rights.pack||rights.view))||(target==='ship'&&(rights.ship||rights.view))))state.tab=target;
-  if(target||toAdmin)window.QbookNavigation?.focusOrders();
+  if(toAdmin&&rights.admin)window.QbookNavigation?.focusAdmin();else if(target)window.QbookNavigation?.focusOrders();
   renderTabs();switchView();
  }catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;notice(e.message);}
 }
