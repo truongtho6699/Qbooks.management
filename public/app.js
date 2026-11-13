@@ -1,7 +1,7 @@
 
 const CHUNK_BYTES=8*1024*1024;
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set()};
+const state={token:sessionStorage.getItem('qbooks_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
 const $all=(s)=>[...document.querySelectorAll(s)];
 function notice(text='',ok=false){$('notice').textContent=text;$('notice').className=ok?'notice ok':'notice';}
@@ -199,16 +199,13 @@ function availableOperationTabs(){
 }
 function isOperationTab(key){return ['sale','pack','ship'].includes(key);}
 function renderTabs(){
- const r=capabilities(),operations=availableOperationTabs(),active=isOperationTab(state.tab);
+ const r=capabilities(),operations=availableOperationTabs(),orderTabs=[
+  ...(r.admin||r.pack||r.ship||r.view?[['overview','Tổng hợp','▦']]:[]),
+  ...operations
+ ];
  const desktop=$('tabs'),mobile=$('mobileShippingTabs'),inner=$('shippingOperationTabs');
  desktop.replaceChildren();mobile.replaceChildren();inner.replaceChildren();
- const addDesktop=(key,label,icon,handler,selected=false)=>{
-  const b=button(icon+'  '+label,handler,selected?'selected':'');
-  b.classList.add('shipping-nav-button');
-  b.setAttribute('aria-current',selected?'page':'false');
-  desktop.append(b);
-  return b;
- };
+ const expanded=!!state.orderMenuExpanded;
  const addMobile=(key,label,icon,handler,selected=false)=>{
   const b=button('',handler,selected?'selected':'');
   b.classList.add('shipping-mobile-item');
@@ -217,38 +214,49 @@ function renderTabs(){
   b.setAttribute('aria-current',selected?'page':'false');
   mobile.append(b);
  };
- if(r.admin||r.pack||r.ship||r.view){
-  addDesktop('overview','Tổng quan','▦',()=>tab('overview'),state.tab==='overview');
-  addMobile('overview','Tổng quan','▦',()=>tab('overview'),state.tab==='overview');
- }
- if(operations.length){
+ if(orderTabs.length){
   const parent=el('div',null,'shipping-parent-group');
-  const parentButton=button('▣  Chuyển hàng',()=>tab(state.lastOperationTab&&operations.some(x=>x[0]===state.lastOperationTab)?state.lastOperationTab:operations[0][0]),active?'selected':'');
+  const parentButton=button('▣  Quản lý đơn hàng',()=>{
+   state.orderMenuExpanded=!state.orderMenuExpanded;
+   renderTabs();
+  },expanded?'selected':'');
   parentButton.classList.add('shipping-nav-button','shipping-parent-button');
-  parentButton.setAttribute('aria-expanded',String(active));
+  parentButton.setAttribute('aria-expanded',String(expanded));
+  parentButton.setAttribute('aria-controls','orderSidebarChildren');
+  parentButton.setAttribute('aria-label','Quản lý đơn hàng, '+(expanded?'thu gọn':'mở rộng'));
+  parentButton.append(el('span',expanded?'▾':'▸','shipping-menu-chevron'));
   parent.append(parentButton);
   const children=el('div',null,'shipping-child-menu');
-  for(const [key,label,icon] of operations){
+  children.id='orderSidebarChildren';
+  children.hidden=!expanded;
+  for(const [key,label,icon] of orderTabs){
    const child=button(icon+'  '+label,()=>tab(key),state.tab===key?'selected':'');
    child.classList.add('shipping-nav-button','shipping-nav-child');
+   child.setAttribute('aria-current',state.tab===key?'page':'false');
    children.append(child);
-   const innerButton=button(label,()=>tab(key),state.tab===key?'selected':'');
-   innerButton.classList.add('shipping-operation-tab');
-   innerButton.setAttribute('aria-current',state.tab===key?'page':'false');
-   inner.append(innerButton);
+   const sub=button(label,()=>tab(key),state.tab===key?'selected':'');
+   sub.classList.add('shipping-operation-tab');
+   sub.setAttribute('aria-current',state.tab===key?'page':'false');
+   inner.append(sub);
   }
-  parent.append(children);desktop.append(parent);
-  addMobile('transfer','Chuyển hàng','▣',()=>{
-   if(!active)tab(state.lastOperationTab&&operations.some(x=>x[0]===state.lastOperationTab)?state.lastOperationTab:operations[0][0]);
-   else $('shippingOperationGroup').scrollIntoView({behavior:'smooth',block:'start'});
-  },active);
+  parent.append(children);
+  desktop.append(parent);
+  addMobile('orders','Đơn hàng','▣',()=>{
+   state.orderMenuExpanded=!state.orderMenuExpanded;
+   renderTabs();
+   if(state.orderMenuExpanded)$('shippingOperationGroup').scrollIntoView({behavior:'smooth',block:'start'});
+  },expanded);
  }
  if(r.admin){
-  addDesktop('staff','Quản trị','⚙',()=>tab('staff'),state.tab==='staff');
+  const staffButton=button('⚙  Quản trị hệ thống',()=>tab('staff'),state.tab==='staff'?'selected':'');
+  staffButton.classList.add('shipping-nav-button');
+  staffButton.setAttribute('aria-current',state.tab==='staff'?'page':'false');
+  desktop.append(staffButton);
   addMobile('staff','Quản trị','⚙',()=>tab('staff'),state.tab==='staff');
  }
- show('shippingOperationGroup',active);
+ show('shippingOperationGroup',expanded&&orderTabs.length>0);
 }
+
 function viewOnlyLayout(key){
  const content=$('viewOnlyContent');
  const heading=(label)=>'<section class="view-only-section"><h2>'+label+'</h2><p>Chỉ xem bố cục. Không có dữ liệu hoặc quyền thao tác.</p>';
@@ -298,7 +306,7 @@ async function releaseLocks(){
  const ids=[...state.lockedOrderIds];state.lockedOrderIds.clear();
  await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
 }
-function tab(key){if(state.lockedOrderIds.size)releaseLocks();state.tab=key;switchView();}
+function tab(key){if(state.lockedOrderIds.size)releaseLocks();state.tab=key;state.orderMenuExpanded=key!=='staff';switchView();}
 const MEDIA_LABELS={ANH_HOA_DON:'Ảnh hóa đơn',VIDEO_DONG_HANG:'Video đóng hàng',HANG_HOA:'Ảnh hàng hóa',GIAO_HANG:'Ảnh bàn giao'};
 const LINK_LABELS=[['packing_folder_url','Thư mục đóng hàng'],['shipping_folder_url','Thư mục vận đơn'],['invoice_folder_url','Thư mục ảnh hóa đơn'],['video_folder_url','Thư mục video'],['goods_folder_url','Thư mục ảnh hàng hóa']];
 function safeDriveUrl(value){
