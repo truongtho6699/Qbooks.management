@@ -214,3 +214,14 @@ body{background:#eef2f9}
 .qbook-video-link:hover,.qbook-video-link:focus-visible{background:rgba(30,93,175,.35);outline:2px solid #82b7f8;outline-offset:2px}
 .qbook-video-mobile-link{display:none;color:#17529c;border:1px solid #bbd2ee;border-radius:9px;padding:10px 12px;text-decoration:none;font-size:12px;font-weight:700}
 @media(max-width:800px){.qbook-video-mobile-link{display:inline-flex;align-items:center;white-space:nowrap}.qbook-video-link{display:none}}
+
+/* Accordion: Quản lý đơn hàng → Tổng hợp / Sale / Đóng hàng / Vận đơn */
+.shipping-parent-group{width:100%;min-width:0}
+.shipping-parent-button{display:flex!important;align-items:center;justify-content:space-between;gap:8px}
+.shipping-parent-button .shipping-menu-chevron{margin-left:auto;font-size:16px;font-weight:800;line-height:1;color:#bcd5ff}
+.shipping-child-menu[hidden]{display:none!important}
+.shipping-child-menu:not([hidden]){display:grid;animation:order-nav-expand .14s ease-out}
+.shipping-parent-button:focus-visible,.shipping-nav-child:focus-visible{outline:2px solid #8ec5ff!important;outline-offset:2px}
+@keyframes order-nav-expand{from{opacity:.2;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@media(min-width:801px){#shippingOperationGroup{display:none!important}}
+@media(prefers-reduced-motion:reduce){.shipping-child-menu:not([hidden]){animation:none}}
