@@ -496,7 +496,8 @@ async function handle(req,env){
   if(user.role==='SALE'&&!user.can_pack&&!user.can_ship&&!user.can_admin){conditions.push('(created_by=? OR sale_name=?)');params.push(user.id,user.name);}
   if(status){conditions.push('status=?');params.push(status);}
   if(query){conditions.push('(invoice_codes LIKE ? OR customer LIKE ? OR sale_name LIKE ?)');params.push(...Array(3).fill('%'+query+'%'));}
-  const sql='SELECT * FROM orders'+(conditions.length?' WHERE '+conditions.join(' AND '):'')+' ORDER BY created_at DESC LIMIT 300';
+  const projection=user.role==='VIEW'?'id,invoice_codes,sale_name,customer,quantity,address,carrier,transport,urgent,status,group_id,created_at,updated_at,source_system':'*';
+  const sql='SELECT '+projection+' FROM orders'+(conditions.length?' WHERE '+conditions.join(' AND '):'')+' ORDER BY created_at DESC LIMIT 300';
   const rows=await env.DB.prepare(sql).bind(...params).all();
   return json({orders:(rows.results||[]).map(o=>({...o,title:orderTitle(o)}))});
  }
@@ -519,12 +520,12 @@ async function handle(req,env){
  }
  if(method==='POST'&&path==='/api/groups'){
   await requireAnyMenu(['orders.sale','orders.ship']);needRole(user,'SALE','SHIPPER');
-  if(env.QBOOKS_ENABLE_LOCAL_SALE!=='true')
-   throw Object.assign(new Error('Gộp đơn thực hiện tại SALE_GOP_VAN_DON. Chưa bật ghi nhóm từ Cloudflare.'),{status:409});const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
+  const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
   if(ids.length<2)throw Error('Cần ít nhất 2 đơn để gộp.');
   if(ids.length>100)throw Error('Tối đa 100 đơn/nhóm.');
-  const rows=await env.DB.prepare('SELECT id,status,group_id FROM orders WHERE id IN ('+ids.map(()=>'?').join(',')+')').bind(...ids).all();
+  const rows=await env.DB.prepare('SELECT id,status,group_id,source_system FROM orders WHERE id IN ('+ids.map(()=>'?').join(',')+')').bind(...ids).all();
   if(rows.results.length!==ids.length||rows.results.some(o=>![STATUS.PACK,STATUS.SHIP].includes(o.status)))throw Error('Có đơn không hợp lệ hoặc đã hoàn thành.');
+  if(rows.results.some(o=>o.source_system!=='D1'))throw Object.assign(new Error('Chỉ gộp đơn được tạo trên Qbook (nguồn D1). Đơn nhập từ Google Sheets phải gộp tại SALE_GOP_VAN_DON.'),{status:409});
   const existing=[...new Set(rows.results.map(o=>o.group_id).filter(Boolean))];
   if(existing.length>1)throw Error('Các đơn đã thuộc nhiều nhóm khác nhau.');
   const groupId=existing[0]||('VD'+Date.now());
