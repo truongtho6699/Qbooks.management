@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]}};
+const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]},menuKeys:[]};
 const NAV=[
  {id:'dashboard',text:'Bảng điều khiển',icon:'▦',group:'CHUNG'},
  {id:'adminOverview',text:'Tổng quan quản trị',icon:'▤',group:'CHUNG'},
@@ -30,15 +30,9 @@ async function api(method,path,data){
  if(!r.ok)throw Error(j.error||'Lỗi máy chủ '+r.status);return j;
 }
 function can(section){
- if(state.rights.admin)return true;
- if(['dashboard','filmOverview','postOverview','production','booksProgress','report'].includes(section))return !!state.user;
- if(section==='adminOverview'||section==='permissions')return !!state.rights.manage||!!state.rights.admin;
- if(section==='bookDetail'||section==='catalog')return !!state.user;
- if(section==='film')return !!state.rights.film;
- if(section==='createVideo')return !!state.rights.manage;
- if(section==='edit')return !!state.rights.edit||!!state.rights.manage;
- return !!state.rights.manage;
+ return !!state.rights.admin||state.menuKeys.includes('media.'+section);
 }
+
 const panel=(title,content,subtitle='')=>'<section class="panel"><div class="panelhead"><div><h2>'+E(title)+'</h2>'+(subtitle?'<p class="sub">'+E(subtitle)+'</p>':'')+'</div></div>'+content+'</section>';
 const badge=s=>'<span class="state '+(statColor[s]||'')+'">'+E(s||'Chưa có')+'</span>';
 function table(headers,rows,empty='Chưa có dữ liệu'){
@@ -60,14 +54,14 @@ function renderNav(){
  window.QbookNavigation.render({
   desktop:$('desktopNav'),mobileTree:$('qbnMobileTree'),drawer:$('qbnDrawer'),toggle:$('qbnToggle'),
   area:'media',activeView:state.view,
-  orders:[['overview','Tổng hợp'],['sale','Sale lên đơn'],['pack','Đóng hàng'],['ship','Vận đơn']],
-  admin:!!state.rights.admin,canMedia:id=>can(id),
+  orders:[['overview','Tổng hợp'],['sale','Sale lên đơn'],['pack','Đóng hàng'],['ship','Vận đơn']].filter(([id])=>state.menuKeys.includes('orders.'+id)),
+  admin:state.menuKeys.includes('system.admin'),canMedia:id=>can(id),
   onOrder:id=>{window.location.href='/?nav=orders&tab='+encodeURIComponent(id);},
   onMedia:id=>navigate(id),
   onAdmin:()=>{window.location.href='/?nav=admin';}
  });
  const active=state.view;
- $('mobileNav').innerHTML=mobile.map(item=>{
+ $('mobileNav').innerHTML=mobile.filter(item=>item.id==='more'?NAV.some(n=>can(n.id)&&!['dashboard','film','edit','booksProgress'].includes(n.id)):can(item.id)).map(item=>{
   const current=item.id==='more'?['books','catalog','staff','permissions','audit','report','production','filmOverview','postOverview'].includes(active):active===item.id;
   return '<button class="mobile-item '+(current?'active':'')+'" data-view="'+item.id+'"><span class="nav-icon">'+item.icon+'</span><span>'+E(item.text)+'</span></button>';
  }).join('');
@@ -460,9 +454,10 @@ async function boot(){
  if(!state.token){window.location.href='/';return;}
  try{
   const b=await api('GET','/api/video/bootstrap');state.user=b.user;state.rights=b.rights;
+  const access=await api('GET','/api/menu-access');state.menuKeys=access.menus||[];
   $('currentUser').textContent=b.user.name;
   const googleCfg=await fetch('/api/google/config').then(r=>r.json()).catch(()=>({}));state.googleClientId=googleCfg.clientId||'';
-  await load();const requested=new URLSearchParams(window.location.search).get('view');navigate(requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:'dashboard');
+  await load();const requested=new URLSearchParams(window.location.search).get('view');const target=requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:NAV.find(n=>can(n.id))?.id;if(target)navigate(target);else {document.getElementById('page').textContent='Tài khoản chưa được cấp quyền menu Media. Liên hệ Quản trị hệ thống.';renderNav();}
  }catch(err){if(err.message.includes('đăng nhập')||err.message.includes('401')){sessionStorage.removeItem('qbooks_token');window.location.href='/';return;}
   $('page').innerHTML='<div class="panel"><h2>Không mở được chương trình Video</h2><p>'+E(err.message)+'</p><a href="/">Quay về đăng nhập</a></div>';
  }
