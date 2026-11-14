@@ -17,7 +17,7 @@ function mockDb(){
  };
 }
 const admin={id:'admin-id',name:'Admin',email:'admin@example.com',role:'ADMIN',can_admin:1};
-const filmUser={id:'staff-id',name:'Nhân viên',email:'staff@example.com',role:'SALE',can_admin:0,menuKeys:['media.film','media.edit','media.books','media.createVideo','media.staff','media.audit','media.permissions','media.dashboard']};
+const filmUser={id:'staff-id',name:'Nhân viên',email:'staff@example.com',role:'SALE',can_admin:0,menuKeys:['media.film','media.edit','media.books','media.createVideo','media.staff','media.audit','media.permissions','media.dashboard','media.production']};
 
 test('Video module requires login context from QBooks',async()=>{
  const env={DB:mockDb()};
