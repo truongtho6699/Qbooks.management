@@ -12,10 +12,14 @@ async function log(db,u,action,id='',details=''){await db.prepare('INSERT INTO v
 async function getOne(db,id){const v=await db.prepare('SELECT * FROM video_items WHERE id=?').bind(id).first();if(!v)throw err('Không tìm thấy video.',404);return v;}
 export async function videoApi(req,env,u){
  const url=new URL(req.url),path=url.pathname,method=req.method,db=env.DB,rights=await roles(db,u);
- if(!rights.admin&&!rights.film&&!rights.edit&&!rights.manage)throw err('Tài khoản chưa được cấp quyền sử dụng Quản lý video sách.',403);
+ const mediaMenus=(u.menuKeys||[]).filter(key=>key.startsWith('media.'));
+ const readOnly=u.role==='VIEW';
+ if(!rights.admin&&!rights.film&&!rights.edit&&!rights.manage&&!mediaMenus.length)throw err('Tài khoản chưa được cấp quyền sử dụng Quản lý video sách.',403);
+ if(readOnly&&method!=='GET')throw err('VIEW chỉ được xem dữ liệu trong các menu được phân quyền.',403);
+ if(readOnly&&['/api/video/staff','/api/video/audit'].includes(path))throw err('Không có quyền xem dữ liệu quản trị nhân sự.',403);
  const requireRight=r=>{if(!rights[r]&&!rights.admin)throw err('Tài khoản chưa được cấp quyền chức năng này.',403);};
  const body=async()=>{try{return await req.json()}catch{throw err('Nội dung gửi lên không hợp lệ.')}};
- if(method==='GET'&&path==='/api/video/bootstrap')return j({user:{id:u.id,name:u.name,email:u.email,role:u.role},rights});
+ if(method==='GET'&&path==='/api/video/bootstrap')return j({user:{id:u.id,name:u.name,email:u.email,role:u.role},rights:{...rights,readOnly},menus:mediaMenus});
  if(method==='GET'&&path==='/api/video/lessons'){
   const book=str(url.searchParams.get('book'),60);
   const sql='SELECT id,book_code,week,lesson_no,period,title,page FROM video_lessons'+(book?' WHERE book_code=?':'')+' ORDER BY book_code,id LIMIT 2500';
