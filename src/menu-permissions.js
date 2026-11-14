@@ -4,7 +4,7 @@ export const ORDER_MENUS=['orders.overview','orders.sale','orders.pack','orders.
 export const MEDIA_MENUS=[
  'media.dashboard','media.adminOverview','media.filmOverview','media.film','media.createVideo',
  'media.postOverview','media.edit','media.production','media.booksProgress','media.report',
- 'media.books','media.catalog','media.staff','media.audit'
+ 'media.books','media.catalog','media.staff','media.permissions','media.audit'
 ];
 export const MENU_KEYS=[...ORDER_MENUS,...MEDIA_MENUS,'system.admin'];
 export const MENU_LABELS={
@@ -31,7 +31,7 @@ export function menuDefaults(user,video={}) {
  if(film||edit||manage){for(const key of ['media.dashboard','media.booksProgress','media.catalog'])out.add(key);}
  if(film){out.add('media.filmOverview');out.add('media.film');}
  if(edit){out.add('media.postOverview');out.add('media.edit');}
- if(manage){for(const key of ['media.adminOverview','media.filmOverview','media.postOverview','media.edit','media.production','media.report','media.books','media.createVideo','media.staff','media.permissions','media.audit'])out.add(key);}
+ if(manage){for(const key of ['media.adminOverview','media.filmOverview','media.postOverview','media.edit','media.production','media.report','media.books','media.createVideo','media.staff','media.audit'])out.add(key);}
  return [...out];
 }
 export async function resolveMenuPermissions(db,user){
@@ -50,6 +50,8 @@ export async function resolveMenuPermissions(db,user){
  }
  // No read-only VIEW account can acquire administration via a menu grant.
  if(user.role==='VIEW'){chosen.delete('system.admin');chosen.delete('media.permissions');chosen.delete('media.staff');chosen.delete('media.audit');}
+ // Only a system administrator may view or modify Media account grants.
+ chosen.delete('media.permissions');
  return {keys:MENU_KEYS.filter(key=>chosen.has(key)),overrides,video:video||{can_film:0,can_edit:0,can_manage:0}};
 }
 export function allowedMenu(user,key){
