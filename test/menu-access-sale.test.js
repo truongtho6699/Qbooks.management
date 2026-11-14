@@ -49,7 +49,7 @@ function mockSellerDb(existing=null,menus={}){
     async first(){
       if(sql.includes('FROM sessions'))return {...seller};
       if(sql.includes('FROM video_role_grants'))return null;
-      if(sql.includes('SELECT id FROM orders WHERE UPPER(TRIM(invoice_codes))'))return existing;
+      if(sql.includes('SELECT id FROM orders WHERE REPLACE(REPLACE(UPPER(TRIM(invoice_codes))'))return existing;
       return null;
     },async all(){
       if(sql.includes('FROM user_menu_permissions'))return {results:Object.entries(menus).map(([menu_key,allowed])=>({menu_key,allowed:allowed?1:0}))};
