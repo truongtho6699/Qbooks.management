@@ -57,19 +57,49 @@ export async function videoApi(req,env,u){
  }
  const match=path.match(/^\/api\/video\/items\/([a-f0-9-]{36})$/);
  if(method==='PATCH'&&match){
-  const current=await getOne(db,match[1]);const b=await body(),action=str(b.action,40);
+  const current=await getOne(db,match[1]),input=await body(),action=str(input.action,40),note=str(input.note,2000);
+  const event=(kind,details='')=>db.prepare('INSERT INTO video_events(video_id,actor_id,event_type,details) VALUES(?,?,?,?)').bind(current.id,u.id,kind,details).run();
   if(action==='film'){
-   requireRight('film');if(!['CHỜ QUAY','ĐÃ QUAY'].includes(current.status))throw err('Video đã chuyển sang hậu kỳ.');
-   const link=safeUrl(b.raw_url);if(!link)throw err('Cần liên kết video gốc trên Drive.');
-   await db.prepare("UPDATE video_items SET raw_url=?,camera_id=?,filmed_at=CURRENT_TIMESTAMP,status='ĐÃ QUAY',note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(link,u.id,str(b.note,2000),current.id).run();
+    requireRight('film');
+    if(!['CHỜ QUAY','ĐÃ QUAY'].includes(current.status))throw err('Video đã chuyển sang hậu kỳ.',409);
+    const link=safeUrl(input.raw_url);if(!link)throw err('Cần link Drive của video gốc.');
+    if(current.raw_url===link&&current.status==='ĐÃ QUAY')return j({ok:true,unchanged:true});
+    const r=await db.prepare("UPDATE video_items SET raw_url=?,camera_id=COALESCE(camera_id,?),filmed_at=COALESCE(filmed_at,CURRENT_TIMESTAMP),status='ĐÃ QUAY',note=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('CHỜ QUAY','ĐÃ QUAY')").bind(link,u.id,note,current.id).run();
+    if(!r.meta?.changes)throw err('Video đã được người khác cập nhật.',409);
+    if(!current.filmed_at)await event('FILM_COMPLETED','Lần quay hoàn tất đầu tiên');
   }else if(action==='edit'){
-   requireRight('edit');if(!['ĐÃ QUAY','ĐANG HẬU KỲ','CHỜ DUYỆT'].includes(current.status))throw err('Video chưa được quay hoặc đã phát hành.');
-   const next=str(b.status,30);if(!['ĐANG HẬU KỲ','CHỜ DUYỆT','ĐÃ PHÁT HÀNH'].includes(next))throw err('Trạng thái hậu kỳ không hợp lệ.');
-   const output=safeUrl(b.output_url),youtube=safeUrl(b.youtube_url);
-   if(next==='ĐÃ PHÁT HÀNH'&&!youtube)throw err('Cần liên kết YouTube để phát hành.');
-   await db.prepare('UPDATE video_items SET editor_id=?,output_url=?,youtube_url=?,status=?,edited_at=CURRENT_TIMESTAMP,published_at=CASE WHEN ?=\'ĐÃ PHÁT HÀNH\' THEN CURRENT_TIMESTAMP ELSE published_at END,note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(u.id,output,youtube,next,next,str(b.note,2000),current.id).run();
+    requireRight('edit');
+    if(!['ĐÃ QUAY','ĐANG HẬU KỲ','CHỜ DUYỆT'].includes(current.status))throw err('Video chưa quay hoặc đã phát hành.',409);
+    if(current.status==='CHỜ DUYỆT'&&current.review_status!=='CHANGES_REQUESTED')throw err('Video đang chờ duyệt; không thể sửa.',409);
+    const target=str(input.status,30);
+    if(!['ĐANG HẬU KỲ','CHỜ DUYỆT'].includes(target))throw err('Hậu kỳ không được tự phát hành video.');
+    const output=safeUrl(input.output_url);
+    if(target==='CHỜ DUYỆT'&&!output)throw err('Cần link bản hậu kỳ để gửi duyệt.');
+    const reviewed=target==='CHỜ DUYỆT'?'PENDING':'NONE';
+    const sql="UPDATE video_items SET editor_id=COALESCE(editor_id,?),output_url=?,status=?,review_status=?,reviewed_by=NULL,reviewed_at=NULL,review_note='',edited_at=CASE WHEN ?='CHỜ DUYỆT' THEN COALESCE(edited_at,CURRENT_TIMESTAMP) ELSE edited_at END,note=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('ĐÃ QUAY','ĐANG HẬU KỲ') AND review_status!='PENDING'";
+    const r=await db.prepare(sql).bind(u.id,output,target,reviewed,target,note,current.id).run();
+    if(!r.meta?.changes)throw err('Video đang được duyệt hoặc trạng thái đã thay đổi.',409);
+    if(target==='CHỜ DUYỆT'&&!current.edited_at)await event('EDIT_SUBMITTED','Lần nộp bản hậu kỳ đầu tiên');
+  }else if(action==='approve'||action==='reject'){
+    requireRight('manage');
+    if(current.status!=='CHỜ DUYỆT'||current.review_status!=='PENDING')throw err('Chỉ duyệt video CHỜ DUYỆT.',409);
+    if(current.editor_id===u.id)throw err('Người biên tập không được tự duyệt.',403);
+    if(action==='reject'&&!note)throw err('Vui lòng ghi lý do yêu cầu sửa.');
+    const passed=action==='approve';
+    const r=await db.prepare("UPDATE video_items SET status=?,review_status=?,reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP,review_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='CHỜ DUYỆT' AND review_status='PENDING'").bind(passed?'CHỜ DUYỆT':'ĐANG HẬU KỲ',passed?'APPROVED':'CHANGES_REQUESTED',u.id,note,current.id).run();
+    if(!r.meta?.changes)throw err('Video đã được xử lý bởi người khác.',409);
+    await event(passed?'REVIEW_APPROVED':'REVIEW_REJECTED',note);
+  }else if(action==='publish'){
+    requireRight('manage');
+    if(current.status!=='CHỜ DUYỆT'||current.review_status!=='APPROVED')throw err('Video chưa được phê duyệt.',409);
+    const youtube=safeUrl(input.youtube_url);
+    if(!youtube||!new URL(youtube).hostname.match(/^(www\\.)?(youtube\\.com|youtu\\.be)$/i))throw err('Link phát hành phải là YouTube hợp lệ.');
+    const r=await db.prepare("UPDATE video_items SET youtube_url=?,status='ĐÃ PHÁT HÀNH',published_at=COALESCE(published_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='CHỜ DUYỆT' AND review_status='APPROVED'").bind(youtube,current.id).run();
+    if(!r.meta?.changes)throw err('Video đã thay đổi trạng thái.',409);
+    await event('PUBLISHED',youtube);
   }else if(action==='update'){
-   requireRight('manage');await db.prepare('UPDATE video_items SET title=?,lesson=?,lesson_group=?,teacher=?,note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(str(b.title,300)||current.title,str(b.lesson,150),str(b.lesson_group,150),str(b.teacher,200),str(b.note,2000),current.id).run();
+    requireRight('manage');
+    await db.prepare('UPDATE video_items SET title=?,lesson=?,lesson_group=?,teacher=?,note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(str(input.title,300)||current.title,str(input.lesson,150),str(input.lesson_group,150),str(input.teacher,200),note,current.id).run();
   }else throw err('Thao tác không được hỗ trợ.');
   await log(db,u,'VIDEO_'+action.toUpperCase(),current.id);
   return j({ok:true,id:current.id});
