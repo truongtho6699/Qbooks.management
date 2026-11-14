@@ -573,13 +573,13 @@ async function handle(req,env){
   const id=uMatch[1],action=uMatch[2]||'',u=await pendingUpload(env,id),o=await orderById(env,u.order_id);
   const isFile=action==='file';
   if(isFile){
-   if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
+   await requireAnyMenu(['orders.overview','orders.pack','orders.ship']);if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
    if(method!=='GET')return fail('Không hỗ trợ.',405);
    const object=await env.MEDIA.get(u.object_key);
    if(!object||u.status!=='COMPLETE')return fail('Tệp chưa sẵn sàng.',404);
    return new Response(object.body,{headers:{'content-type':u.content_type,'content-disposition':'attachment; filename="download"','cache-control':'private, no-store'}});
   }
-  mustStageAccess(user,u,o);
+  await requireMenu(u.stage==='GIAO_HANG'?'orders.ship':'orders.pack');mustStageAccess(user,u,o);
   await assertOrderLock(env,user,o.id,u.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG');
   if(method==='GET'&&!action){
    const rows=await env.DB.prepare('SELECT part_number,etag,bytes FROM upload_parts WHERE upload_id=? ORDER BY part_number').bind(id).all();
