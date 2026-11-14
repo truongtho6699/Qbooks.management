@@ -83,6 +83,6 @@ test('Explicitly disabled Sale menu blocks creating orders even with SALE role',
  const before=await resolveMenuPermissions(env.DB,seller);
  assert.ok(!before.keys.includes('orders.sale'),'Explicitly denied Sale menu should not be in effective permission list');
  const res=await saleCreate(env);
- assert.equal(res.status,403);
+ assert.equal(res.status,403,JSON.stringify({data:res.data,sqls:env.sqls,binds:env.binds}));
  assert.ok(!env.sqls.some(x=>x.includes('INSERT INTO orders')));
 });
