@@ -80,6 +80,8 @@ test('Duplicate invoice code is rejected before database write',async()=>{
 });
 test('Explicitly disabled Sale menu blocks creating orders even with SALE role',async()=>{
  const env=envForSeller(null,{'orders.sale':false});
+ const before=await resolveMenuPermissions(env.DB,seller);
+ assert.ok(!before.keys.includes('orders.sale'),'Explicitly denied Sale menu should not be in effective permission list');
  const res=await saleCreate(env);
  assert.equal(res.status,403);
  assert.ok(!env.sqls.some(x=>x.includes('INSERT INTO orders')));
