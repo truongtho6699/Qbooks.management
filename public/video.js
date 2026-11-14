@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{}};
+const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0}};
 const NAV=[
  {id:'dashboard',text:'Bảng điều khiển',icon:'▦',group:'CHUNG'},
  {id:'adminOverview',text:'Tổng quan quản trị',icon:'▤',group:'CHUNG'},
@@ -50,6 +50,7 @@ const btn=(label,action,id='',type='button')=>'<button type="'+type+'" class="bt
 const selected=(arr,cur)=>arr.map(x=>'<option value="'+E(x.id)+'" '+(x.id===cur?'selected':'')+'>'+E(x.name)+'</option>').join('');
 const booksList=()=>state.books.map(b=>({id:b.id,name:b.code+' — '+b.name}));
 const statuses=['CHỜ QUAY','ĐÃ QUAY','ĐANG HẬU KỲ','CHỜ DUYỆT','ĐÃ PHÁT HÀNH'];
+const pager=()=>{const p=state.videoPagination;return p.pages>1?'<div class="actions qv-pager"><span class="mini-note">Trang '+p.page+'/'+p.pages+' · '+count(p.total)+' video</span><button type="button" class="btn" id="videoPrev" '+(p.page===1?'disabled':'')+'>‹ Trước</button><button type="button" class="btn" id="videoNext" '+(p.page>=p.pages?'disabled':'')+'>Sau ›</button></div>':'';};
 const booksTable=()=>table(['Mã sách','Tên đầu sách','Giảng viên','Kế hoạch','Video đã có','Đã phát hành','Tiến độ'],state.books.map(b=>{
  const target=Number(b.target_count)||0,pub=Number(b.published)||0,rate=target?Math.min(100,Math.round(100*pub/target)):0;
  return ['<button class="link-action" data-book="'+E(b.id)+'">'+E(b.code)+'</button>',E(b.name),E(b.teacher||'—'),count(target),count(b.total),count(pub),'<div class="progress"><span style="width:'+rate+'%"></span></div><span class="mini-note">'+rate+'%</span>'];
@@ -76,8 +77,8 @@ function renderNav(){
 }
 
 async function load(){
- const [bs,vs,ov,ls]=await Promise.all([api('GET','/api/video/books'),api('GET','/api/video/items'),api('GET','/api/video/overview'),api('GET','/api/video/lessons')]);
- state.books=bs.books;state.items=vs.items;state.overview=ov;state.lessons=ls.lessons||[];
+ const [bs,vs,ov,ls]=await Promise.all([api('GET','/api/video/books'),api('GET','/api/video/items?page='+state.videoPage+'&pageSize=100'),api('GET','/api/video/overview'),api('GET','/api/video/lessons')]);
+ state.books=bs.books;state.items=vs.items;state.overview=ov;state.lessons=ls.lessons||[];state.videoPagination=vs.pagination||{page:1,pages:1,total:state.items.length};
  if(state.rights.manage||state.rights.admin){try{state.staff=(await api('GET','/api/video/staff')).staff}catch{state.staff=[]}}
 }
 function navigate(view){
@@ -147,7 +148,7 @@ function filmingOverview(){
 function makeVideoRows(items,action){
  return items.map(v=>[E(v.book_code),'<strong>'+E(v.title)+'</strong><div class="mini-note">'+E(v.lesson||'')+'</div>',E(v.teacher||'—'),E(v.camera_name||'—'),badge(v.status),'<button type="button" class="link-action" data-action="'+action+'" data-id="'+E(v.id)+'">'+(action==='film'?'Quay / Chi tiết':'Xử lý / Chi tiết')+'</button>']);
 }
-function filmList(){return (state.rights.manage||state.rights.admin?'<div class="actions" style="margin-bottom:15px"><button class="btn primary" data-goto="createVideo">＋ Lập kế hoạch video</button></div>':'')+panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items,'film'),'Chưa có video')+'</div>');}
+function filmList(){return (state.rights.manage||state.rights.admin?'<div class="actions" style="margin-bottom:15px"><button class="btn primary" data-goto="createVideo">＋ Lập kế hoạch video</button></div>':'')+panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items,'film'),'Chưa có video')+'</div>'+pager());}
 function filmDetail(v){
  return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+'</div>')+
  panel('Quay bài · cập nhật tiến độ','<form id="filmForm" class="form-grid">'+
@@ -158,20 +159,34 @@ function filmDetail(v){
  '<p class="mini-note">Video tải trực tiếp từ trình duyệt lên Google Drive, không đi qua máy chủ QBooks. Có thể nhập liên kết Drive nếu đã tải sẵn.</p>');
 }
 function postOverview(){
- const pending=state.items.filter(v=>['ĐÃ QUAY','ĐANG HẬU KỲ'].includes(v.status));
+ const pending=state.items.filter(v=>['ĐÃ QUAY','ĐANG HẬU KỲ','CHỜ DUYỆT'].includes(v.status));
  return kpis([{label:'Chờ hậu kỳ',value:state.items.filter(v=>v.status==='ĐÃ QUAY').length},{label:'Đang hậu kỳ',value:state.items.filter(v=>v.status==='ĐANG HẬU KỲ').length},{label:'Chờ duyệt',value:state.items.filter(v=>v.status==='CHỜ DUYỆT').length},{label:'Đã phát hành',value:state.items.filter(v=>v.status==='ĐÃ PHÁT HÀNH').length}])+
  panel('Danh sách video cần xử lý',table(['Đầu sách','Video','Người quay','Trạng thái','Thao tác'],pending.map(v=>[E(v.book_code),E(v.title),E(v.camera_name||'—'),badge(v.status),'<button class="link-action" data-action="edit" data-id="'+E(v.id)+'">Xử lý video</button>'])));
 }
-function editList(){return panel('Danh sách video hậu kỳ','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, tên sách"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items.filter(v=>v.status!=='CHỜ QUAY'),'edit'),'Chưa có video hậu kỳ')+'</div>');}
-function editDetail(v){return panel('Video đang xử lý','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong>'+badge(v.status)+'<span class="mini-note">Video gốc: '+(v.raw_url?'<a href="'+E(v.raw_url)+'" target="_blank" rel="noopener noreferrer">Mở video gốc</a>':'Chưa có liên kết')+'</span></div>')+
- panel('Xử lý video / Phát hành','<form id="editForm" class="form-grid">'+
- '<div class="field full"><label>Chọn video đã biên tập để tải lên Google Drive</label><input id="editedFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadEditedVideo" style="margin-top:10px">↑ Tải video hậu kỳ lên Drive</button><span class="mini-note" id="editedUploadStatus">Có thể nhập liên kết Drive hoặc YouTube mà không cần tải video mới.</span></div>'+
- '<div class="field full"><label>Link video sau biên tập</label><input name="output_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.output_url||'')+'"></div>'+
- '<div class="field"><label>Trạng thái *</label><select name="status"><option>ĐANG HẬU KỲ</option><option>CHỜ DUYỆT</option><option>ĐÃ PHÁT HÀNH</option></select></div>'+
- '<div class="field"><label>Link YouTube (bắt buộc khi phát hành)</label><input name="youtube_url" type="url" placeholder="https://www.youtube.com/..." value="'+E(v.youtube_url||'')+'"></div>'+
- '<div class="field full"><label>Ghi chú hậu kỳ, kiểm duyệt</label><textarea name="note">'+E(v.note||'')+'</textarea></div>'+
- '<div class="actions full">'+btn('Quay lại','','backList')+btn('Lưu hậu kỳ & phát hành','primary','','submit')+'</div></form>');
+function editList(){return panel('Danh sách video hậu kỳ','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, tên sách"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items.filter(v=>v.status!=='CHỜ QUAY'),'edit'),'Chưa có video hậu kỳ')+'</div>'+pager());}
+function editDetail(v){
+ const manager=state.rights.manage||state.rights.admin;
+ const canEdit=state.rights.edit||state.rights.admin;
+ const pending=v.status==='CHỜ DUYỆT'&&v.review_status==='PENDING';
+ const approved=v.status==='CHỜ DUYỆT'&&v.review_status==='APPROVED';
+ let html=panel('Chi tiết xử lý','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong>'+badge(v.status)+'<p class="mini-note">Phê duyệt: '+E(v.review_status==='APPROVED'?'Đã được duyệt':pending?'Đang chờ duyệt':v.review_status==='CHANGES_REQUESTED'?'Cần sửa lại':'Chưa gửi duyệt')+'</p>'+(v.review_note?'<p>'+E(v.review_note)+'</p>':'')+'<span class="mini-note">Video gốc: '+(v.raw_url?'<a href="'+E(v.raw_url)+'" target="_blank" rel="noopener noreferrer">Mở video gốc</a>':'Chưa có liên kết')+'</span></div>');
+ if(canEdit&&['ĐÃ QUAY','ĐANG HẬU KỲ'].includes(v.status)){
+  html+=panel('Biên tập và gửi duyệt','<form id="editForm" class="form-grid">'+
+  '<div class="field full"><label>Tải video đã biên tập lên Drive</label><input id="editedFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadEditedVideo">↑ Tải lên Drive</button><span class="mini-note" id="editedUploadStatus">Có thể nhập liên kết đã có.</span></div>'+
+  '<div class="field full"><label>Link bản hậu kỳ</label><input name="output_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.output_url||'')+'"></div>'+
+  '<div class="field"><label>Trạng thái</label><select name="status"><option value="ĐANG HẬU KỲ">Đang hậu kỳ</option><option value="CHỜ DUYỆT">Gửi trưởng nhóm duyệt</option></select></div>'+
+  '<div class="field full"><label>Ghi chú</label><textarea name="note">'+E(v.note||'')+'</textarea></div>'+
+  '<div class="actions full">'+btn('Quay lại','','backList')+btn('Lưu / gửi duyệt','primary','','submit')+'</div></form>');
+ }
+ if(manager&&pending&&v.editor_id!==state.user?.id){
+  html+=panel('Phê duyệt trưởng nhóm','<div class="field"><label>Ghi chú / lý do trả sửa</label><textarea id="reviewNote" placeholder="Nhập lý do nếu yêu cầu sửa"></textarea></div><div class="actions"><button class="btn" id="rejectVideo">Yêu cầu sửa lại</button><button class="btn primary" id="approveVideo">Duyệt video</button></div>');
+ }
+ if(manager&&approved)html+=panel('Phát hành video đã duyệt','<div class="field"><label>Liên kết YouTube công khai *</label><input id="publishYoutube" type="url" placeholder="https://www.youtube.com/watch?v=..." value="'+E(v.youtube_url||'')+'"></div><div class="actions"><button id="publishVideo" class="btn primary">Xác nhận đã phát hành</button></div>');
+ if(pending&&!manager)html+=panel('Đang chờ duyệt','<p>Video đã nộp cho trưởng nhóm. Chưa thể chỉnh sửa hoặc phát hành.</p>');
+ if(!canEdit&&!manager)html+=panel('Thông tin video','<p>Bạn chưa có quyền xử lý video này.</p>');
+ return html;
 }
+
 function production(){
  const dateSelected=state.productionDate||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  const staffSelected=state.productionStaff||'';
@@ -403,6 +418,12 @@ function wire(){
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
  bindForm('filmForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'film',...b}));
  bindForm('editForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'edit',...b}));
+ const reviewAction=async action=>{try{await api('PATCH','/api/video/items/'+state.selected.id,{action,note:$('reviewNote')?.value||'',youtube_url:$('publishYoutube')?.value||''});await load();state.selected=state.items.find(x=>x.id===state.selected.id)||null;render();toast('Đã cập nhật trạng thái video.');}catch(e){toast(e.message)}};
+ if($('approveVideo'))$('approveVideo').onclick=()=>reviewAction('approve');
+ if($('rejectVideo'))$('rejectVideo').onclick=()=>reviewAction('reject');
+ if($('publishVideo'))$('publishVideo').onclick=()=>reviewAction('publish');
+ if($('videoPrev'))$('videoPrev').onclick=async()=>{state.videoPage=Math.max(1,state.videoPage-1);await load();render();};
+ if($('videoNext'))$('videoNext').onclick=async()=>{state.videoPage=Math.min(state.videoPagination.pages,state.videoPage+1);await load();render();};
  const eform=$('editForm');if(eform&&state.selected)eform.elements.status.value=['ĐANG HẬU KỲ','CHỜ DUYỆT','ĐÃ PHÁT HÀNH'].includes(state.selected.status)?state.selected.status:'ĐANG HẬU KỲ';
  const back=$('backList');if(back)back.onclick=()=>{state.selected=null;render()};
  function filterTable(){
@@ -423,7 +444,7 @@ function wire(){
 function openVideo(id,action){
  const v=state.items.find(x=>x.id===id);if(!v)return toast('Không tìm thấy video.');
  if(action==='film'&&!state.rights.film&&!state.rights.admin)return toast('Chưa có quyền quay video.');
- if(action==='edit'&&!state.rights.edit&&!state.rights.admin)return toast('Chưa có quyền hậu kỳ.');
+ if(action==='edit'&&!state.rights.edit&&!state.rights.manage&&!state.rights.admin)return toast('Chưa có quyền hậu kỳ hoặc quản lý.');
  state.selected=v;state.view=action;renderNav();render();$('page').focus();
 }
 async function boot(){
