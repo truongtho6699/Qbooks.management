@@ -31,7 +31,7 @@ async function api(method,path,data){
  if(!r.ok)throw Error(j.error||'Lỗi máy chủ '+r.status);return j;
 }
 function can(section){
- return !!state.rights.admin||state.menuKeys.includes('media.'+section);
+ if(section==='permissions')return !!state.rights.admin;return !!state.rights.admin||state.menuKeys.includes('media.'+section);
 }
 
 const panel=(title,content,subtitle='')=>'<section class="panel"><div class="panelhead"><div><h2>'+E(title)+'</h2>'+(subtitle?'<p class="sub">'+E(subtitle)+'</p>':'')+'</div></div>'+content+'</section>';
@@ -116,14 +116,14 @@ function navigate(view){
 }
 function readinessPanel(){
  const folderCount=state.books.filter(b=>!!googleFolderId(b.id)).length;
- const roleUsers=state.staff.filter(p=>p.can_film||p.can_edit||p.can_manage);
+ const roleUsers=state.staff.filter(p=>p.can_film||p.can_edit||p.can_manage);const rolesVisible=can('staff')||state.rights.admin;
  const oauth=!!state.googleClientId;
  const allowedBooks=can('books');
  const allowedRoles=can('permissions')||state.rights.admin;
  const rows=[
   ['Thư mục Drive theo đầu sách',folderCount+'/'+state.books.length,folderCount===state.books.length?'Đã có đường dẫn':'Cần thiết lập thư mục cho từng đầu sách',allowedBooks?'<button class="link-action" data-goto="books">Cấu hình đầu sách</button>':'Liên hệ quản lý'],
   ['Google OAuth Client ID',oauth?'Đã cấu hình':'Chưa cấu hình',oauth?'Chưa xác nhận quyền Google của nhân viên':'Cần quản trị Cloudflare kiểm tra cấu hình','Kiểm thử tải với tài khoản Google'],
-  ['Quyền Media nhân viên',roleUsers.length+' tài khoản',roleUsers.length?'Cần đối chiếu nhân sự từng vai trò':'Chưa cấp quyền Quay / Hậu kỳ / Quản lý',allowedRoles?'<a href="/?nav=admin">Cấp quyền menu</a>':'Liên hệ quản trị']
+  ['Quyền Media nhân viên',rolesVisible?roleUsers.length+' tài khoản':'Chưa có quyền xem',rolesVisible?(roleUsers.length?'Cần đối chiếu nhân sự từng vai trò':'Chưa cấp quyền Quay / Hậu kỳ / Quản lý'):'Yêu cầu Admin kiểm tra quyền nhân sự',allowedRoles?'<a href="/?nav=admin">Cấp quyền menu</a>':'Liên hệ quản trị']
  ];
  return panel('Mức độ sẵn sàng vận hành Media',table(['Điều kiện','Hiện trạng','Nhận xét','Thao tác'],rows)+
  '<p class="mini-note">Chỉ là kiểm tra cấu hình và dữ liệu. Đường dẫn Drive đã lưu chưa đồng nghĩa đã kiểm tra quyền sửa thư mục. Chưa kiểm thử đăng nhập và tải tệp với tài khoản nhân viên thật.</p>');
