@@ -31,7 +31,7 @@ Vì chưa có ba tài khoản đã cấp vai trò Media và chưa kết nối đ
 1. Đăng nhập Qbook bằng Admin, vào **Quản trị hệ thống → Quản trị nhân sự / PIN**. Chọn 3 nhân viên khác nhau, cấp menu và thao tác:
    - Quay: `media.filmOverview`, `media.film`, `media.dashboard`; bật `can_film`.
    - Hậu kỳ: `media.postOverview`, `media.edit`, `media.dashboard`; bật `can_edit`.
-   - Quản lý: `media.dashboard`, `media.adminOverview`, `media.edit`, `media.books`, `media.production`, `media.report`, `media.permissions`; bật `can_manage`.
+   - Quản lý: `media.dashboard`, `media.adminOverview`, `media.edit`, `media.books`, `media.production`, `media.report`; bật `can_manage`. Menu `media.permissions` chỉ dành cho Admin hệ thống.
    - Không giao cùng một người nhiệm vụ biên tập và tự duyệt video do mình sửa.
 2. Vào **Quản lý Media → Danh mục Media → Quản trị đầu sách**. Cập nhật liên kết `https://drive.google.com/drive/folders/...` cho sách thử nghiệm. Đảm bảo ba nhân viên có quyền đọc/ghi Google Drive phù hợp.
 3. Kiểm tra Google Cloud OAuth: app dùng Client ID của Production, JavaScript origins cho `https://qbooks-quantri.pages.dev`, consent screen và tài khoản thử trong danh sách test users khi ứng dụng ở chế độ thử nghiệm.
