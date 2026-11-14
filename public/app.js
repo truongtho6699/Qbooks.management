@@ -218,6 +218,8 @@ async function bootstrap(){
   const access=await api('GET','/api/menu-access');state.menuKeys=access.menus||[];
   $('userInfo').textContent=r.user.name+' · '+r.user.role;
   $('shippingUserBadge').textContent=r.user.name;
+  $('saleForm').elements.sale_name.value=r.user.name;
+  $('saleForm').elements.sale_name.readOnly=true;
   show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;
   // Always drop operational data kept by a previous session before showing the new identity.
   state.orders=[];state.overviewData=null;state.selected=null;state.lockedOrderIds.clear();
@@ -820,7 +822,7 @@ async function saveShip(){
 async function loadGroupOptions(){
  try{
   const r=await api('GET','/api/orders');const list=$('groupList');list.replaceChildren();
-  const options=r.orders.filter(o=>state.user.role==='SHIPPER'?o.status==='CHỜ VẬN ĐƠN':['CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN'].includes(o.status)&&!o.group_id);
+  const options=r.orders.filter(o=>o.source_system==='D1'&&(state.user.role==='SHIPPER'?o.status==='CHỜ VẬN ĐƠN':['CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN'].includes(o.status)&&!o.group_id));
   for(const o of options){
    const row=el('label',null,'order shipping-order-card shipping-group-card status-border-'+statusClass(o.status));
    const ck=document.createElement('input');ck.type='checkbox';ck.className='groupCheck';ck.value=o.id;
@@ -838,7 +840,7 @@ $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
-$('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
+$('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale trên D1. Đơn sẵn sàng chuyển Đóng hàng; chưa tự ghi sang Google Sheets.',true);e.target.elements.sale_name.value=state.user.name;await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
 $('saveMenuPermissions').onclick=saveStaffMenuPermissions;
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
 $('staffForm').addEventListener('submit',async e=>{e.preventDefault();const f=e.target;const data=Object.fromEntries(new FormData(f));const pinInput=f.querySelector('input[name="pin"]');data.pin=String(pinInput?.value??data.pin??'').trim();data.dongHang=f.elements.dongHang.checked;data.vanDon=f.elements.vanDon.checked;data.admin=f.elements.admin.checked;data.active=f.elements.active.checked;if((!state.editStaffId||data.pin)&&!/^\d{3,8}$/.test(data.pin))return notice('Mã PIN phải gồm 3–8 chữ số (0–9); vui lòng kiểm tra ô PIN trong biểu mẫu nhân sự.');if(data.role==='VIEW'){data.dongHang=false;data.vanDon=false;data.admin=false;}try{const r=state.editStaffId?await api('PATCH','/api/users/'+state.editStaffId,data):await api('POST','/api/users',data);notice('Đã lưu nhân sự '+r.id,true);const savedId=r.id;const savedName=data.name;const savedRole=data.role;resetStaffEdit();await loadStaffUsers();await loadAdminReport('STAFF');await loadStaffMenuPermissions(savedId,savedName,savedRole);}catch(err){notice(err.message)}});
