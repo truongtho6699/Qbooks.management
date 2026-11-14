@@ -133,3 +133,17 @@ test('Unknown menu key is rejected before changing staff permissions',async()=>{
   method:'PUT',headers:{authorization:'Bearer admin-session','content-type':'application/json'},body:JSON.stringify({permissions:{'system.superuser':true},video:{can_film:false,can_edit:false,can_manage:false}})}),env);
  assert.equal(r.status,400);
 });
+
+test('Media permission editor is visible to system admin but never to regular Media manager or VIEW',async()=>{
+ const admin={...seller,id:'admin-role',can_admin:1,role:'ADMIN'};
+ const manager={...seller,id:'manager-role',role:'SALE',can_admin:0};
+ const roles={can_film:0,can_edit:0,can_manage:1};
+ const grants={'media.permissions':true,'media.edit':true};
+ const a=await resolveMenuPermissions({prepare(){throw Error('Admin should not need grant lookup')}},admin);
+ assert.ok(a.keys.includes('media.permissions'));
+ const m=await resolveMenuPermissions(permsDb(manager,grants,roles),manager);
+ assert.ok(m.keys.includes('media.edit'));
+ assert.ok(!m.keys.includes('media.permissions'));
+ const v=await resolveMenuPermissions(permsDb(viewer,grants,roles),viewer);
+ assert.ok(!v.keys.includes('media.permissions'));
+});
