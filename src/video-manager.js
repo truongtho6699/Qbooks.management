@@ -57,7 +57,7 @@ export async function videoApi(req,env,u){
   await db.prepare('INSERT INTO video_books(id,code,name,teacher,target_count,drive_url) VALUES(?,?,?,?,?,?)').bind(id,code,name,str(b.teacher,200),count,driveFolder(b.drive_url)).run();
   await log(db,u,'CREATE_BOOK',id,code);return j({id},201);
  }
- const bookMatch=path.match(/^\/api\/video\/books\/([a-f0-9-]{36})\/drive-folder$/);
+ const bookMatch=path.match(/^\/api\/video\/books\/([A-Za-z0-9_-]{3,100})\/drive-folder$/);
  if(method==='PATCH'&&bookMatch){
   requireMenu('books');requireRight('manage');
   const data=await body(),folder=driveFolder(data.drive_url);
