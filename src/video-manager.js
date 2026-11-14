@@ -15,6 +15,7 @@ export async function videoApi(req,env,u){
  const mediaMenus=(u.menuKeys||[]).filter(key=>key.startsWith('media.'));
  const readOnly=u.role==='VIEW';
  const requireMenu=key=>{if(!rights.admin&&!mediaMenus.includes('media.'+key))throw err('Menu Media này chưa được cấp quyền.',403);};
+ const requireAnyMenu=keys=>{if(!rights.admin&&!keys.some(k=>mediaMenus.includes('media.'+k)))throw err('Không có quyền xem dữ liệu của các menu Media này.',403);};
  if(!rights.admin&&!mediaMenus.length)throw err('Tài khoản chưa được cấp menu Quản lý Media.',403);
  if(readOnly&&method!=='GET')throw err('VIEW chỉ được xem dữ liệu trong các menu được phân quyền.',403);
  if(readOnly&&['/api/video/staff','/api/video/audit'].includes(path))throw err('Không có quyền xem dữ liệu quản trị nhân sự.',403);
@@ -28,6 +29,7 @@ export async function videoApi(req,env,u){
   return j({lessons:data.results||[]});
  }
  if(method==='GET'&&path==='/api/video/overview'){
+  requireAnyMenu(['dashboard','adminOverview','filmOverview','postOverview','booksProgress','report','production']);
   const totals=await db.prepare("SELECT COUNT(*) total, SUM(CASE WHEN status!='CHỜ QUAY' THEN 1 ELSE 0 END) filmed,SUM(CASE WHEN edited_at IS NOT NULL THEN 1 ELSE 0 END) edited,SUM(CASE WHEN status='ĐÃ PHÁT HÀNH' THEN 1 ELSE 0 END) published,SUM(CASE WHEN status='CHỜ DUYỆT' AND review_status='PENDING' THEN 1 ELSE 0 END) pending_review,SUM(CASE WHEN review_status='CHANGES_REQUESTED' THEN 1 ELSE 0 END) need_revision FROM video_items").first();
   const statusCounts=await db.prepare('SELECT status,COUNT(*) total FROM video_items GROUP BY status').all();
   const uncovered=await db.prepare('SELECT COUNT(*) total FROM video_lessons l WHERE NOT EXISTS (SELECT 1 FROM video_items v WHERE v.lesson_id=l.id)').first();
@@ -36,6 +38,7 @@ export async function videoApi(req,env,u){
   const activities=await db.prepare("SELECT event_type,actor_id,date(event_time,'+7 hours') day,COUNT(*) total FROM video_events WHERE event_type IN ('FILM_COMPLETED','EDIT_SUBMITTED') GROUP BY event_type,actor_id,date(event_time,'+7 hours') ORDER BY day DESC LIMIT 1500").all();const eventCount=await db.prepare('SELECT COUNT(*) total FROM video_events').first();return j({totals:{total:totals?.total||0,filmed:totals?.filmed||0,edited:totals?.edited||0,published:totals?.published||0,pending_review:totals?.pending_review||0,need_revision:totals?.need_revision||0},books:books.results||[],staff:staff.results||[],activities:activities.results||[],eventCount:eventCount?.total||0,unplannedLessons:uncovered?.total||0,statusCounts:statusCounts.results||[],asOf:new Date().toISOString()});
  }
  if(method==='GET'&&path==='/api/video/production'){
+  requireMenu('production');
   const day=str(url.searchParams.get('day'),10);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||Number.isNaN(Date.parse(day+'T00:00:00Z')))throw err('Ngày báo cáo không hợp lệ.');
   const r=await db.prepare("SELECT u.id,u.name, SUM(CASE WHEN e.event_type='FILM_COMPLETED' THEN 1 ELSE 0 END) filmed,SUM(CASE WHEN e.event_type='EDIT_SUBMITTED' THEN 1 ELSE 0 END) edited FROM video_events e JOIN users u ON u.id=e.actor_id WHERE date(e.event_time,'+7 hours')=? AND e.event_type IN ('FILM_COMPLETED','EDIT_SUBMITTED') GROUP BY u.id,u.name ORDER BY filmed DESC,edited DESC,u.name").bind(day).all();
@@ -54,6 +57,7 @@ export async function videoApi(req,env,u){
   await log(db,u,'CREATE_BOOK',id,code);return j({id},201);
  }
  if(method==='GET'&&path==='/api/video/items'){
+  requireAnyMenu(['dashboard','adminOverview','filmOverview','postOverview','film','edit','createVideo','booksProgress','report']);
   const bookId=str(url.searchParams.get('book'),100),q=str(url.searchParams.get('q'),150),status=str(url.searchParams.get('status'),40);
   const page=Math.max(1,Math.min(100000,Number.parseInt(url.searchParams.get('page')||'1',10)||1));
   const pageSize=Math.max(10,Math.min(100,Number.parseInt(url.searchParams.get('pageSize')||'100',10)||100));
