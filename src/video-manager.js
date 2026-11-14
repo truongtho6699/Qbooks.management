@@ -8,6 +8,7 @@ const roles=async(db,user)=>{
  return {admin:admin(user),film:admin(user)||g?.can_film===1,edit:admin(user)||g?.can_edit===1,manage:admin(user)||g?.can_manage===1};
 };
 const safeUrl=(x)=>{const v=str(x,2000);if(!v)return '';try{const u=new URL(v);if(u.protocol==='https:'&&u.username===''&&u.password==='')return v;}catch{}throw err('Liên kết phải bắt đầu bằng https://');};
+const driveFolder=(input)=>{const raw=str(input,2000);if(!raw)return '';let u;try{u=new URL(raw)}catch{throw err('Đường dẫn thư mục Drive không hợp lệ.');}const match=u.pathname.match(/^\/drive\/folders\/([A-Za-z0-9_-]{10,})\/?$/);if(u.protocol!=='https:'||u.hostname!=='drive.google.com'||u.username||u.password||!match)throw err('Cần đường dẫn thư mục Google Drive có dạng https://drive.google.com/drive/folders/ID.');return 'https://drive.google.com/drive/folders/'+match[1];};
 async function log(db,u,action,id='',details=''){await db.prepare('INSERT INTO video_audit(actor_id,action,video_id,details) VALUES(?,?,?,?)').bind(u.id,action,id,details).run();}
 async function getOne(db,id){const v=await db.prepare('SELECT * FROM video_items WHERE id=?').bind(id).first();if(!v)throw err('Không tìm thấy video.',404);return v;}
 export async function videoApi(req,env,u){
@@ -53,8 +54,18 @@ export async function videoApi(req,env,u){
   if(!code||!name)throw err('Cần mã và tên đầu sách.');
   const count=Number(b.target_count||0);if(!Number.isSafeInteger(count)||count<0||count>100000)throw err('Chỉ tiêu video không hợp lệ.');
   const id=crypto.randomUUID();
-  await db.prepare('INSERT INTO video_books(id,code,name,teacher,target_count,drive_url) VALUES(?,?,?,?,?,?)').bind(id,code,name,str(b.teacher,200),count,safeUrl(b.drive_url)).run();
+  await db.prepare('INSERT INTO video_books(id,code,name,teacher,target_count,drive_url) VALUES(?,?,?,?,?,?)').bind(id,code,name,str(b.teacher,200),count,driveFolder(b.drive_url)).run();
   await log(db,u,'CREATE_BOOK',id,code);return j({id},201);
+ }
+ const bookMatch=path.match(/^\/api\/video\/books\/([a-f0-9-]{36})\/drive-folder$/);
+ if(method==='PATCH'&&bookMatch){
+  requireMenu('books');requireRight('manage');
+  const data=await body(),folder=driveFolder(data.drive_url);
+  if(!folder)throw err('Cần liên kết thư mục Drive trước khi lưu.');
+  const result=await db.prepare('UPDATE video_books SET drive_url=? WHERE id=?').bind(folder,bookMatch[1]).run();
+  if(!result.meta?.changes)throw err('Không tìm thấy đầu sách.',404);
+  await log(db,u,'CONFIGURE_BOOK_DRIVE',bookMatch[1],'Đã cập nhật thư mục Drive');
+  return j({ok:true,drive_url:folder});
  }
  if(method==='GET'&&path==='/api/video/items'){
   requireAnyMenu(['dashboard','adminOverview','filmOverview','postOverview','film','edit','createVideo','booksProgress','report']);
