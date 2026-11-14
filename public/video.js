@@ -369,13 +369,13 @@ async function validateVideoFile(file){
   if(Number.isFinite(video.duration)&&video.duration>3600)throw Error('Video tối đa 60 phút.');
  }finally{URL.revokeObjectURL(url);video.removeAttribute('src');video.load();}
 }
-function askGoogleDriveToken(continueWith){
+function askGoogleDriveToken(continueWith,onFailure=()=>{}){
  if(!window.google?.accounts?.oauth2)throw Error('Google chưa sẵn sàng. Vui lòng tải lại trang trong Chrome/Safari.');
  if(!state.googleClientId)throw Error('Google Client ID chưa sẵn sàng; tải lại trang.');
  const client=window.google.accounts.oauth2.initTokenClient({
   client_id:state.googleClientId,scope:'https://www.googleapis.com/auth/drive',
-  callback:r=>{if(r.error||!r.access_token)return toast('Google chưa cấp quyền Drive: '+(r.error||'Đã hủy'));continueWith(r.access_token).catch(e=>toast(e.message));},
-  error_callback:r=>toast('Không thể mở Google: '+(r.type||'Lỗi trình duyệt'))
+  callback:r=>{if(r.error||!r.access_token){onFailure();return toast('Google chưa cấp quyền Drive: '+(r.error||'Đã hủy'));}continueWith(r.access_token).catch(e=>{onFailure();toast(e.message)});},
+  error_callback:r=>{onFailure();toast('Không thể mở Google: '+(r.type||'Lỗi trình duyệt'));}
  });
  client.requestAccessToken({prompt:'consent'});
 }
@@ -449,7 +449,7 @@ function wire(){
     button.textContent='Đã kiểm tra ✓';
    }catch(err){button.textContent='Kiểm tra quyền Drive';toast(err.message);}
    finally{button.disabled=false;}
-  });}catch(err){button.disabled=false;button.textContent='Kiểm tra quyền Drive';toast(err.message);}
+  },()=>{button.disabled=false;button.textContent='Kiểm tra quyền Drive';});}catch(err){button.disabled=false;button.textContent='Kiểm tra quyền Drive';toast(err.message);}
  });
  bindForm('bookForm',b=>api('POST','/api/video/books',b));
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
