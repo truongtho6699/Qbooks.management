@@ -65,7 +65,7 @@ export async function videoApi(req,env,u){
  const match=path.match(/^\/api\/video\/items\/([a-f0-9-]{36})$/);
  if(method==='PATCH'&&match){
   const current=await getOne(db,match[1]),input=await body(),action=str(input.action,40),note=str(input.note,2000);
-  const event=(kind,details='')=>db.prepare('INSERT INTO video_events(video_id,actor_id,event_type,details) VALUES(?,?,?,?)').bind(current.id,u.id,kind,details).run();
+  const event=(kind,details='')=>db.prepare('INSERT OR IGNORE INTO video_events(video_id,actor_id,event_type,details) VALUES(?,?,?,?)').bind(current.id,u.id,kind,details).run();
   if(action==='film'){
     requireRight('film');
     if(!['CHỜ QUAY','ĐÃ QUAY'].includes(current.status))throw err('Video đã chuyển sang hậu kỳ.',409);
@@ -100,7 +100,7 @@ export async function videoApi(req,env,u){
     requireRight('manage');
     if(current.status!=='CHỜ DUYỆT'||current.review_status!=='APPROVED')throw err('Video chưa được phê duyệt.',409);
     const youtube=safeUrl(input.youtube_url);
-    if(!youtube||!new URL(youtube).hostname.match(/^(www\\.)?(youtube\\.com|youtu\\.be)$/i))throw err('Link phát hành phải là YouTube hợp lệ.');
+    if(!youtube||!new URL(youtube).hostname.match(/^(www\.)?(youtube\.com|youtu\.be)$/i))throw err('Link phát hành phải là YouTube hợp lệ.');
     const r=await db.prepare("UPDATE video_items SET youtube_url=?,status='ĐÃ PHÁT HÀNH',published_at=COALESCE(published_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='CHỜ DUYỆT' AND review_status='APPROVED'").bind(youtube,current.id).run();
     if(!r.meta?.changes)throw err('Video đã thay đổi trạng thái.',409);
     await event('PUBLISHED',youtube);
