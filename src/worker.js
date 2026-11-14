@@ -4,6 +4,7 @@ import {verifyGoogleCredential} from './google-auth.js';
 import {normalizeV35Row,validateShippingForm,canGroup,parseVNDate} from './legacy-v35.js';
 import {syncStatus,driveInit,driveChunk,sheetCommit} from './sync-google.js';
 import {videoApi} from './video-manager.js';
+import {MENU_KEYS,MENU_LABELS,resolveMenuPermissions,allowedMenu} from './menu-permissions.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const fail=(message,status=400)=>json({error:message},status);
@@ -140,14 +141,50 @@ async function handle(req,env){
   return json({token,user:{id:user.id,email:user.email,name:user.name,role:view?'VIEW':user.role},expires});
  }
  const user=await actor(req,env);
- if(user.role==='VIEW'&&!((method==='POST'&&path==='/api/logout')||(method==='GET'&&path==='/api/bootstrap')))
-  throw Object.assign(new Error('Tài khoản VIEW chỉ được xem Tổng quan và hồ sơ; không có quyền thao tác.'),{status:403});
+ if(user.role==='VIEW'&&!((method==='POST'&&path==='/api/logout')||(method==='GET'&&['/api/bootstrap','/api/menu-access'].includes(path)))){
+  // VIEW never mutates. Only explicitly assigned screens can read protected data.
+  if(method!=='GET')throw Object.assign(new Error('Tài khoản VIEW không có quyền ghi dữ liệu.'),{status:403});
+  const access=await resolveMenuPermissions(env.DB,user);user.menuKeys=access.keys;
+  const canReadVideo=path.startsWith('/api/video/')&&access.keys.some(key=>key.startsWith('media.'));
+  const canReadOrder=(path==='/api/shipping/overview'&&access.keys.includes('orders.overview'))||
+     (path==='/api/orders'&&['orders.sale','orders.pack','orders.ship'].some(key=>access.keys.includes(key)));
+  if(!canReadVideo&&!canReadOrder)throw Object.assign(new Error('Tài khoản VIEW chưa được cấp quyền menu này.'),{status:403});
+ }
+ if(method==='GET'&&path==='/api/menu-access'){
+  const access=await resolveMenuPermissions(env.DB,user);
+  return json({menus:access.keys,video:access.video,labels:MENU_LABELS,readOnly:user.role==='VIEW'});
+ }
+ const grantMatch=path.match(/^\/api\/users\/([a-f0-9-]+)\/menus$/);
+ if(grantMatch){
+  needRole(user,'ADMIN');const targetId=grantMatch[1];
+  const target=await env.DB.prepare("SELECT u.id,u.role,u.can_admin,u.can_pack,u.can_ship,CASE WHEN vr.user_id IS NOT NULL THEN 'VIEW' ELSE u.role END effective_role FROM users u LEFT JOIN user_view_roles vr ON vr.user_id=u.id WHERE u.id=?").bind(targetId).first();
+  if(!target)throw Object.assign(new Error('Không tìm thấy nhân sự.'),{status:404});
+  const profile={...target,role:target.effective_role};
+  if(method==='GET'){
+   const x=await resolveMenuPermissions(env.DB,profile);
+   return json({userId:targetId,menus:x.keys,overrides:x.overrides,video:x.video,keys:MENU_KEYS,labels:MENU_LABELS});
+  }
+  if(method==='PUT'){
+   const input=await requestJSON(req),perms=input.permissions||{};
+   if(!perms||typeof perms!=='object'||Array.isArray(perms))throw Error('Danh sách quyền menu không hợp lệ.');
+   if(Object.keys(perms).some(key=>!MENU_KEYS.includes(key)||typeof perms[key]!=='boolean'))throw Error('Menu hoặc giá trị phân quyền không hợp lệ.');
+   if(!input.video||typeof input.video!=='object')throw Error('Thiếu quyền Media.');
+   const v=input.video;for(const flag of ['can_film','can_edit','can_manage'])if(typeof v[flag]!=='boolean')throw Error('Quyền Media không hợp lệ: '+flag);
+   const stmts=[env.DB.prepare('DELETE FROM user_menu_permissions WHERE user_id=?').bind(targetId)];
+   for(const [key,enabled] of Object.entries(perms))stmts.push(env.DB.prepare('INSERT INTO user_menu_permissions(user_id,menu_key,allowed) VALUES(?,?,?)').bind(targetId,key,enabled?1:0));
+   stmts.push(env.DB.prepare('INSERT INTO video_role_grants(user_id,can_film,can_edit,can_manage) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET can_film=excluded.can_film,can_edit=excluded.can_edit,can_manage=excluded.can_manage')
+     .bind(targetId,v.can_film?1:0,v.can_edit?1:0,v.can_manage?1:0));
+   await env.DB.batch(stmts);await audit(env,user,'UPDATE_MENU_PERMISSIONS','',JSON.stringify({targetId,menus:Object.keys(perms)}));
+   return json({ok:true,userId:targetId});
+  }
+  throw Object.assign(new Error('Phương thức không hợp lệ.'),{status:405});
+ }
  if(method==='POST'&&path==='/api/logout'){
   const token=req.headers.get('authorization').replace(/^Bearer\s+/i,'');
   await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha(token)).run();
   return json({ok:true});
  }
- if(path.startsWith('/api/video/'))return videoApi(req,env,user);
+ if(path.startsWith('/api/video/')){if(!user.menuKeys)user.menuKeys=(await resolveMenuPermissions(env.DB,user)).keys;return videoApi(req,env,user);}
  if(method==='GET'&&path==='/api/bootstrap')return json({user:{id:user.id,name:user.name,email:user.email,role:user.role,rights:{dongHang:hasRole(user,'PACKER'),vanDon:hasRole(user,'SHIPPER'),admin:hasRole(user,'ADMIN')}},statuses:STATUS});
  if(method==='POST'&&path==='/api/legacy/import'){
   needRole(user,'ADMIN');
@@ -446,11 +483,12 @@ async function handle(req,env){
   }});
  }
  if(method==='GET'&&path==='/api/orders'){
-  needRole(user,'PACKER','SHIPPER');
+  if(user.role!=='VIEW')needRole(user,'SALE','PACKER','SHIPPER');
   const query=clean(url.searchParams.get('q')).slice(0,120);
   let status=clean(url.searchParams.get('status'));
   if(user.role==='PACKER'&&!user.can_ship&&!user.can_admin)status=STATUS.PACK;
   if(user.role==='SHIPPER'&&!user.can_pack&&!user.can_admin)status=STATUS.SHIP;
+  if(user.role==='VIEW'&&!user.menuKeys?.some(k=>['orders.sale','orders.pack','orders.ship'].includes(k)))throw Object.assign(new Error('Không có quyền xem đơn.'),{status:403});
   const conditions=[],params=[];
   if(status){conditions.push('status=?');params.push(status);}
   if(query){conditions.push('(invoice_codes LIKE ? OR customer LIKE ? OR sale_name LIKE ?)');params.push(...Array(3).fill('%'+query+'%'));}
@@ -460,14 +498,20 @@ async function handle(req,env){
  }
  if(method==='POST'&&path==='/api/orders'){
   needRole(user,'SALE');
-  if(env.QBOOKS_ENABLE_LOCAL_SALE!=='true')
-   throw Object.assign(new Error('Đơn Sale hiện lấy từ SALE_DONG_DON trên Google Sheets. Chức năng tạo đơn riêng D1 tạm khóa để tránh dữ liệu lệch.'),{status:409});const b=await requestJSON(req);
-  const invoice=clean(b.invoice_codes),saleName=clean(b.sale_name)||user.name,customer=clean(b.customer);
+  const b=await requestJSON(req);
+  const invoice=clean(b.invoice_codes).replace(/\s*,\s*/g,', '),saleName=user.name,customer=clean(b.customer);
+  const qty=Number(b.quantity);
   if(!invoice||!customer)throw Error('Cần mã hóa đơn và tên khách hàng.');
+  if(invoice.length>300||customer.length>250)throw Error('Mã hóa đơn hoặc tên khách hàng quá dài.');
+  if(!Number.isSafeInteger(qty)||qty<=0||qty>1000000)throw Error('Số lượng quyển phải là số nguyên dương.');
+  const existing=await env.DB.prepare('SELECT id FROM orders WHERE UPPER(TRIM(invoice_codes))=UPPER(TRIM(?)) LIMIT 1').bind(invoice).first();
+  if(existing)throw Object.assign(new Error('Mã hóa đơn đã tồn tại trong D1/Google Sheets. Hãy kiểm tra để tránh tạo trùng.'),{status:409});
   const id=uid();
-  await env.DB.prepare('INSERT INTO orders(id,invoice_codes,sale_name,customer,quantity,address,carrier,transport,urgent,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)')
-  .bind(id,invoice,saleName,customer,Number(b.quantity)||0,clean(b.address),clean(b.carrier),clean(b.transport),b.urgent?1:0,user.id).run();
-  await audit(env,user,'CREATE_ORDER',id,invoice);return json({id},201);
+  try{
+   await env.DB.prepare("INSERT INTO orders(id,invoice_codes,sale_name,customer,quantity,address,carrier,transport,urgent,created_by,source_system,local_dirty) VALUES(?,?,?,?,?,?,?,?,?,'D1',0)")
+     .bind(id,invoice,saleName,customer,qty,clean(b.address),clean(b.carrier),clean(b.transport),b.urgent?1:0,user.id).run();
+  }catch(e){if(/UNIQUE constraint failed/i.test(e.message))throw Object.assign(new Error('Mã hóa đơn đã tồn tại. Không tạo thêm đơn trùng.'),{status:409});throw e;}
+  await audit(env,user,'CREATE_ORDER_D1',id,invoice);return json({id,source:'D1',googleSynced:false},201);
  }
  if(method==='POST'&&path==='/api/groups'){
   needRole(user,'SALE','SHIPPER');
