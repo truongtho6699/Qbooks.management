@@ -71,10 +71,20 @@ function renderNav(){
 }
 
 async function load(){
- const [bs,vs,ov,ls]=await Promise.all([api('GET','/api/video/books'),api('GET','/api/video/items?page='+state.videoPage+'&pageSize=100'),api('GET','/api/video/overview'),api('GET','/api/video/lessons')]);
- state.books=bs.books;state.items=vs.items;state.overview=ov;state.lessons=ls.lessons||[];state.videoPagination=vs.pagination||{page:1,pages:1,total:state.items.length};
- if(state.rights.manage||state.rights.admin){try{state.staff=(await api('GET','/api/video/staff')).staff}catch{state.staff=[]}}
+ const overviewMenus=['dashboard','adminOverview','filmOverview','postOverview','booksProgress','report','production'];
+ const itemMenus=['dashboard','adminOverview','filmOverview','postOverview','film','edit','createVideo','booksProgress','report'];
+ const canOverview=overviewMenus.some(can),canItems=itemMenus.some(can);
+ const [bs,vs,ov,ls]=await Promise.all([
+  api('GET','/api/video/books'),
+  canItems?api('GET','/api/video/items?page='+state.videoPage+'&pageSize=100'):Promise.resolve({items:[],pagination:{page:1,pages:0,total:0}}),
+  canOverview?api('GET','/api/video/overview'):Promise.resolve({totals:{},books:[],staff:[],statusCounts:[]}),
+  api('GET','/api/video/lessons')
+ ]);
+ state.books=bs.books||[];state.items=vs.items||[];state.overview=ov;state.lessons=ls.lessons||[];
+ state.videoPagination=vs.pagination||{page:1,pages:1,total:state.items.length};
+ if(can('staff')&&(state.rights.manage||state.rights.admin)){try{state.staff=(await api('GET','/api/video/staff')).staff}catch{state.staff=[]}}
 }
+
 async function refreshVideoList(restoreFocus=false){
  if(!['film','edit'].includes(state.view)||state.selected)return;
  const scope=state.view,token=++state.videoSearchToken;
@@ -253,7 +263,9 @@ function catalog(){
  const book=state.catalogBook||'',week=state.catalogWeek||'';
  const codes=[...new Set(state.lessons.map(x=>x.book_code))].sort();
  const weeks=[...new Set(state.lessons.filter(x=>!book||x.book_code===book).map(x=>x.week).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'vi',{numeric:true}));
- return kpis([{label:'Đầu sách có bài học',value:codes.length},{label:'Bài/tiết kế hoạch',value:state.lessons.length},{label:'Video đã khai báo',value:state.items.length},{label:'Video đã phát hành',value:state.items.filter(x=>x.status==='ĐÃ PHÁT HÀNH').length}])+
+ const counts=[{label:'Đầu sách có bài học',value:codes.length},{label:'Bài/tiết kế hoạch',value:state.lessons.length}];
+ if(['dashboard','adminOverview','booksProgress','report'].some(can))counts.push({label:'Video đã khai báo',value:state.overview?.totals?.total||0},{label:'Video đã phát hành',value:state.overview?.totals?.published||0});
+ return kpis(counts)+
  panel('Danh mục bài học theo đầu sách','<div class="filters"><div class="field"><label>Đầu sách</label><select id="catalogBook"><option value="">Tất cả đầu sách</option>'+
  state.books.map(b=>'<option value="'+E(b.code)+'" '+(b.code===book?'selected':'')+'>'+E(b.code)+' — '+E(b.name)+'</option>').join('')+
  '</select></div><div class="field"><label>Tuần</label><select id="catalogWeek"><option value="">Tất cả các tuần</option>'+
