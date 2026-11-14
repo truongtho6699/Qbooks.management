@@ -32,7 +32,7 @@ function render(config){
  for(const container of containers){
   container.replaceChildren();
   const orderOpen=expandedRoot==='orders';
-  makeBranch(container,'▣  Quản lý giao hàng',orderOpen,1,()=>setRoot('orders'));
+  if(orders.length)makeBranch(container,'▣  Quản lý giao hàng',orderOpen,1,()=>setRoot('orders'));
   if(orderOpen){
    const kids=make('div','qbn-children');
    const labels={overview:'Tổng hợp',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn'};
@@ -40,8 +40,9 @@ function render(config){
    container.append(kids);
   }
   const mediaOpen=expandedRoot==='media';
-  makeBranch(container,'◉  Quản lý Media',mediaOpen,1,()=>setRoot('media'));
-  if(mediaOpen){
+  const visibleMedia=MEDIA_GROUPS.some(group=>group.items.some(([id])=>canMedia(id)));
+  if(visibleMedia)makeBranch(container,'◉  Quản lý Media',mediaOpen,1,()=>setRoot('media'));
+  if(visibleMedia&&mediaOpen){
    const section=make('div','qbn-children');
    for(const group of MEDIA_GROUPS){
     const allowed=group.items.filter(([key])=>canMedia(key));
