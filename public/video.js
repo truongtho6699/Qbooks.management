@@ -247,7 +247,12 @@ function booksAdmin(){
  '<div class="field"><label>Kế hoạch số video</label><input name="target_count" type="number" min="0" value="0"></div>'+
  '<div class="field full"><label>Thư mục Drive</label><input name="drive_url" type="url" placeholder="https://drive.google.com/drive/folders/..."></div>'+
  '<div class="actions full">'+btn('Thêm đầu sách','primary','','submit')+'</div></form>'):'';
- return form+panel('Danh sách đầu sách',booksTable());
+ const missing=state.books.filter(b=>!googleFolderId(b.id));
+ const note=panel('Sẵn sàng tải video lên Google Drive','<p class="mini-note"><strong>'+missing.length+' / '+state.books.length+' đầu sách chưa có thư mục Drive hợp lệ.</strong> Nhập liên kết thư mục của từng đầu sách trước khi quay hoặc hậu kỳ. Ứng dụng sẽ không tự tải video vào thư mục gốc cá nhân.</p>'+
+ '<div class="tablewrap"><table class="data-table"><thead><tr><th>Đầu sách</th><th>Thư mục Drive</th><th>Thiết lập</th></tr></thead><tbody>'+
+ state.books.map(b=>'<tr><td>'+E(b.code)+' · '+E(b.name)+'</td><td>'+(googleFolderId(b.id)?'<a href="'+E(b.drive_url)+'" target="_blank" rel="noopener noreferrer">Đã thiết lập</a>':'<span class="state amber">Chưa thiết lập</span>')+'</td><td>'+
+ ((state.rights.manage||state.rights.admin)?'<form data-book-folder="'+E(b.id)+'" class="qv-folder-form"><input type="url" name="drive_url" value="'+E(b.drive_url||'')+'" placeholder="https://drive.google.com/drive/folders/..." required><button type="submit" class="btn">Lưu thư mục</button></form>':'Chỉ quản lý được cập nhật')+'</td></tr>').join('')+'</tbody></table></div>');
+ return note+form+panel('Danh sách đầu sách',booksTable());
 }
 function catalogItems(){
  const book=state.catalogBook||'',week=state.catalogWeek||'',q=(state.catalogQuery||'').trim().toLocaleLowerCase('vi');
@@ -372,7 +377,7 @@ function googleFolderId(bookId){
 async function uploadToDriveFile(file,bookId,token,updateStatus){
  await validateVideoFile(file);
  const metadata={name:file.name,mimeType:file.type};
- const folder=googleFolderId(bookId);if(folder)metadata.parents=[folder];
+ const folder=googleFolderId(bookId);if(!folder)throw Error('Đầu sách chưa thiết lập thư mục Google Drive. Yêu cầu Quản lý vào Danh mục Media → Quản trị đầu sách để cập nhật; không tải lên thư mục cá nhân.');metadata.parents=[folder];
  const start=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,webViewLink',{
   method:'POST',headers:{
    Authorization:'Bearer '+token,'Content-Type':'application/json; charset=UTF-8',
@@ -407,6 +412,7 @@ async function uploadToDriveFile(file,bookId,token,updateStatus){
 function startUpload(sourceId,statusId,inputName){
  const file=$(sourceId)?.files?.[0];
  if(!file)return toast('Chọn tệp video trước khi tải.');
+ if(!state.selected||!googleFolderId(state.selected.book_id))return toast('Đầu sách chưa cấu hình thư mục Drive. Liên hệ quản lý để thiết lập trước khi tải.');
  const status=$(statusId),form=state.selected&&$(sourceId==='rawFile'?'filmForm':'editForm');
  if(!form)return;
  status.textContent='Đang yêu cầu quyền Google Drive...';
@@ -432,6 +438,15 @@ function wire(){
  document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>{if(b.dataset.goto==='edit')state.videoFilter.review=b.dataset.review||'';navigate(b.dataset.goto);});
  if($('uploadRawVideo'))$('uploadRawVideo').onclick=()=>startUpload('rawFile','rawUploadStatus','raw_url');
  if($('uploadEditedVideo'))$('uploadEditedVideo').onclick=()=>startUpload('editedFile','editedUploadStatus','output_url');
+ document.querySelectorAll('form[data-book-folder]').forEach(form=>form.onsubmit=async event=>{
+  event.preventDefault();const btn=form.querySelector('button');btn.disabled=true;
+  try{
+   const id=form.dataset.bookFolder,link=form.elements.drive_url.value.trim();
+   await api('PATCH','/api/video/books/'+encodeURIComponent(id)+'/drive-folder',{drive_url:link});
+   await load();render();toast('Đã lưu thư mục Drive cho đầu sách.');
+  }catch(e){toast('Không lưu được thư mục: '+e.message);}
+  finally{btn.disabled=false;}
+ });
  bindForm('bookForm',b=>api('POST','/api/video/books',b));
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
  bindForm('filmForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'film',...b}));
