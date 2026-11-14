@@ -31,7 +31,7 @@ export async function videoApi(req,env,u){
  }
  if(method==='GET'&&path==='/api/video/production'){
   const day=str(url.searchParams.get('day'),10);
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)||Number.isNaN(Date.parse(day+'T00:00:00Z')))throw err('Ngày báo cáo không hợp lệ.');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||Number.isNaN(Date.parse(day+'T00:00:00Z')))throw err('Ngày báo cáo không hợp lệ.');
   const r=await db.prepare("SELECT u.id,u.name, SUM(CASE WHEN e.event_type='FILM_COMPLETED' THEN 1 ELSE 0 END) filmed,SUM(CASE WHEN e.event_type='EDIT_SUBMITTED' THEN 1 ELSE 0 END) edited FROM video_events e JOIN users u ON u.id=e.actor_id WHERE date(e.event_time,'+7 hours')=? AND e.event_type IN ('FILM_COMPLETED','EDIT_SUBMITTED') GROUP BY u.id,u.name ORDER BY filmed DESC,edited DESC,u.name").bind(day).all();
   return j({day,people:r.results||[],asOf:new Date().toISOString(),source:'video_events'});
  }
