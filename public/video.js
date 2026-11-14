@@ -36,7 +36,7 @@ function can(section){
  if(section==='bookDetail'||section==='catalog')return !!state.user;
  if(section==='film')return !!state.rights.film;
  if(section==='createVideo')return !!state.rights.manage;
- if(section==='edit')return !!state.rights.edit;
+ if(section==='edit')return !!state.rights.edit||!!state.rights.manage;
  return !!state.rights.manage;
 }
 const panel=(title,content,subtitle='')=>'<section class="panel"><div class="panelhead"><div><h2>'+E(title)+'</h2>'+(subtitle?'<p class="sub">'+E(subtitle)+'</p>':'')+'</div></div>'+content+'</section>';
