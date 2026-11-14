@@ -1,3 +1,4 @@
+import {resumableDriveUpload} from './video-drive.js';
 const $=id=>document.getElementById(id);
 const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]},menuKeys:[]};
 const NAV=[
@@ -376,39 +377,15 @@ function googleFolderId(bookId){
 }
 async function uploadToDriveFile(file,bookId,token,updateStatus){
  await validateVideoFile(file);
- const metadata={name:file.name,mimeType:file.type};
- const folder=googleFolderId(bookId);if(!folder)throw Error('Đầu sách chưa thiết lập thư mục Google Drive. Yêu cầu Quản lý vào Danh mục Media → Quản trị đầu sách để cập nhật; không tải lên thư mục cá nhân.');metadata.parents=[folder];
- const start=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,webViewLink',{
-  method:'POST',headers:{
-   Authorization:'Bearer '+token,'Content-Type':'application/json; charset=UTF-8',
-   'X-Upload-Content-Type':file.type,'X-Upload-Content-Length':String(file.size)
-  },body:JSON.stringify(metadata)
+ const folder=googleFolderId(bookId);
+ if(!folder)throw Error('Đầu sách chưa cấu hình thư mục Google Drive. Yêu cầu Quản lý thiết lập trước khi tải.');
+ const result=await resumableDriveUpload(file,{
+  token,folderId:folder,
+  onProgress:p=>updateStatus(p.percent===100?'Tải thành công. Bấm Lưu để ghi nhận trạng thái video.':'Đã tải '+p.percent+'% · '+Math.round(p.offset/1048576)+' MB / '+Math.round(p.total/1048576)+' MB')
  });
- if(!start.ok)throw Error('Google Drive không khởi tạo được phiên tải: HTTP '+start.status+'. Kiểm tra quyền và thư mục Drive của đầu sách.');
- const session=start.headers.get('Location');
- if(!session||!session.startsWith('https://'))throw Error('Google Drive chưa cấp phiên tải. Kiểm tra quyền của ứng dụng.');
- const chunkSize=8*1024*1024;let offset=0;
- while(offset<file.size){
-  const end=Math.min(offset+chunkSize,file.size);
-  const response=await fetch(session,{method:'PUT',headers:{
-   'Content-Type':file.type,'Content-Range':'bytes '+offset+'-'+(end-1)+'/'+file.size
-  },body:file.slice(offset,end)});
-  if(response.status===308){
-   const range=response.headers.get('Range');
-   if(!range)throw Error('Google Drive chưa xác nhận tiến độ; vui lòng tải lại hoặc dùng liên kết Drive.');
-   const next=Number(range.split('-').pop())+1;
-   if(!Number.isFinite(next)||next<=offset||next>end)throw Error('Google Drive trả tiến độ không hợp lệ.');
-   offset=next;
-   updateStatus('Đã tải '+Math.round(100*offset/file.size)+'% · '+Math.round(offset/1048576)+' MB / '+Math.round(file.size/1048576)+' MB');
-  }else if(response.ok){
-   const result=await response.json();
-   if(!result.id||Number(result.size)!==file.size)throw Error('Tệp Drive chưa được xác nhận đủ dung lượng.');
-   updateStatus('Đã tải thành công. Bấm Lưu để cập nhật trạng thái video.');
-   return result.webViewLink||'https://drive.google.com/file/d/'+encodeURIComponent(result.id)+'/view';
-  }else throw Error('Google Drive lỗi HTTP '+response.status+'. Tệp chưa được ghi nhận vào QBooks.');
- }
- throw Error('Google Drive chưa trả kết quả hoàn tất tải tệp.');
+ return result;
 }
+
 function startUpload(sourceId,statusId,inputName){
  const file=$(sourceId)?.files?.[0];
  if(!file)return toast('Chọn tệp video trước khi tải.');
