@@ -1,7 +1,7 @@
 
 const CHUNK_BYTES=8*1024*1024;
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false};
+const state={token:sessionStorage.getItem('qbooks_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
 const $all=(s)=>[...document.querySelectorAll(s)];
 function notice(text='',ok=false){$('notice').textContent=text;$('notice').className=ok?'notice ok':'notice';}
@@ -98,7 +98,8 @@ async function initGoogleSignIn(){
  }catch(e){$('googleStatus').textContent=e.message;}
 }
 function resetStaffEdit(){
- state.editStaffId=null;
+ state.editStaffId=null;state.menuEditor=null;
+ show('menuPermissionsPanel',false);
  $('staffForm').reset();
  $('staffForm').elements.email.readOnly=false;
  $('staffForm').elements.role.disabled=false;
@@ -121,10 +122,46 @@ async function loadStaffUsers(){
    form.elements.admin.checked=!!person.can_admin;form.elements.active.checked=!!person.active;
    form.elements.role.onchange();
    $('saveStaffBtn').textContent='LƯU THAY ĐỔI NHÂN SỰ';
+   loadStaffMenuPermissions(person.id,person.name,person.role).catch(e=>notice('Không đọc được phân quyền: '+e.message));
    form.scrollIntoView({behavior:'smooth',block:'center'});
   },'order');
   list.append(row);
  }
+}
+async function loadStaffMenuPermissions(id,name,role){
+ if(!capabilities().admin)return;
+ const details=await api('GET','/api/users/'+id+'/menus');
+ state.menuEditor={id,role,keys:details.keys};
+ const grid=$('menuPermissionsGrid');grid.replaceChildren();
+ $('menuPermissionsUser').textContent='Nhân sự: '+name+' · Vai trò: '+role;
+ const sections=[['Quản lý giao hàng',details.keys.filter(k=>k.startsWith('orders.'))],['Quản lý Media',details.keys.filter(k=>k.startsWith('media.'))],['Quản trị hệ thống',details.keys.filter(k=>k.startsWith('system.'))]];
+ for(const [heading,keys] of sections){
+  const group=el('fieldset',null,'menu-rights');group.append(el('legend',heading));
+  for(const key of keys){
+   const label=el('label',null,'menu-right-item'),input=document.createElement('input');
+   input.type='checkbox';input.dataset.menuKey=key;input.checked=details.menus.includes(key);
+   if(role==='VIEW'&&['system.admin','media.staff','media.permissions','media.audit'].includes(key))input.disabled=true;
+   label.append(input,el('span',details.labels[key]||key));group.append(label);
+  }
+  grid.append(group);
+ }
+ $('grantFilm').checked=!!details.video?.can_film;
+ $('grantEdit').checked=!!details.video?.can_edit;
+ $('grantManage').checked=!!details.video?.can_manage;
+ const isView=role==='VIEW';
+ for(const id of ['grantFilm','grantEdit','grantManage'])$(id).disabled=isView;
+ show('menuPermissionsPanel',true);
+}
+async function saveStaffMenuPermissions(){
+ const edit=state.menuEditor;if(!edit)return notice('Chọn nhân sự cần phân quyền.');
+ const permissions={};
+ for(const el of document.querySelectorAll('#menuPermissionsGrid [data-menu-key]'))permissions[el.dataset.menuKey]=!!el.checked&&!el.disabled;
+ const video={can_film:$('grantFilm').checked&&!$('grantFilm').disabled,can_edit:$('grantEdit').checked&&!$('grantEdit').disabled,can_manage:$('grantManage').checked&&!$('grantManage').disabled};
+ try{
+  await api('PUT','/api/users/'+edit.id+'/menus',{permissions,video});
+  notice('Đã lưu phân quyền theo từng menu.',true);
+  await loadStaffMenuPermissions(edit.id,$('menuPermissionsUser').textContent,edit.role);
+ }catch(e){notice('Không lưu được phân quyền: '+e.message);}
 }
 async function loadAdminReport(kind){
  const wrap=$('adminReport');wrap.replaceChildren(el('p','Đang tải '+kind+'...'));
@@ -178,18 +215,20 @@ async function loadPendingGoogle(){
 async function bootstrap(){
  try{
   const r=await api('GET','/api/bootstrap');state.user=r.user;
+  const access=await api('GET','/api/menu-access');state.menuKeys=access.menus||[];
   $('userInfo').textContent=r.user.name+' · '+r.user.role;
   $('shippingUserBadge').textContent=r.user.name;
   show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;
   // Always drop operational data kept by a previous session before showing the new identity.
   state.orders=[];state.overviewData=null;state.selected=null;state.lockedOrderIds.clear();
-  const rights=capabilities();
-  state.tab=rights.admin||r.user.role==='VIEW'?'overview':rights.pack?'pack':rights.ship?'ship':'sale';
-  const requested=new URLSearchParams(window.location.search);
-  const target=requested.get('tab'),toAdmin=requested.get('nav')==='admin';
+  const rights=capabilities(),keys=state.menuKeys;
+  const permitted=key=>keys.includes('orders.'+key);
+  state.tab=rights.admin?'overview': ['overview','sale','pack','ship'].find(permitted)||'overview';
+  const requested=new URLSearchParams(window.location.search),target=requested.get('tab'),toAdmin=requested.get('nav')==='admin';
   if(toAdmin&&rights.admin)state.tab='staff';
-  else if(['overview','sale','pack','ship'].includes(target)&&((target==='overview'&&(rights.admin||rights.pack||rights.ship||rights.view))||(target==='sale'&&(rights.sale||rights.view))||(target==='pack'&&(rights.pack||rights.view))||(target==='ship'&&(rights.ship||rights.view))))state.tab=target;
+  else if(['overview','sale','pack','ship'].includes(target)&&permitted(target))state.tab=target;
   if(toAdmin&&rights.admin)window.QbookNavigation?.focusAdmin();else if(target)window.QbookNavigation?.focusOrders();
+  if(!rights.admin&&!['overview','sale','pack','ship'].some(permitted)&&keys.some(k=>k.startsWith('media.'))){window.location.replace('/video.html');return;}
   renderTabs();switchView();
  }catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;notice(e.message);}
 }
@@ -198,20 +237,18 @@ function capabilities(){
  return {pack:!!r.dongHang,ship:!!r.vanDon,admin:!!r.admin,view:state.user?.role==='VIEW',sale:state.user?.role==='SALE'||!!r.admin};
 }
 const OPERATION_TABS=[['sale','Sale lên đơn','✎'],['pack','Đóng hàng','▣'],['ship','Vận đơn','▤']];
-function availableOperationTabs(){
- const r=capabilities();
- return OPERATION_TABS.filter(([key])=>r.view||(key==='sale'?r.sale:key==='pack'?r.pack:r.ship));
-}
+function menuAllowed(key){return !!state.user?.rights?.admin||state.menuKeys.includes(key);}
+function availableOperationTabs(){return OPERATION_TABS.filter(([key])=>menuAllowed('orders.'+key));}
 function isOperationTab(key){return ['sale','pack','ship'].includes(key);}
 function renderTabs(){
  const r=capabilities(),operations=availableOperationTabs();
- const orderTabs=[...(r.admin||r.pack||r.ship||r.view?[['overview','Tổng hợp']]:[]),...operations.map(([id,label])=>[id,label])];
+ const orderTabs=[...(menuAllowed('orders.overview')?[['overview','Tổng hợp']]:[]),...operations.map(([id,label])=>[id,label])];
  const desktop=$('tabs'),mobile=$('mobileShippingTabs'),inner=$('shippingOperationTabs');
  desktop.replaceChildren();mobile.replaceChildren();inner.replaceChildren();
  if(!window.QbookNavigation)throw Error('Thiếu bộ điều hướng QBOOK');
  window.QbookNavigation.render({
    desktop,mobileTree:$('qbnMobileTree'),drawer:$('qbnDrawer'),toggle:$('qbnToggle'),
-   area:state.tab==='staff'?'admin':'orders',activeView:state.tab,orders:orderTabs,admin:r.admin,
+   area:state.tab==='staff'?'admin':'orders',activeView:state.tab,orders:orderTabs,admin:menuAllowed('system.admin'),canMedia:id=>menuAllowed('media.'+id),
    onOrder:key=>tab(key),
    onMedia:key=>{window.location.href='/video.html?view='+encodeURIComponent(key);},
    onAdmin:()=>tab('staff')
@@ -229,8 +266,8 @@ function renderTabs(){
      else renderTabs();
    },active);
  }
- addMobile('media','Media','◉',()=>window.location.href='/video.html',false);
- if(r.admin)addMobile('admin','Quản trị','⚙',()=>tab('staff'),state.tab==='staff');
+ if(state.menuKeys.some(k=>k.startsWith('media.')))addMobile('media','Media','◉',()=>window.location.href='/video.html',false);
+ if(menuAllowed('system.admin'))addMobile('admin','Quản trị','⚙',()=>tab('staff'),state.tab==='staff');
  for(const [id,label]of orderTabs){const b=button(label,()=>tab(id),state.tab===id?'selected':'');b.classList.add('shipping-operation-tab');inner.append(b);}
  show('shippingOperationGroup',state.orderMenuExpanded&&active&&orderTabs.length>0);
  const close=$('qbnClose');
@@ -262,12 +299,17 @@ function viewOnlyLayout(key){
 }
 function switchView(){
  const key=state.tab,isView=capabilities().view;
+ if(key!=='staff'&&!menuAllowed('orders.'+key)){
+  for(const id of ['overviewView','ordersView','saleView','staffView','detailView'])show(id,false);
+  show('viewOnlyPanel',true);$('viewOnlyContent').textContent='Bạn chưa được cấp quyền menu Quản lý giao hàng. Liên hệ quản trị để cấp quyền.';
+  renderTabs();return;
+ }
  if(isOperationTab(key))state.lastOperationTab=key;
  const title={overview:'Tổng quan chuyển hàng',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn',staff:'Quản trị hệ thống'};
  $('shippingHeading').textContent=title[key]||'Quản lý chuyển hàng';
  $('shippingSubheading').textContent=isView?'Chế độ VIEW – chỉ xem giao diện, không truy cập dữ liệu':
   key==='overview'?'Tiến độ, chứng từ, ảnh và video của từng đơn':'Theo dõi và thực hiện nghiệp vụ QBooks';
- if(isView){
+ if(isView&&key!=='overview'){
   show('viewOnlyPanel',true);
   for(const id of ['overviewView','ordersView','saleView','staffView','detailView'])show(id,false);
   viewOnlyLayout(key);
@@ -277,10 +319,10 @@ function switchView(){
  show('viewOnlyPanel',false);
  show('overviewView',key==='overview');show('ordersView',key==='pack'||key==='ship');
  show('saleView',key==='sale');show('staffView',key==='staff');show('detailView',false);
- show('newSalePanel',state.user.role!=='SHIPPER');
+ show('newSalePanel',menuAllowed('orders.sale')&&state.user.role!=='VIEW');
  renderTabs();
  if(key==='overview')loadOverview().catch(e=>notice('Không đọc được tổng quan: '+e.message));
- if(key==='sale')loadGroupOptions().catch(e=>notice(e.message));
+ if(key==='sale'){loadGroupOptions().catch(e=>notice(e.message));loadOrders().catch(e=>notice(e.message));}
  if(key==='staff'){loadPendingGoogle();loadStaffUsers();refreshGoogleSync();}
  if(key==='pack'||key==='ship')loadOrders().catch(e=>notice(e.message));
 }
@@ -288,7 +330,7 @@ async function releaseLocks(){
  const ids=[...state.lockedOrderIds];state.lockedOrderIds.clear();
  await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
 }
-function tab(key){if(state.lockedOrderIds.size)releaseLocks();state.tab=key;state.orderMenuExpanded=key!=='staff';if(key==='staff')window.QbookNavigation?.focusAdmin();else window.QbookNavigation?.focusOrders();switchView();}
+function tab(key){if(key==='staff'&&!menuAllowed('system.admin'))return notice('Chưa được cấp quyền Quản trị hệ thống.');if(key!=='staff'&&!menuAllowed('orders.'+key))return notice('Chưa được cấp quyền menu này.');if(state.lockedOrderIds.size)releaseLocks();state.tab=key;state.orderMenuExpanded=key!=='staff';if(key==='staff')window.QbookNavigation?.focusAdmin();else window.QbookNavigation?.focusOrders();switchView();}
 const MEDIA_LABELS={ANH_HOA_DON:'Ảnh hóa đơn',VIDEO_DONG_HANG:'Video đóng hàng',HANG_HOA:'Ảnh hàng hóa',GIAO_HANG:'Ảnh bàn giao'};
 const LINK_LABELS=[['packing_folder_url','Thư mục đóng hàng'],['shipping_folder_url','Thư mục vận đơn'],['invoice_folder_url','Thư mục ảnh hóa đơn'],['video_folder_url','Thư mục video'],['goods_folder_url','Thư mục ảnh hàng hóa']];
 function safeDriveUrl(value){
@@ -797,8 +839,9 @@ $('backBtn').onclick=()=>tab(state.tab);
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
 $('saleForm').addEventListener('submit',async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));f.urgent=!!e.target.querySelector('[name=urgent]').checked;try{await api('POST','/api/orders',f);e.target.reset();notice('Đã tạo đơn Sale.',true);await loadGroupOptions();await loadOrders()}catch(err){notice(err.message)}});
+$('saveMenuPermissions').onclick=saveStaffMenuPermissions;
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
-$('staffForm').addEventListener('submit',async e=>{e.preventDefault();const f=e.target;const data=Object.fromEntries(new FormData(f));const pinInput=f.querySelector('input[name="pin"]');data.pin=String(pinInput?.value??data.pin??'').trim();data.dongHang=f.elements.dongHang.checked;data.vanDon=f.elements.vanDon.checked;data.admin=f.elements.admin.checked;data.active=f.elements.active.checked;if((!state.editStaffId||data.pin)&&!/^\d{3,8}$/.test(data.pin))return notice('Mã PIN phải gồm 3–8 chữ số (0–9); vui lòng kiểm tra ô PIN trong biểu mẫu nhân sự.');if(data.role==='VIEW'){data.dongHang=false;data.vanDon=false;data.admin=false;}try{const r=state.editStaffId?await api('PATCH','/api/users/'+state.editStaffId,data):await api('POST','/api/users',data);notice('Đã lưu nhân sự '+r.id,true);resetStaffEdit();await loadStaffUsers();await loadAdminReport('STAFF');}catch(err){notice(err.message)}});
+$('staffForm').addEventListener('submit',async e=>{e.preventDefault();const f=e.target;const data=Object.fromEntries(new FormData(f));const pinInput=f.querySelector('input[name="pin"]');data.pin=String(pinInput?.value??data.pin??'').trim();data.dongHang=f.elements.dongHang.checked;data.vanDon=f.elements.vanDon.checked;data.admin=f.elements.admin.checked;data.active=f.elements.active.checked;if((!state.editStaffId||data.pin)&&!/^\d{3,8}$/.test(data.pin))return notice('Mã PIN phải gồm 3–8 chữ số (0–9); vui lòng kiểm tra ô PIN trong biểu mẫu nhân sự.');if(data.role==='VIEW'){data.dongHang=false;data.vanDon=false;data.admin=false;}try{const r=state.editStaffId?await api('PATCH','/api/users/'+state.editStaffId,data):await api('POST','/api/users',data);notice('Đã lưu nhân sự '+r.id,true);const savedId=r.id;const savedName=data.name;const savedRole=data.role;resetStaffEdit();await loadStaffUsers();await loadAdminReport('STAFF');await loadStaffMenuPermissions(savedId,savedName,savedRole);}catch(err){notice(err.message)}});
 const SHEET_ID='1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw';
 async function googleRead(url,token){
  const res=await fetch(url,{headers:{Authorization:'Bearer '+token},cache:'no-store'});
