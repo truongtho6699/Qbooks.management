@@ -4,7 +4,7 @@ export const ORDER_MENUS=['orders.overview','orders.sale','orders.pack','orders.
 export const MEDIA_MENUS=[
  'media.dashboard','media.adminOverview','media.filmOverview','media.film','media.createVideo',
  'media.postOverview','media.edit','media.production','media.booksProgress','media.report',
- 'media.books','media.catalog','media.staff','media.permissions','media.audit'
+ 'media.books','media.catalog','media.staff','media.audit'
 ];
 export const MENU_KEYS=[...ORDER_MENUS,...MEDIA_MENUS,'system.admin'];
 export const MENU_LABELS={
