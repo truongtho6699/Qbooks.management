@@ -56,7 +56,7 @@ export async function videoApi(req,env,u){
   if(bookId){where+=' AND v.book_id=?';args.push(bookId);}
   if(status){where+=' AND v.status=?';args.push(status);}
   if(url.searchParams.get('scope')==='edit')where+=" AND v.status!='CHỜ QUAY'";
-  if(q){where+=' AND (v.title LIKE ? OR b.name LIKE ? OR b.code LIKE ?)';args.push('%'+q+'%','%'+q+'%','%'+q+'%');}
+  if(q){where+=' AND (v.title LIKE ? OR v.lesson LIKE ? OR b.name LIKE ? OR b.code LIKE ?)';args.push('%'+q+'%','%'+q+'%','%'+q+'%','%'+q+'%');}
   const countRow=await db.prepare('SELECT COUNT(*) total FROM video_items v JOIN video_books b ON b.id=v.book_id'+where).bind(...args).first();
   const sql='SELECT v.*,b.code AS book_code,b.name AS book_name,cu.name AS camera_name,ed.name AS editor_name FROM video_items v JOIN video_books b ON b.id=v.book_id LEFT JOIN users cu ON cu.id=v.camera_id LEFT JOIN users ed ON ed.id=v.editor_id'+where+' ORDER BY v.updated_at DESC,v.id DESC LIMIT ? OFFSET ?';
   const r=await db.prepare(sql).bind(...args,pageSize,(page-1)*pageSize).all();
