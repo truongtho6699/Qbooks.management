@@ -86,3 +86,24 @@ test('Explicitly disabled Sale menu blocks creating orders even with SALE role',
  assert.equal(res.status,403,JSON.stringify({data:res.data,sqls:env.sqls,binds:env.binds}));
  assert.ok(!env.sqls.some(x=>x.includes('INSERT INTO orders')));
 });
+
+test('Granted VIEW sees only assigned menus and can open Media in read-only mode',async()=>{
+ const viewerSession={...viewer,name:'Guest',email:'viewer@test.example',active:1,expires_at:Math.floor(Date.now()/1000)+3600};
+ const allowed=['orders.overview','media.dashboard'];
+ const env={MEDIA:{},DB:{prepare(sql){return {bind(){return this},
+  async first(){if(sql.includes('FROM sessions'))return {...viewerSession};if(sql.includes('video_role_grants'))return null;return null;},
+  async all(){if(sql.includes('FROM user_menu_permissions'))return {results:allowed.map(menu_key=>({menu_key,allowed:1}))};return {results:[]};},
+  async run(){throw Error('VIEW must never write');}
+ }}}};
+ const headers={authorization:'Bearer test-session'};
+ const menus=await worker.fetch(new Request('https://qbooks.test/api/menu-access',{headers}),env);
+ assert.equal(menus.status,200);
+ const data=await menus.json();
+ assert.deepEqual(data.menus,allowed);
+ assert.equal(data.readOnly,true);
+ const media=await worker.fetch(new Request('https://qbooks.test/api/video/bootstrap',{headers}),env);
+ assert.equal(media.status,200);
+ const body=await media.json();assert.equal(body.rights.readOnly,true);
+ const blocked=await worker.fetch(new Request('https://qbooks.test/api/video/items',{method:'POST',headers:{...headers,'content-type':'application/json'},body:'{}'}),env);
+ assert.equal(blocked.status,403);
+});
