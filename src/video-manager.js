@@ -37,7 +37,7 @@ export async function videoApi(req,env,u){
   return j({day,people:r.results||[],asOf:new Date().toISOString(),source:'video_events'});
  }
  if(method==='GET'&&path==='/api/video/books'){
-  const r=await db.prepare("SELECT b.*,COUNT(v.id) AS total,SUM(CASE WHEN v.status='ĐÃ PHÁT HÀNH' THEN 1 ELSE 0 END) AS published FROM video_books b LEFT JOIN video_items v ON b.id=v.book_id GROUP BY b.id ORDER BY b.created_at DESC LIMIT 300").all();
+  const r=await db.prepare("SELECT b.*,COUNT(v.id) AS total,SUM(CASE WHEN v.status!='CHỜ QUAY' THEN 1 ELSE 0 END) AS filmed,SUM(CASE WHEN v.status='ĐÃ PHÁT HÀNH' THEN 1 ELSE 0 END) AS published FROM video_books b LEFT JOIN video_items v ON b.id=v.book_id GROUP BY b.id ORDER BY b.created_at DESC LIMIT 300").all();
   return j({books:r.results||[]});
  }
  if(method==='POST'&&path==='/api/video/books'){
