@@ -509,7 +509,7 @@ async function handle(req,env){
   if(!invoice||!customer)throw Error('Cần mã hóa đơn và tên khách hàng.');
   if(invoice.length>300||customer.length>250)throw Error('Mã hóa đơn hoặc tên khách hàng quá dài.');
   if(!Number.isSafeInteger(qty)||qty<=0||qty>1000000)throw Error('Số lượng quyển phải là số nguyên dương.');
-  const existing=await env.DB.prepare('SELECT id FROM orders WHERE UPPER(TRIM(invoice_codes))=UPPER(TRIM(?)) LIMIT 1').bind(invoice).first();
+  const existing=await env.DB.prepare("SELECT id FROM orders WHERE REPLACE(REPLACE(UPPER(TRIM(invoice_codes)),' ',''),CHAR(9),'')=REPLACE(REPLACE(UPPER(TRIM(?)),' ',''),CHAR(9),'') LIMIT 1").bind(invoice).first();
   if(existing)throw Object.assign(new Error('Mã hóa đơn đã tồn tại trong D1/Google Sheets. Hãy kiểm tra để tránh tạo trùng.'),{status:409});
   const id=uid();
   try{
