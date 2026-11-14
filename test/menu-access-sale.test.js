@@ -47,7 +47,7 @@ function mockSellerDb(existing=null,menus={}){
  return {sqls,binds,prepare(sql){sqls.push(sql);
   return {sql,params:[],bind(...a){this.params=a;binds.push({sql,values:a});return this},
     async first(){
-      if(sql.includes('FROM sessions'))return seller;
+      if(sql.includes('FROM sessions'))return {...seller};
       if(sql.includes('FROM video_role_grants'))return null;
       if(sql.includes('SELECT id FROM orders WHERE UPPER(TRIM(invoice_codes))'))return existing;
       return null;
