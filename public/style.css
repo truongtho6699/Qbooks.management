@@ -225,3 +225,13 @@ body{background:#eef2f9}
 @keyframes order-nav-expand{from{opacity:.2;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 @media(min-width:801px){#shippingOperationGroup{display:none!important}}
 @media(prefers-reduced-motion:reduce){.shipping-child-menu:not([hidden]){animation:none}}
+
+/* QBOOK per-user menu permission editor */
+.menu-permissions-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px;margin:14px 0}
+.menu-rights{border:1px solid #d3deec;border-radius:12px;padding:12px;display:grid;gap:9px;min-width:0;background:#f8fbff}
+.menu-rights legend{font-weight:750;color:#244269;padding:0 5px}
+.menu-right-item,.menu-rights>label{display:flex;align-items:center;gap:9px;line-height:1.35;font-size:13px;cursor:pointer}
+.menu-right-item input,.menu-rights input{accent-color:#2365be;width:17px;height:17px;flex:none}
+.menu-right-item:has(input:disabled){opacity:.55}
+#menuPermissionsPanel{margin-top:18px}
+@media(max-width:680px){.menu-permissions-grid{grid-template-columns:1fr}.menu-rights{padding:11px}}
