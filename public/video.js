@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},dailyStats:{day:'',people:[]}};
+const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]}};
 const NAV=[
  {id:'dashboard',text:'Bảng điều khiển',icon:'▦',group:'CHUNG'},
  {id:'adminOverview',text:'Tổng quan quản trị',icon:'▤',group:'CHUNG'},
@@ -50,7 +50,7 @@ const btn=(label,action,id='',type='button')=>'<button type="'+type+'" class="bt
 const selected=(arr,cur)=>arr.map(x=>'<option value="'+E(x.id)+'" '+(x.id===cur?'selected':'')+'>'+E(x.name)+'</option>').join('');
 const booksList=()=>state.books.map(b=>({id:b.id,name:b.code+' — '+b.name}));
 const statuses=['CHỜ QUAY','ĐÃ QUAY','ĐANG HẬU KỲ','CHỜ DUYỆT','ĐÃ PHÁT HÀNH'];
-const pager=()=>{const p=state.videoPagination;return p.pages>1?'<div class="actions qv-pager"><span class="mini-note">Trang '+p.page+'/'+p.pages+' · '+count(p.total)+' video</span><button type="button" class="btn" id="videoPrev" '+(p.page===1?'disabled':'')+'>‹ Trước</button><button type="button" class="btn" id="videoNext" '+(p.page>=p.pages?'disabled':'')+'>Sau ›</button></div>':'';};
+const pager=()=>{const p=state.videoListPagination;return p.pages>1?'<div class="actions qv-pager"><span class="mini-note">Trang '+p.page+'/'+p.pages+' · '+count(p.total)+' video</span><button type="button" class="btn" id="videoPrev" '+(p.page===1?'disabled':'')+'>‹ Trước</button><button type="button" class="btn" id="videoNext" '+(p.page>=p.pages?'disabled':'')+'>Sau ›</button></div>':'';};
 const booksTable=()=>table(['Mã sách','Tên đầu sách','Giảng viên','Kế hoạch','Video đã có','Đã phát hành','Tiến độ'],state.books.map(b=>{
  const target=Number(b.target_count)||0,pub=Number(b.published)||0,rate=target?Math.min(100,Math.round(100*pub/target)):0;
  return ['<button class="link-action" data-book="'+E(b.id)+'">'+E(b.code)+'</button>',E(b.name),E(b.teacher||'—'),count(target),count(b.total),count(pub),'<div class="progress"><span style="width:'+rate+'%"></span></div><span class="mini-note">'+rate+'%</span>'];
@@ -81,6 +81,19 @@ async function load(){
  state.books=bs.books;state.items=vs.items;state.overview=ov;state.lessons=ls.lessons||[];state.videoPagination=vs.pagination||{page:1,pages:1,total:state.items.length};
  if(state.rights.manage||state.rights.admin){try{state.staff=(await api('GET','/api/video/staff')).staff}catch{state.staff=[]}}
 }
+async function refreshVideoList(restoreFocus=false){
+ if(!['film','edit'].includes(state.view)||state.selected)return;
+ const scope=state.view,token=++state.videoSearchToken;
+ const params=new URLSearchParams({page:String(state.videoPage),pageSize:'100',scope,q:state.videoFilter.q||'',book:state.videoFilter.book||''});
+ try{
+  const result=await api('GET','/api/video/items?'+params.toString());
+  if(token!==state.videoSearchToken||state.view!==scope||state.selected)return;
+  state.videoListItems=result.items||[];
+  state.videoListPagination=result.pagination||{page:1,pages:1,total:state.videoListItems.length};
+  state.videoListScope=scope;render();
+  if(restoreFocus){const input=$('filterVideo');if(input){input.focus();input.setSelectionRange(input.value.length,input.value.length);}}
+ }catch(e){toast('Không đọc được danh sách: '+e.message);}
+}
 function navigate(view){
  if(view==='more'){
   const options=NAV.filter(n=>can(n.id)&&!['dashboard','film','edit','booksProgress'].includes(n.id));
@@ -93,7 +106,7 @@ function navigate(view){
  const title=NAV.find(x=>x.id===view)?.text||'Quản lý video';
  $('viewTitle').textContent=title;
  $('viewSubtitle').textContent=view==='dashboard'?'Theo dõi toàn bộ tiến độ sản xuất video sách':'Dữ liệu thực tế · QBOOK Video Manager';
- renderNav();render();if(view==='production'&&state.dailyStats?.day!==(state.productionDate||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())))fetchProduction();
+ renderNav();render();if(['film','edit'].includes(view)){state.videoPage=1;state.videoListItems=[];state.videoListPagination={page:1,pages:1,total:0};refreshVideoList();}if(view==='production'&&state.dailyStats?.day!==(state.productionDate||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())))fetchProduction();
 }
 function dashboard(){
  const o=state.overview||{totals:{},books:[],staff:[]},t=o.totals;
@@ -148,7 +161,7 @@ function filmingOverview(){
 function makeVideoRows(items,action){
  return items.map(v=>[E(v.book_code),'<strong>'+E(v.title)+'</strong><div class="mini-note">'+E(v.lesson||'')+'</div>',E(v.teacher||'—'),E(v.camera_name||'—'),badge(v.status),'<button type="button" class="link-action" data-action="'+action+'" data-id="'+E(v.id)+'">'+(action==='film'?'Quay / Chi tiết':'Xử lý / Chi tiết')+'</button>']);
 }
-function filmList(){return (state.rights.manage||state.rights.admin?'<div class="actions" style="margin-bottom:15px"><button class="btn primary" data-goto="createVideo">＋ Lập kế hoạch video</button></div>':'')+panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items,'film'),'Chưa có video')+'</div>'+pager());}
+function filmList(){return (state.rights.manage||state.rights.admin?'<div class="actions" style="margin-bottom:15px"><button class="btn primary" data-goto="createVideo">＋ Lập kế hoạch video</button></div>':'')+panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học" value="'+E(state.videoFilter.q||'')+'"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),state.videoFilter.book||'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.videoListItems,'film'),'Chưa có video')+'</div>'+pager());}
 function filmDetail(v){
  return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+'</div>')+
  panel('Quay bài · cập nhật tiến độ','<form id="filmForm" class="form-grid">'+
@@ -163,7 +176,7 @@ function postOverview(){
  return kpis([{label:'Chờ hậu kỳ',value:state.items.filter(v=>v.status==='ĐÃ QUAY').length},{label:'Đang hậu kỳ',value:state.items.filter(v=>v.status==='ĐANG HẬU KỲ').length},{label:'Chờ duyệt',value:state.items.filter(v=>v.status==='CHỜ DUYỆT').length},{label:'Đã phát hành',value:state.items.filter(v=>v.status==='ĐÃ PHÁT HÀNH').length}])+
  panel('Danh sách video cần xử lý',table(['Đầu sách','Video','Người quay','Trạng thái','Thao tác'],pending.map(v=>[E(v.book_code),E(v.title),E(v.camera_name||'—'),badge(v.status),'<button class="link-action" data-action="edit" data-id="'+E(v.id)+'">Xử lý video</button>'])));
 }
-function editList(){return panel('Danh sách video hậu kỳ','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, tên sách"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.items.filter(v=>v.status!=='CHỜ QUAY'),'edit'),'Chưa có video hậu kỳ')+'</div>'+pager());}
+function editList(){return panel('Danh sách video hậu kỳ','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, tên sách" value="'+E(state.videoFilter.q||'')+'"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.videoListItems,'edit'),'Chưa có video hậu kỳ')+'</div>'+pager());}
 function editDetail(v){
  const manager=state.rights.manage||state.rights.admin;
  const canEdit=state.rights.edit||state.rights.admin;
@@ -415,18 +428,14 @@ function wire(){
  if($('approveVideo'))$('approveVideo').onclick=()=>reviewAction('approve');
  if($('rejectVideo'))$('rejectVideo').onclick=()=>reviewAction('reject');
  if($('publishVideo'))$('publishVideo').onclick=()=>reviewAction('publish');
- if($('videoPrev'))$('videoPrev').onclick=async()=>{state.videoPage=Math.max(1,state.videoPage-1);await load();render();};
- if($('videoNext'))$('videoNext').onclick=async()=>{state.videoPage=Math.min(state.videoPagination.pages,state.videoPage+1);await load();render();};
+ if($('videoPrev'))$('videoPrev').onclick=async()=>{state.videoPage=Math.max(1,state.videoPage-1);await refreshVideoList();};
+ if($('videoNext'))$('videoNext').onclick=async()=>{state.videoPage=Math.min(state.videoListPagination.pages,state.videoPage+1);await refreshVideoList();};
  const eform=$('editForm');if(eform&&state.selected)eform.elements.status.value=['ĐANG HẬU KỲ','CHỜ DUYỆT','ĐÃ PHÁT HÀNH'].includes(state.selected.status)?state.selected.status:'ĐANG HẬU KỲ';
  const back=$('backList');if(back)back.onclick=()=>{state.selected=null;render()};
- function filterTable(){
-  const q=($('filterVideo')?.value||'').toLocaleLowerCase('vi'),book=$('filterBook')?.value||'';
-  const items=state.items.filter(v=>(state.view==='film'||v.status!=='CHỜ QUAY')&&(!book||v.book_id===book)&&(!q||(v.title+' '+v.book_name+' '+v.book_code).toLocaleLowerCase('vi').includes(q)));
-  $('filteredRows').innerHTML=table(['Đầu sách','Video','Giảng viên','Người quay','Trạng thái','Thao tác'],makeVideoRows(items,state.view),'Chưa có video phù hợp');
-  document.querySelectorAll('[data-action][data-id]').forEach(b=>b.onclick=()=>openVideo(b.dataset.id,b.dataset.action));
- }
- if($('filterVideo'))$('filterVideo').oninput=filterTable;
- if($('filterBook'))$('filterBook').onchange=filterTable;
+ let searchTimer;
+ const queueFilter=restoreFocus=>{clearTimeout(searchTimer);state.videoPage=1;searchTimer=setTimeout(()=>refreshVideoList(restoreFocus),240);};
+ if($('filterVideo'))$('filterVideo').oninput=e=>{state.videoFilter.q=e.target.value;queueFilter(true);};
+ if($('filterBook'))$('filterBook').onchange=e=>{state.videoFilter.book=e.target.value;queueFilter(false);};
  document.querySelectorAll('[data-action][data-id]').forEach(b=>b.onclick=()=>openVideo(b.dataset.id,b.dataset.action));
  document.querySelectorAll('[data-grant]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();try{
   await api('POST','/api/video/staff',{user_id:form.dataset.grant,can_film:form.elements.can_film.checked,can_edit:form.elements.can_edit.checked,can_manage:form.elements.can_manage.checked});
@@ -435,7 +444,7 @@ function wire(){
  const exp=$('exportReport');if(exp)exp.onclick=csvExport;
 }
 function openVideo(id,action){
- const v=state.items.find(x=>x.id===id);if(!v)return toast('Không tìm thấy video.');
+ const v=state.videoListItems.find(x=>x.id===id)||state.items.find(x=>x.id===id);if(!v)return toast('Không tìm thấy video.');
  if(action==='film'&&!state.rights.film&&!state.rights.admin)return toast('Chưa có quyền quay video.');
  if(action==='edit'&&!state.rights.edit&&!state.rights.manage&&!state.rights.admin)return toast('Chưa có quyền hậu kỳ hoặc quản lý.');
  state.selected=v;state.view=action;renderNav();render();$('page').focus();
