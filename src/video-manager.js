@@ -15,7 +15,7 @@ export async function videoApi(req,env,u){
  const mediaMenus=(u.menuKeys||[]).filter(key=>key.startsWith('media.'));
  const readOnly=u.role==='VIEW';
  const requireMenu=key=>{if(!rights.admin&&!mediaMenus.includes('media.'+key))throw err('Menu Media này chưa được cấp quyền.',403);};
- if(!rights.admin&&!rights.film&&!rights.edit&&!rights.manage&&!mediaMenus.length)throw err('Tài khoản chưa được cấp quyền sử dụng Quản lý video sách.',403);
+ if(!rights.admin&&!mediaMenus.length)throw err('Tài khoản chưa được cấp menu Quản lý Media.',403);
  if(readOnly&&method!=='GET')throw err('VIEW chỉ được xem dữ liệu trong các menu được phân quyền.',403);
  if(readOnly&&['/api/video/staff','/api/video/audit'].includes(path))throw err('Không có quyền xem dữ liệu quản trị nhân sự.',403);
  const requireRight=r=>{if(!rights[r]&&!rights.admin)throw err('Tài khoản chưa được cấp quyền chức năng này.',403);};
