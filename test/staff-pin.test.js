@@ -11,6 +11,7 @@ function mockEnv(){
  const sqls=[], batches=[];
  return {
   sqls,batches,
+  MEDIA:{},
   DB:{
    prepare(sql){
     sqls.push(sql);
