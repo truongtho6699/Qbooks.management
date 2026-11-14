@@ -100,3 +100,39 @@ test('Day production endpoint rejects bad date input',async()=>{
  const db=videoDb(clip(),{can_edit:1});
  await assert.rejects(()=>videoApi(new Request('https://test.local/api/video/production?day=not-a-day'),{DB:db},filmUser),e=>e.status===400);
 });
+
+test('Server filtering uses review queue and page offset without leaking unfiltered rows',async()=>{
+ const db=videoDb(clip(),{can_manage:1});
+ const q='https://test.local/api/video/items?scope=edit&review=PENDING&book=book123&q=Toan&page=2&pageSize=25';
+ const res=await videoApi(new Request(q),{DB:db},filmUser);
+ assert.equal(res.status,200);
+ const body=await res.json();
+ assert.deepEqual(body.pagination,{page:2,pageSize:25,total:0,pages:0});
+ assert.ok(db.queries.some(sql=>sql.includes("v.review_status=?")&&sql.includes("v.status!='CHỜ QUAY'")));
+ assert.ok(db.queries.some(sql=>sql.includes("LIMIT ? OFFSET ?")));
+});
+test('Filming list excludes already processed video statuses',async()=>{
+ const db=videoDb(clip(),{can_film:1});
+ const result=await videoApi(new Request('https://test.local/api/video/items?scope=film'),{DB:db},filmUser);
+ assert.equal(result.status,200);
+ assert.ok(db.queries.some(sql=>sql.includes("v.status IN ('CHỜ QUAY','ĐÃ QUAY')")));
+});
+test('Reviewer must provide a reason when requesting revision',async()=>{
+ const db=videoDb(clip(),{can_manage:1});
+ const manager={...filmUser,id:'manager-id'};
+ await assert.rejects(()=>videoApi(patch('reject',{note:''}),{DB:db},manager),e=>e.status===400);
+ assert.ok(!db.queries.some(q=>q.startsWith('UPDATE video_items')));
+});
+test('Publishing rejects a spoofed YouTube hostname',async()=>{
+ const db=videoDb(clip({review_status:'APPROVED'}),{can_manage:1});
+ const manager={...filmUser,id:'manager-id'};
+ await assert.rejects(()=>videoApi(patch('publish',{youtube_url:'https://youtube.com.evil.example/watch?v=demo'}),{DB:db},manager),e=>e.status===400);
+ assert.ok(!db.queries.some(q=>q.startsWith('UPDATE video_items')));
+});
+test('First filming timestamp and actor remain stable on later edits',async()=>{
+ const db=videoDb(clip({status:'ĐÃ QUAY',raw_url:'https://drive.google.com/file/d/old'}),{can_film:1});
+ const res=await videoApi(patch('film',{raw_url:'https://drive.google.com/file/d/new'}),{DB:db},filmUser);
+ assert.equal(res.status,200);
+ assert.ok(db.queries.some(q=>q.includes('filmed_at=COALESCE(filmed_at,CURRENT_TIMESTAMP)')));
+ assert.ok(db.queries.some(q=>q.includes('camera_id=COALESCE(camera_id,?)')));
+});
