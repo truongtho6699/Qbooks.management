@@ -42,10 +42,17 @@ export async function videoApi(req,env,u){
  }
  if(method==='GET'&&path==='/api/video/items'){
   const bookId=str(url.searchParams.get('book'),100),q=str(url.searchParams.get('q'),150),status=str(url.searchParams.get('status'),40);
-  let sql='SELECT v.*,b.code AS book_code,b.name AS book_name,cu.name AS camera_name,ed.name AS editor_name FROM video_items v JOIN video_books b ON b.id=v.book_id LEFT JOIN users cu ON cu.id=v.camera_id LEFT JOIN users ed ON ed.id=v.editor_id WHERE 1=1';
-  const args=[];if(bookId){sql+=' AND v.book_id=?';args.push(bookId);}if(status){sql+=' AND v.status=?';args.push(status);}if(q){sql+=' AND (v.title LIKE ? OR b.name LIKE ? OR b.code LIKE ?)';args.push('%'+q+'%','%'+q+'%','%'+q+'%');}
-  sql+=' ORDER BY v.updated_at DESC LIMIT 600';
-  const r=await db.prepare(sql).bind(...args).all();return j({items:r.results||[]});
+  const page=Math.max(1,Math.min(100000,Number.parseInt(url.searchParams.get('page')||'1',10)||1));
+  const pageSize=Math.max(10,Math.min(100,Number.parseInt(url.searchParams.get('pageSize')||'100',10)||100));
+  let where=' WHERE 1=1';const args=[];
+  if(bookId){where+=' AND v.book_id=?';args.push(bookId);}
+  if(status){where+=' AND v.status=?';args.push(status);}
+  if(q){where+=' AND (v.title LIKE ? OR b.name LIKE ? OR b.code LIKE ?)';args.push('%'+q+'%','%'+q+'%','%'+q+'%');}
+  const countRow=await db.prepare('SELECT COUNT(*) total FROM video_items v JOIN video_books b ON b.id=v.book_id'+where).bind(...args).first();
+  const sql='SELECT v.*,b.code AS book_code,b.name AS book_name,cu.name AS camera_name,ed.name AS editor_name FROM video_items v JOIN video_books b ON b.id=v.book_id LEFT JOIN users cu ON cu.id=v.camera_id LEFT JOIN users ed ON ed.id=v.editor_id'+where+' ORDER BY v.updated_at DESC,v.id DESC LIMIT ? OFFSET ?';
+  const r=await db.prepare(sql).bind(...args,pageSize,(page-1)*pageSize).all();
+  const total=countRow?.total||0;
+  return j({items:r.results||[],pagination:{page,pageSize,total,pages:Math.ceil(total/pageSize)}});
  }
  if(method==='POST'&&path==='/api/video/items'){
   requireRight('manage');const b=await body(),book=str(b.book_id,100),title=str(b.title,300);
