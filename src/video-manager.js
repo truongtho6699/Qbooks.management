@@ -14,6 +14,7 @@ export async function videoApi(req,env,u){
  const url=new URL(req.url),path=url.pathname,method=req.method,db=env.DB,rights=await roles(db,u);
  const mediaMenus=(u.menuKeys||[]).filter(key=>key.startsWith('media.'));
  const readOnly=u.role==='VIEW';
+ const requireMenu=key=>{if(!rights.admin&&!mediaMenus.includes('media.'+key))throw err('Menu Media này chưa được cấp quyền.',403);};
  if(!rights.admin&&!rights.film&&!rights.edit&&!rights.manage&&!mediaMenus.length)throw err('Tài khoản chưa được cấp quyền sử dụng Quản lý video sách.',403);
  if(readOnly&&method!=='GET')throw err('VIEW chỉ được xem dữ liệu trong các menu được phân quyền.',403);
  if(readOnly&&['/api/video/staff','/api/video/audit'].includes(path))throw err('Không có quyền xem dữ liệu quản trị nhân sự.',403);
@@ -45,7 +46,7 @@ export async function videoApi(req,env,u){
   return j({books:r.results||[]});
  }
  if(method==='POST'&&path==='/api/video/books'){
-  requireRight('manage');const b=await body(),code=str(b.code,60).toUpperCase(),name=str(b.name,250);
+  requireMenu('books');requireRight('manage');const b=await body(),code=str(b.code,60).toUpperCase(),name=str(b.name,250);
   if(!code||!name)throw err('Cần mã và tên đầu sách.');
   const count=Number(b.target_count||0);if(!Number.isSafeInteger(count)||count<0||count>100000)throw err('Chỉ tiêu video không hợp lệ.');
   const id=crypto.randomUUID();
@@ -71,7 +72,7 @@ export async function videoApi(req,env,u){
   return j({items:r.results||[],pagination:{page,pageSize,total,pages:Math.ceil(total/pageSize)}});
  }
  if(method==='POST'&&path==='/api/video/items'){
-  requireRight('manage');const b=await body(),book=str(b.book_id,100),title=str(b.title,300);
+  requireMenu('createVideo');requireRight('manage');const b=await body(),book=str(b.book_id,100),title=str(b.title,300);
   if(!book||!title)throw err('Chọn đầu sách và nhập tên video.');
   const bookRecord=await db.prepare('SELECT id,code FROM video_books WHERE id=?').bind(book).first();if(!bookRecord)throw err('Đầu sách không tồn tại.');const lessonId=str(b.lesson_id,100);if(lessonId&&!await db.prepare('SELECT id FROM video_lessons WHERE id=? AND book_code=?').bind(lessonId,bookRecord.code).first())throw err('Bài học không thuộc đầu sách đã chọn.');
   const id=crypto.randomUUID();
@@ -83,7 +84,7 @@ export async function videoApi(req,env,u){
   const current=await getOne(db,match[1]),input=await body(),action=str(input.action,40),note=str(input.note,2000);
   const event=(kind,details='')=>db.prepare('INSERT OR IGNORE INTO video_events(video_id,actor_id,event_type,details) VALUES(?,?,?,?)').bind(current.id,u.id,kind,details).run();
   if(action==='film'){
-    requireRight('film');
+    requireMenu('film');requireRight('film');
     if(!['CHỜ QUAY','ĐÃ QUAY'].includes(current.status))throw err('Video đã chuyển sang hậu kỳ.',409);
     const link=safeUrl(input.raw_url);if(!link)throw err('Cần link Drive của video gốc.');
     if(current.raw_url===link&&current.status==='ĐÃ QUAY')return j({ok:true,unchanged:true});
@@ -91,7 +92,7 @@ export async function videoApi(req,env,u){
     if(!r.meta?.changes)throw err('Video đã được người khác cập nhật.',409);
     if(!current.filmed_at)await event('FILM_COMPLETED','Lần quay hoàn tất đầu tiên');
   }else if(action==='edit'){
-    requireRight('edit');
+    requireMenu('edit');requireRight('edit');
     if(!['ĐÃ QUAY','ĐANG HẬU KỲ','CHỜ DUYỆT'].includes(current.status))throw err('Video chưa quay hoặc đã phát hành.',409);
     if(current.status==='CHỜ DUYỆT'&&current.review_status!=='CHANGES_REQUESTED')throw err('Video đang chờ duyệt; không thể sửa.',409);
     const target=str(input.status,30);
@@ -104,7 +105,7 @@ export async function videoApi(req,env,u){
     if(!r.meta?.changes)throw err('Video đang được duyệt hoặc trạng thái đã thay đổi.',409);
     if(target==='CHỜ DUYỆT'&&!current.edited_at)await event('EDIT_SUBMITTED','Lần nộp bản hậu kỳ đầu tiên');
   }else if(action==='approve'||action==='reject'){
-    requireRight('manage');
+    requireMenu('edit');requireRight('manage');
     if(current.status!=='CHỜ DUYỆT'||current.review_status!=='PENDING')throw err('Chỉ duyệt video CHỜ DUYỆT.',409);
     if(current.editor_id===u.id)throw err('Người biên tập không được tự duyệt.',403);
     if(action==='reject'&&!note)throw err('Vui lòng ghi lý do yêu cầu sửa.');
@@ -113,7 +114,7 @@ export async function videoApi(req,env,u){
     if(!r.meta?.changes)throw err('Video đã được xử lý bởi người khác.',409);
     await event(passed?'REVIEW_APPROVED':'REVIEW_REJECTED',note);
   }else if(action==='publish'){
-    requireRight('manage');
+    requireMenu('edit');requireRight('manage');
     if(current.status!=='CHỜ DUYỆT'||current.review_status!=='APPROVED')throw err('Video chưa được phê duyệt.',409);
     const youtube=safeUrl(input.youtube_url);
     if(!youtube||!new URL(youtube).hostname.match(/^(www\.)?(youtube\.com|youtu\.be)$/i))throw err('Link phát hành phải là YouTube hợp lệ.');
@@ -121,24 +122,24 @@ export async function videoApi(req,env,u){
     if(!r.meta?.changes)throw err('Video đã thay đổi trạng thái.',409);
     await event('PUBLISHED',youtube);
   }else if(action==='update'){
-    requireRight('manage');
+    requireMenu('books');requireRight('manage');
     await db.prepare('UPDATE video_items SET title=?,lesson=?,lesson_group=?,teacher=?,note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(str(input.title,300)||current.title,str(input.lesson,150),str(input.lesson_group,150),str(input.teacher,200),note,current.id).run();
   }else throw err('Thao tác không được hỗ trợ.');
   await log(db,u,'VIDEO_'+action.toUpperCase(),current.id);
   return j({ok:true,id:current.id});
  }
  if(method==='GET'&&path==='/api/video/staff'){
-  requireRight('manage');const r=await db.prepare('SELECT u.id,u.name,u.email,u.role,COALESCE(g.can_film,0) can_film,COALESCE(g.can_edit,0) can_edit,COALESCE(g.can_manage,0) can_manage FROM users u LEFT JOIN video_role_grants g ON g.user_id=u.id WHERE u.active=1 ORDER BY u.name LIMIT 300').all();return j({staff:r.results||[]});
+  requireMenu('staff');requireRight('manage');const r=await db.prepare('SELECT u.id,u.name,u.email,u.role,COALESCE(g.can_film,0) can_film,COALESCE(g.can_edit,0) can_edit,COALESCE(g.can_manage,0) can_manage FROM users u LEFT JOIN video_role_grants g ON g.user_id=u.id WHERE u.active=1 ORDER BY u.name LIMIT 300').all();return j({staff:r.results||[]});
  }
  if(method==='POST'&&path==='/api/video/staff'){
-  if(!rights.admin)throw err('Chỉ Admin được phân quyền.',403);
+  requireMenu('permissions');if(!rights.admin)throw err('Chỉ Admin được phân quyền.',403);
   const b=await body(),id=str(b.user_id,100);if(!id)throw err('Thiếu nhân sự.');
   if(!(await db.prepare('SELECT id FROM users WHERE id=?').bind(id).first()))throw err('Nhân sự không tồn tại.');
   await db.prepare('INSERT INTO video_role_grants(user_id,can_film,can_edit,can_manage) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET can_film=excluded.can_film,can_edit=excluded.can_edit,can_manage=excluded.can_manage').bind(id,b.can_film?1:0,b.can_edit?1:0,b.can_manage?1:0).run();
   await log(db,u,'VIDEO_GRANT',id);return j({ok:true});
  }
  if(method==='GET'&&path==='/api/video/audit'){
-  requireRight('manage');const r=await db.prepare('SELECT a.*,u.name AS actor_name FROM video_audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 300').all();return j({events:r.results||[]});
+  requireMenu('audit');requireRight('manage');const r=await db.prepare('SELECT a.*,u.name AS actor_name FROM video_audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 300').all();return j({events:r.results||[]});
  }
  throw err('Không tìm thấy chức năng video.',404);
 }
