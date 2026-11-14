@@ -141,6 +141,9 @@ async function handle(req,env){
   return json({token,user:{id:user.id,email:user.email,name:user.name,role:view?'VIEW':user.role},expires});
  }
  const user=await actor(req,env);
+ const permittedMenus=async()=>{if(!user.menuKeys)user.menuKeys=(await resolveMenuPermissions(env.DB,user)).keys;return user.menuKeys;};
+ const requireMenu=async key=>{if(user.can_admin===1||user.role==='ADMIN')return;const x=await permittedMenus();if(!x.includes(key))throw Object.assign(new Error('Chưa được cấp quyền menu '+(MENU_LABELS[key]||key)+'.'),{status:403});};
+ const requireAnyMenu=async keys=>{if(user.can_admin===1||user.role==='ADMIN')return;const x=await permittedMenus();if(!keys.some(k=>x.includes(k)))throw Object.assign(new Error('Chưa được cấp quyền chức năng.'),{status:403});};
  if(user.role==='VIEW'&&!((method==='POST'&&path==='/api/logout')||(method==='GET'&&['/api/bootstrap','/api/menu-access'].includes(path)))){
   // VIEW never mutates. Only explicitly assigned screens can read protected data.
   if(method!=='GET')throw Object.assign(new Error('Tài khoản VIEW không có quyền ghi dữ liệu.'),{status:403});
@@ -459,7 +462,7 @@ async function handle(req,env){
   await audit(env,user,'CREATE_USER','',JSON.stringify({id,role}));return json({id,role},201);
  }
  if(method==='GET'&&path==='/api/shipping/overview'){
-  if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
+  await requireMenu('orders.overview');if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
   const isManager=hasRole(user,'ADMIN');
   // Overview is scoped to accessible operational orders for non-admin workers.
   const where=isManager||user.role==='VIEW'?'':hasRole(user,'PACKER')&&hasRole(user,'SHIPPER')?'':hasRole(user,'PACKER')?" WHERE status IN ('CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN')":" WHERE status IN ('CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH')";
@@ -483,13 +486,14 @@ async function handle(req,env){
   }});
  }
  if(method==='GET'&&path==='/api/orders'){
-  if(user.role!=='VIEW')needRole(user,'SALE','PACKER','SHIPPER');
+  await requireAnyMenu(['orders.sale','orders.pack','orders.ship']);if(user.role!=='VIEW')needRole(user,'SALE','PACKER','SHIPPER');
   const query=clean(url.searchParams.get('q')).slice(0,120);
   let status=clean(url.searchParams.get('status'));
   if(user.role==='PACKER'&&!user.can_ship&&!user.can_admin)status=STATUS.PACK;
   if(user.role==='SHIPPER'&&!user.can_pack&&!user.can_admin)status=STATUS.SHIP;
   if(user.role==='VIEW'&&!user.menuKeys?.some(k=>['orders.sale','orders.pack','orders.ship'].includes(k)))throw Object.assign(new Error('Không có quyền xem đơn.'),{status:403});
   const conditions=[],params=[];
+  if(user.role==='SALE'&&!user.can_pack&&!user.can_ship&&!user.can_admin){conditions.push('(created_by=? OR sale_name=?)');params.push(user.id,user.name);}
   if(status){conditions.push('status=?');params.push(status);}
   if(query){conditions.push('(invoice_codes LIKE ? OR customer LIKE ? OR sale_name LIKE ?)');params.push(...Array(3).fill('%'+query+'%'));}
   const sql='SELECT * FROM orders'+(conditions.length?' WHERE '+conditions.join(' AND '):'')+' ORDER BY created_at DESC LIMIT 300';
@@ -497,7 +501,7 @@ async function handle(req,env){
   return json({orders:(rows.results||[]).map(o=>({...o,title:orderTitle(o)}))});
  }
  if(method==='POST'&&path==='/api/orders'){
-  needRole(user,'SALE');
+  await requireMenu('orders.sale');needRole(user,'SALE');
   const b=await requestJSON(req);
   const invoice=clean(b.invoice_codes).replace(/\s*,\s*/g,', '),saleName=user.name,customer=clean(b.customer);
   const qty=Number(b.quantity);
@@ -514,7 +518,7 @@ async function handle(req,env){
   await audit(env,user,'CREATE_ORDER_D1',id,invoice);return json({id,source:'D1',googleSynced:false},201);
  }
  if(method==='POST'&&path==='/api/groups'){
-  needRole(user,'SALE','SHIPPER');
+  await requireAnyMenu(['orders.sale','orders.ship']);needRole(user,'SALE','SHIPPER');
   if(env.QBOOKS_ENABLE_LOCAL_SALE!=='true')
    throw Object.assign(new Error('Gộp đơn thực hiện tại SALE_GOP_VAN_DON. Chưa bật ghi nhóm từ Cloudflare.'),{status:409});const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
   if(ids.length<2)throw Error('Cần ít nhất 2 đơn để gộp.');
@@ -535,7 +539,7 @@ async function handle(req,env){
   if(method==='POST'){
    const data=await requestJSON(req),stage=data.stage;
    if(!['DONG_HANG','VAN_DON'].includes(stage))throw Error('Loại khóa đơn không hợp lệ.');
-   needRole(user,stage==='DONG_HANG'?'PACKER':'SHIPPER');
+   await requireMenu(stage==='DONG_HANG'?'orders.pack':'orders.ship');needRole(user,stage==='DONG_HANG'?'PACKER':'SHIPPER');
    if(stage==='DONG_HANG'&&o.status!==STATUS.PACK)throw Error('Đơn không chờ đóng hàng.');
    if(stage==='VAN_DON'&&![STATUS.SHIP,STATUS.MOVING].includes(o.status))throw Error('Đơn không chờ vận đơn.');
    const expires=now()+6*3600;
@@ -550,7 +554,7 @@ async function handle(req,env){
   }
  }
  if(method==='POST'&&path==='/api/uploads'){
-  const b=await requestJSON(req),order=await orderById(env,b.orderId);
+  const b=await requestJSON(req);await requireMenu(b.stage==='GIAO_HANG'?'orders.ship':'orders.pack');const order=await orderById(env,b.orderId);
   if(order.status!==(b.stage==='GIAO_HANG'?STATUS.SHIP:STATUS.PACK)||!hasRole(user,b.stage==='GIAO_HANG'?'SHIPPER':'PACKER'))throw Object.assign(new Error('Không có quyền tải lên đơn này.'),{status:403});
   await assertOrderLock(env,user,order.id,b.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG');
   const size=Number(b.size),name=clean(b.filename),type=clean(b.contentType);
@@ -613,7 +617,7 @@ async function handle(req,env){
  }
  const pMatch=path.match(/^\/api\/orders\/([A-Za-z0-9_-]+)\/pack$/);
  if(method==='POST'&&pMatch){
-  needRole(user,'PACKER');const id=pMatch[1],o=await orderById(env,id),b=await requestJSON(req);
+   await requireMenu('orders.pack');needRole(user,'PACKER');const id=pMatch[1],o=await orderById(env,id),b=await requestJSON(req);
   if(o.status!==STATUS.PACK)throw Error('Đơn đã đóng hoặc không còn ở trạng thái chờ.');
   await assertOrderLock(env,user,id,'DONG_HANG');
   await checkUploads(env,id,['ANH_HOA_DON','VIDEO_DONG_HANG','HANG_HOA']);
@@ -628,7 +632,7 @@ async function handle(req,env){
   await audit(env,user,'PACK',id);return json({ok:true,status:STATUS.SHIP});
  }
  if(method==='POST'&&path==='/api/shipments'){
-  needRole(user,'SHIPPER');const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
+   await requireMenu('orders.ship');needRole(user,'SHIPPER');const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
   if(!ids.length||ids.length>100)throw Error('Chọn từ 1 đến 100 đơn.');
   const orders=await env.DB.prepare('SELECT id,status,group_id FROM orders WHERE id IN ('+ids.map(()=>'?').join(',')+')').bind(...ids).all();
   if(orders.results.length!==ids.length||orders.results.some(x=>x.status!==STATUS.SHIP))throw Error('Chỉ được bàn giao các đơn Chờ vận đơn.');
