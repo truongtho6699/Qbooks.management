@@ -107,3 +107,29 @@ test('Granted VIEW sees only assigned menus and can open Media in read-only mode
  const blocked=await worker.fetch(new Request('https://qbooks.test/api/video/items',{method:'POST',headers:{...headers,'content-type':'application/json'},body:'{}'}),env);
  assert.equal(blocked.status,403);
 });
+
+test('Admin can atomically save menu grants and Media roles for an existing staff member',async()=>{
+ const admin={...seller,id:'admin-01',role:'ADMIN',can_admin:1};
+ const statements=[],batches=[];
+ const env={MEDIA:{},DB:{prepare(sql){return {
+  sql,params:[],bind(...args){this.params=args;return this},
+  async first(){if(sql.includes('FROM sessions'))return {...admin};if(sql.includes('FROM users u LEFT JOIN user_view_roles'))return {id:'target-01',role:'SALE',effective_role:'SALE',can_admin:0,can_pack:0,can_ship:0};return null;},
+  async all(){return {results:[]}},
+  async run(){return {meta:{changes:1}}}
+ }},async batch(stmts){statements.push(...stmts.map(x=>x.sql));batches.push(stmts);return stmts.map(()=>({success:true}))}}};
+ const body={permissions:{'orders.sale':true,'media.dashboard':true,'media.film':true},video:{can_film:true,can_edit:false,can_manage:false}};
+ const r=await worker.fetch(new Request('https://qbooks.test/api/users/12345678-1234-1234-1234-123456789abc/menus',{
+  method:'PUT',headers:{authorization:'Bearer admin-session','content-type':'application/json'},body:JSON.stringify(body)}),env);
+ assert.equal(r.status,200);
+ assert.equal(batches.length,1);
+ assert.ok(statements.some(x=>x.startsWith('DELETE FROM user_menu_permissions')));
+ assert.equal(statements.filter(x=>x.startsWith('INSERT INTO user_menu_permissions')).length,3);
+ assert.ok(statements.some(x=>x.startsWith('INSERT INTO video_role_grants')));
+});
+test('Unknown menu key is rejected before changing staff permissions',async()=>{
+ const admin={...seller,role:'ADMIN',can_admin:1};
+ const env={MEDIA:{},DB:{prepare(sql){return {bind(){return this},async first(){if(sql.includes('FROM sessions'))return {...admin};if(sql.includes('FROM users u LEFT JOIN user_view_roles'))return {id:'target',role:'SALE',effective_role:'SALE',can_admin:0};return null;},async run(){return {meta:{changes:1}}}}},async batch(){throw Error('Invalid rights must never reach database')}}};
+ const r=await worker.fetch(new Request('https://qbooks.test/api/users/12345678-1234-1234-1234-123456789abc/menus',{
+  method:'PUT',headers:{authorization:'Bearer admin-session','content-type':'application/json'},body:JSON.stringify({permissions:{'system.superuser':true},video:{can_film:false,can_edit:false,can_manage:false}})}),env);
+ assert.equal(r.status,400);
+});
