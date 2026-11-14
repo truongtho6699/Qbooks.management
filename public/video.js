@@ -114,6 +114,20 @@ function navigate(view){
  $('viewSubtitle').textContent='Quản lý Media  /  '+groupName+'  /  '+title;
  renderNav();render();if(['film','edit'].includes(view)){state.videoPage=1;state.videoListItems=[];state.videoListPagination={page:1,pages:1,total:0};refreshVideoList();}if(view==='production'&&state.dailyStats?.day!==(state.productionDate||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())))fetchProduction();
 }
+function readinessPanel(){
+ const folderCount=state.books.filter(b=>!!googleFolderId(b.id)).length;
+ const roleUsers=state.staff.filter(p=>p.can_film||p.can_edit||p.can_manage);
+ const oauth=!!state.googleClientId;
+ const allowedBooks=can('books');
+ const allowedRoles=can('permissions')||state.rights.admin;
+ const rows=[
+  ['Thư mục Drive theo đầu sách',folderCount+'/'+state.books.length,folderCount===state.books.length?'Đã có đường dẫn':'Cần thiết lập thư mục cho từng đầu sách',allowedBooks?'<button class="link-action" data-goto="books">Cấu hình đầu sách</button>':'Liên hệ quản lý'],
+  ['Google OAuth Client ID',oauth?'Đã cấu hình':'Chưa cấu hình',oauth?'Chưa xác nhận quyền Google của nhân viên':'Cần quản trị Cloudflare kiểm tra cấu hình','Kiểm thử tải với tài khoản Google'],
+  ['Quyền Media nhân viên',roleUsers.length+' tài khoản',roleUsers.length?'Cần đối chiếu nhân sự từng vai trò':'Chưa cấp quyền Quay / Hậu kỳ / Quản lý',allowedRoles?'<a href="/?nav=admin">Cấp quyền menu</a>':'Liên hệ quản trị']
+ ];
+ return panel('Mức độ sẵn sàng vận hành Media',table(['Điều kiện','Hiện trạng','Nhận xét','Thao tác'],rows)+
+ '<p class="mini-note">Chỉ là kiểm tra cấu hình và dữ liệu. Đường dẫn Drive đã lưu chưa đồng nghĩa đã kiểm tra quyền sửa thư mục. Chưa kiểm thử đăng nhập và tải tệp với tài khoản nhân viên thật.</p>');
+}
 function dashboard(){
  const o=state.overview||{totals:{},books:[],staff:[]},t=o.totals;
  const bookRows=(o.books||[]).slice(0,10).map(b=>[E(b.code),E(b.name),count(b.total),count(b.filmed),count(b.published)]);
@@ -122,7 +136,7 @@ function dashboard(){
  return '<p class="qv-asof">Nguồn: Cloudflare D1 · Cập nhật: '+E(o.asOf?new Date(o.asOf).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'Chưa xác định')+'</p>'+kpis([{label:'Đầu sách kế hoạch',value:state.books.length,sub:'Danh mục hiện hành'},{label:'Bài/tiết dự kiến',value:state.lessons.length,sub:'Không phải video đã quay'},{label:'Video đã quay',value:t.filmed,sub:'Ghi nhận lần đầu'},{label:'Đã phát hành',value:t.published,sub:'Sau duyệt của quản lý'}])+
  '<div class="two">'+panel('Tiến độ sản xuất theo đầu sách',table(['Mã sách','Đầu sách','Video','Đã quay','Phát hành'],bookRows,'Chưa có đầu sách'))+
  panel('Sản lượng nhân viên',table(['Nhân sự','Quay','Hậu kỳ'],top,'Chưa có sản lượng'))+'</div>'+
- panel('Việc cần xử lý',table(['Tình trạng','Số video','Hành động'],[[badge('CHỜ DUYỆT'),count(t.pending_review||0),'<button type="button" class="link-action" data-goto="edit" data-review="PENDING">Xem video chờ duyệt</button>'],['Cần sửa',count(t.need_revision||0),'<button type="button" class="link-action" data-goto="edit" data-review="CHANGES_REQUESTED">Xem hậu kỳ</button>'],['Bài/tiết chưa gắn kế hoạch video',count(o.unplannedLessons||0),'Đối chiếu theo mã bài học']]))+panel('Tình trạng video toàn hệ thống',table(['Trạng thái','Số lượng'],statusesRows));
+ panel('Việc cần xử lý',table(['Tình trạng','Số video','Hành động'],[[badge('CHỜ DUYỆT'),count(t.pending_review||0),'<button type="button" class="link-action" data-goto="edit" data-review="PENDING">Xem video chờ duyệt</button>'],['Cần sửa',count(t.need_revision||0),'<button type="button" class="link-action" data-goto="edit" data-review="CHANGES_REQUESTED">Xem hậu kỳ</button>'],['Bài/tiết chưa gắn kế hoạch video',count(o.unplannedLessons||0),'Đối chiếu theo mã bài học']]))+panel('Tình trạng video toàn hệ thống',table(['Trạng thái','Số lượng'],statusesRows))+(state.rights.manage||state.rights.admin?readinessPanel():'');
 }
 function adminOverview(){
  const o=state.overview||{totals:{},books:[],staff:[]},t=o.totals||{};
@@ -142,7 +156,7 @@ function adminOverview(){
  '<div class="two">'+panel('Tiến độ theo đầu sách',
  table(['Mã sách','Tên đầu sách','Kế hoạch','Đã quay','Phát hành','Hoàn thành'],progress,'Chưa có kế hoạch đầu sách'))+
  panel('Hiệu suất nhân sự',table(['Nhân sự','Video quay','Video hậu kỳ'],people,'Chưa có hoạt động nhân sự'))+'</div>'+
- panel('Cơ cấu trạng thái',table(['Trạng thái','Số lượng video'],statuses.map(x=>[badge(x),count(state.items.filter(v=>v.status===x).length)])));
+ panel('Cơ cấu trạng thái',table(['Trạng thái','Số lượng video'],statuses.map(x=>[badge(x),count((o.statusCounts||[]).find(r=>r.status===x)?.total||0)])))+readinessPanel();
 }
 function bookDetail(){
  const b=state.books.find(x=>x.id===state.selectedBook);
