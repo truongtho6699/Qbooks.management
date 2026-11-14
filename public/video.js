@@ -319,7 +319,7 @@ function render(){
 function bindForm(id,callback){
  const form=$(id);if(!form)return;
  form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button[type=submit]');if(b)b.disabled=true;
- try{await callback(Object.fromEntries(new FormData(form)));await load();state.selected=null;render();toast('Đã lưu thành công.');}
+ try{await callback(Object.fromEntries(new FormData(form)));await load();state.selected=null;render();if(['film','edit'].includes(state.view))await refreshVideoList();toast('Đã lưu thành công.');}
  catch(err){toast('Không lưu được: '+err.message);}finally{if(b)b.disabled=false;}};
 }
 function csvExport(){
@@ -424,7 +424,7 @@ function wire(){
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
  bindForm('filmForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'film',...b}));
  bindForm('editForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'edit',...b}));
- const reviewAction=async action=>{try{await api('PATCH','/api/video/items/'+state.selected.id,{action,note:$('reviewNote')?.value||'',youtube_url:$('publishYoutube')?.value||''});await load();state.selected=state.items.find(x=>x.id===state.selected.id)||null;render();toast('Đã cập nhật trạng thái video.');}catch(e){toast(e.message)}};
+ const reviewAction=async action=>{try{await api('PATCH','/api/video/items/'+state.selected.id,{action,note:$('reviewNote')?.value||'',youtube_url:$('publishYoutube')?.value||''});state.selected=null;await load();await refreshVideoList();toast('Đã cập nhật trạng thái video.');}catch(e){toast(e.message)}};
  if($('approveVideo'))$('approveVideo').onclick=()=>reviewAction('approve');
  if($('rejectVideo'))$('rejectVideo').onclick=()=>reviewAction('reject');
  if($('publishVideo'))$('publishVideo').onclick=()=>reviewAction('publish');
