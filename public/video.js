@@ -105,7 +105,8 @@ function navigate(view){
  state.view=view;state.selected=null;window.QbookNavigation?.focusMedia(view);
  const title=NAV.find(x=>x.id===view)?.text||'Quản lý video';
  $('viewTitle').textContent=title;
- $('viewSubtitle').textContent=view==='dashboard'?'Theo dõi toàn bộ tiến độ sản xuất video sách':'Dữ liệu thực tế · QBOOK Video Manager';
+ const groupName=({'CHUNG':'Tổng quan','QUAY VIDEO':'Quay video','HẬU KỲ':'Hậu kỳ','QUẢN LÝ':'Quản lý','QUẢN TRỊ':'Danh mục Media'})[NAV.find(x=>x.id===view)?.group]||'Tổng quan';
+ $('viewSubtitle').textContent='Quản lý Media  /  '+groupName+'  /  '+title;
  renderNav();render();if(['film','edit'].includes(view)){state.videoPage=1;state.videoListItems=[];state.videoListPagination={page:1,pages:1,total:0};refreshVideoList();}if(view==='production'&&state.dailyStats?.day!==(state.productionDate||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())))fetchProduction();
 }
 function dashboard(){
