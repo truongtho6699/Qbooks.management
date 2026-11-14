@@ -1,4 +1,4 @@
-import {resumableDriveUpload} from './video-drive.js';
+import {checkDriveFolderAccess,resumableDriveUpload} from './video-drive.js';
 const $=id=>document.getElementById(id);
 const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]},menuKeys:[]};
 const NAV=[
@@ -266,7 +266,7 @@ function booksAdmin(){
  const note=panel('Sẵn sàng tải video lên Google Drive','<p class="mini-note"><strong>'+missing.length+' / '+state.books.length+' đầu sách chưa có thư mục Drive hợp lệ.</strong> Nhập liên kết thư mục của từng đầu sách trước khi quay hoặc hậu kỳ. Ứng dụng sẽ không tự tải video vào thư mục gốc cá nhân.</p>'+
  '<div class="tablewrap"><table class="data-table"><thead><tr><th>Đầu sách</th><th>Thư mục Drive</th><th>Thiết lập</th></tr></thead><tbody>'+
  state.books.map(b=>'<tr><td>'+E(b.code)+' · '+E(b.name)+'</td><td>'+(googleFolderId(b.id)?'<a href="'+E(b.drive_url)+'" target="_blank" rel="noopener noreferrer">Đã thiết lập</a>':'<span class="state amber">Chưa thiết lập</span>')+'</td><td>'+
- ((state.rights.manage||state.rights.admin)?'<form data-book-folder="'+E(b.id)+'" class="qv-folder-form"><input type="url" name="drive_url" value="'+E(b.drive_url||'')+'" placeholder="https://drive.google.com/drive/folders/..." required><button type="submit" class="btn">Lưu thư mục</button></form>':'Chỉ quản lý được cập nhật')+'</td></tr>').join('')+'</tbody></table></div>');
+ ((state.rights.manage||state.rights.admin)?'<form data-book-folder="'+E(b.id)+'" class="qv-folder-form"><input type="url" name="drive_url" value="'+E(b.drive_url||'')+'" placeholder="https://drive.google.com/drive/folders/..." required><button type="submit" class="btn">Lưu thư mục</button></form>':'Chỉ quản lý được cập nhật')+(googleFolderId(b.id)?'<button type="button" class="btn qv-check-folder" data-check-folder="'+E(b.id)+'">Kiểm tra quyền Drive</button>':'')+'</td></tr>').join('')+'</tbody></table></div>');
  return note+form+panel('Danh sách đầu sách',booksTable());
 }
 function catalogItems(){
@@ -437,6 +437,19 @@ function wire(){
    await load();render();toast('Đã lưu thư mục Drive cho đầu sách.');
   }catch(e){toast('Không lưu được thư mục: '+e.message);}
   finally{btn.disabled=false;}
+ });
+ document.querySelectorAll('[data-check-folder]').forEach(button=>button.onclick=()=>{
+  const folderId=googleFolderId(button.dataset.checkFolder);
+  if(!folderId)return toast('Đầu sách chưa có thư mục Drive hợp lệ.');
+  button.disabled=true;button.textContent='Đang yêu cầu Google xác thực...';
+  try{askGoogleDriveToken(async token=>{
+   try{
+    const info=await checkDriveFolderAccess({token,folderId});
+    toast('Google Drive: có quyền tải tệp vào '+info.name+'.');
+    button.textContent='Đã kiểm tra ✓';
+   }catch(err){button.textContent='Kiểm tra quyền Drive';toast(err.message);}
+   finally{button.disabled=false;}
+  });}catch(err){button.disabled=false;button.textContent='Kiểm tra quyền Drive';toast(err.message);}
  });
  bindForm('bookForm',b=>api('POST','/api/video/books',b));
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
