@@ -77,3 +77,14 @@ test('Existing book Drive folder requires manage role and validates target',asyn
  assert.equal(result.status,200);
  assert.equal((await result.json()).drive_url,'https://drive.google.com/drive/folders/abcdefghijklmnop');
 });
+
+test('Drive configuration accepts imported qbook-SP337 identifiers, not only UUIDs',async()=>{
+ const f=fixture();
+ const req=new Request('https://qbook.test/api/video/books/qbook-SP337/drive-folder',{
+  method:'PATCH',headers:{'content-type':'application/json'},
+  body:JSON.stringify({drive_url:'https://drive.google.com/drive/folders/abcdefghijklmnop'})
+ });
+ const res=await videoApi(req,{DB:f.db},reviewer);
+ assert.equal(res.status,200);
+ assert.equal((await res.json()).drive_url,'https://drive.google.com/drive/folders/abcdefghijklmnop');
+});
