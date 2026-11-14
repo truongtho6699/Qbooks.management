@@ -16,8 +16,15 @@ function envForView(){
     queried.push(sql);
     return {
      bind(){return this;},
-     async first(){return identity;},
-     async all(){throw Error('VIEW attempted business-data query');},
+     async first(){
+      if(queried.at(-1).includes('FROM sessions'))return identity;
+      if(queried.at(-1).includes('FROM video_role_grants'))return null;
+      throw Error('VIEW attempted unexpected database lookup');
+     },
+     async all(){
+      if(queried.at(-1).includes('FROM user_menu_permissions'))return {results:[]};
+      throw Error('VIEW attempted business-data query');
+     },
      async run(){throw Error('VIEW attempted data mutation');}
     };
    }
@@ -48,7 +55,7 @@ test('VIEW blocked from every business data endpoint including image files',asyn
  ]){
   const x=await call(url);
   assert.equal(x.status,403,url);
-  assert.ok(x.queries.every(q=>q.includes('FROM sessions')),'Only session validation expected for '+url);
+  assert.ok(x.queries.every(q=>q.includes('FROM sessions')||q.includes('FROM user_menu_permissions')||q.includes('FROM video_role_grants')),'Only session and menu-permission checks expected for '+url);
  }
 });
 test('VIEW blocked from all operational mutations',async()=>{
