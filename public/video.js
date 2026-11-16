@@ -51,6 +51,7 @@ const booksTable=()=>table(['Mã sách','Tên đầu sách','Giảng viên','K�
  return ['<button class="link-action" data-book="'+E(b.id)+'">'+E(b.code)+'</button>',E(b.name),E(b.teacher||'—'),count(target),count(b.total),count(pub),'<div class="progress"><span style="width:'+rate+'%"></span></div><span class="mini-note">'+rate+'%</span>'];
 }));
 function renderNav(){
+ if(document.getElementById('unifiedMediaView')){window.QbookShell?.mediaChanged(state.view,NAV.find(x=>x.id===state.view)?.text||'Quản lý Media');return;}
  if(!window.QbookNavigation)throw Error('Thiếu bộ điều hướng QBOOK');
  window.QbookNavigation.render({
   desktop:$('desktopNav'),mobileTree:$('qbnMobileTree'),drawer:$('qbnDrawer'),toggle:$('qbnToggle'),
@@ -528,15 +529,36 @@ function openVideo(id,action){
  state.selected=v;state.view=action;renderNav();render();$('page').focus();
 }
 async function boot(){
- if(!state.token){window.location.href='/';return;}
+ if(!state.token){if(!document.getElementById('unifiedMediaView'))window.location.href='/';return false;}
  try{
   const b=await api('GET','/api/video/bootstrap');state.user=b.user;state.rights=b.rights;
   const access=await api('GET','/api/menu-access');state.menuKeys=access.menus||[];
   $('currentUser').textContent=b.user.name;
+  const embedded=!!document.getElementById('unifiedMediaView');
   const googleCfg=await fetch('/api/google/config').then(r=>r.json()).catch(()=>({}));state.googleClientId=googleCfg.clientId||'';
   await load();const requested=new URLSearchParams(window.location.search).get('view');const target=requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:NAV.find(n=>can(n.id))?.id;if(target)navigate(target);else {document.getElementById('page').textContent='Tài khoản chưa được cấp quyền menu Media. Liên hệ Quản trị hệ thống.';renderNav();}
- }catch(err){if(err.message.includes('đăng nhập')||err.message.includes('401')){sessionStorage.removeItem('qbooks_token');window.location.href='/';return;}
-  $('page').innerHTML='<div class="panel"><h2>Không mở được chương trình Video</h2><p>'+E(err.message)+'</p><a href="/">Quay về đăng nhập</a></div>';
+  return true;
+ }catch(err){
+  if(err.message.includes('đăng nhập')||err.message.includes('401')){
+   if(!document.getElementById('unifiedMediaView')){sessionStorage.removeItem('qbooks_token');window.location.href='/';}
+   throw err;
+  }
+  $('page').innerHTML='<div class="panel"><h2>Không mở được Quản lý Media</h2><p>'+E(err.message)+'</p></div>';
+  throw err;
  }
 }
-boot();
+if(document.getElementById('unifiedMediaView')){
+ let started=null;
+ window.QbookMedia={
+  async start(view){
+   state.token=sessionStorage.getItem('qbooks_token')||'';
+   if(!started)started=boot().catch(err=>{started=null;throw err;});
+   await started;
+   if(view&&NAV.some(item=>item.id===view)&&can(view)&&state.view!==view)navigate(view);
+   return {view:state.view,rights:state.rights};
+  },
+  navigate(view){if(!can(view))return false;navigate(view);return true;},
+  allowed(view){return can(view);},
+  get currentView(){return state.view;}
+ };
+}else boot().catch(err=>toast(err.message));
