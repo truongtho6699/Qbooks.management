@@ -2,6 +2,7 @@
 // access token for the current Admin session. Never retain token or remove R2 originals.
 const SHEET_ID='1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw';
 const ROOT_FOLDER='18rw-KCkTs0Q8MYABCzYTxfLh_W7pbx83';
+export const VIDEO_ARCHIVE_FOLDER='1I3yAbCsMn_PiJ-haPblWdNNujbDYmy2N';
 const GOOGLE_BASE='https://www.googleapis.com';
 const CHUNK=8*1024*1024;
 const clean=s=>String(s??'').trim();
@@ -40,6 +41,13 @@ async function getFolder(token,parent,name){
  return created.id;
 }
 async function targetFolder(token,order,stage){
+ // Videos have a dedicated archival folder. Keep historical order/image folder layout untouched.
+ if(stage==='VIDEO_DONG_HANG'){
+  const folder=await gjson(GOOGLE_BASE+'/drive/v3/files/'+encodeURIComponent(VIDEO_ARCHIVE_FOLDER)+'?fields=id,name,mimeType,trashed,capabilities(canAddChildren)&supportsAllDrives=true',token);
+  if(folder.id!==VIDEO_ARCHIVE_FOLDER||folder.trashed||folder.mimeType!=='application/vnd.google-apps.folder'||folder.capabilities?.canAddChildren!==true)
+   throw conflict('Thư mục lưu trữ video không tồn tại hoặc tài khoản Google chưa có quyền thêm tệp.');
+  return {id:VIDEO_ARCHIVE_FOLDER,url:driveUrl(VIDEO_ARCHIVE_FOLDER),orderFolder:null,packingFolder:null};
+ }
  const root=await gjson(GOOGLE_BASE+'/drive/v3/files/'+ROOT_FOLDER+'?fields=id,name,mimeType,trashed',token);
  if(root.trashed||root.mimeType!=='application/vnd.google-apps.folder')throw conflict('Thư mục DON_HANG gốc không tồn tại.');
  const orderFolder=await getFolder(token,ROOT_FOLDER,safeName(order.id+'_'+order.invoice_codes.replace(/\s*,\s*/g,'_')));
