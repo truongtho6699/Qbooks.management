@@ -550,8 +550,20 @@ async function boot(){
 if(document.getElementById('unifiedMediaView')){
  let started=null;
  window.QbookMedia={
+  reset(){
+   started=null;
+   state.token='';
+   state.user=null;state.rights={};state.menuKeys=[];
+   state.books=[];state.lessons=[];state.items=[];state.staff=[];
+   state.overview=null;state.selected=null;state.videoListItems=[];
+   state.videoListPagination={page:1,pages:1,total:0};state.dailyStats={day:'',people:[]};
+   state.googleClientId='';state.view='dashboard';
+   const page=$('page');if(page)page.replaceChildren();
+  },
   async start(view){
-   state.token=sessionStorage.getItem('qbooks_token')||'';
+   const token=sessionStorage.getItem('qbooks_token')||'';
+   if(state.token&&state.token!==token)this.reset();
+   state.token=token;
    if(!started)started=boot().catch(err=>{started=null;throw err;});
    await started;
    if(view&&NAV.some(item=>item.id===view)&&can(view)&&state.view!==view)navigate(view);
