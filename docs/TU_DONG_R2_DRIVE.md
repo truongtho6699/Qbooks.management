@@ -1,5 +1,7 @@
 # QBOOKS — Đồng bộ tự động ảnh/video R2 → Google Drive
 
+> **CẬP NHẬT 16/11/2026 — chính sách mới:** Mã Cron Worker đã được nâng cấp hỗ trợ **chuyển rồi xóa R2 có kiểm chứng**, nhưng mặc định **chưa kích hoạt** vì `SYNC_ENABLED=false` và chưa có Google OAuth Secret ngoại tuyến. Ảnh giữ cấu trúc Drive cũ; video đóng hàng chuyển đến [Lưu trữ video](https://drive.google.com/drive/folders/1I3yAbCsMn_PiJ-haPblWdNNujbDYmy2N). Chi tiết, kiểm thử và hướng dẫn bật hai giai đoạn xem [R2_DRIVE_VERIFIED_MOVE_2026-11-16.md](R2_DRIVE_VERIFIED_MOVE_2026-11-16.md). Những đoạn dưới đây mô tả phiên bản cũ ngày 12/11 và không còn là chính sách lưu trữ cuối cùng sau khi `R2_MOVE_ENABLED=true`.
+
 ## Đã triển khai 12/11/2026
 - Worker: `qbooks-drive-auto-sync` (độc lập QBOOKS Pages)
 - Cloudflare Cron Triggers: mỗi 5 phút (`*/5 * * * *`, theo UTC).
