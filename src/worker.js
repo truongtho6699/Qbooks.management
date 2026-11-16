@@ -513,7 +513,7 @@ async function handle(req,env){
   if(existing)throw Object.assign(new Error('Mã hóa đơn đã tồn tại trong D1/Google Sheets. Hãy kiểm tra để tránh tạo trùng.'),{status:409});
   const id=uid();
   try{
-   await env.DB.prepare("INSERT INTO orders(id,invoice_codes,sale_name,customer,quantity,address,carrier,transport,urgent,created_by,source_system,local_dirty) VALUES(?,?,?,?,?,?,?,?,?,'D1',0)")
+   await env.DB.prepare("INSERT INTO orders(id,invoice_codes,sale_name,customer,quantity,address,carrier,transport,urgent,created_by,source_system,local_dirty) VALUES(?,?,?,?,?,?,?,?,?,?,'D1',0)")
      .bind(id,invoice,saleName,customer,qty,clean(b.address),clean(b.carrier),clean(b.transport),b.urgent?1:0,user.id).run();
   }catch(e){if(/UNIQUE constraint failed/i.test(e.message))throw Object.assign(new Error('Mã hóa đơn đã tồn tại. Không tạo thêm đơn trùng.'),{status:409});throw e;}
   await audit(env,user,'CREATE_ORDER_D1',id,invoice);return json({id,source:'D1',googleSynced:false},201);
