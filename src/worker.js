@@ -575,8 +575,14 @@ async function handle(req,env){
   if(isFile){
    await requireAnyMenu(['orders.overview','orders.pack','orders.ship']);if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
    if(method!=='GET')return fail('Không hỗ trợ.',405);
+   if(u.status!=='COMPLETE')return fail('Tệp chưa sẵn sàng.',404);
    const object=await env.MEDIA.get(u.object_key);
-   if(!object||u.status!=='COMPLETE')return fail('Tệp chưa sẵn sàng.',404);
+   if(!object){
+    // After verified move the Drive copy is authoritative; never pretend an R2 download succeeded.
+    if(u.drive_file_id&&u.r2_deleted_at)
+     return json({error:'Tệp đã được chuyển sang Google Drive. Mở liên kết Drive để xem hoặc tải xuống.',driveUrl:'https://drive.google.com/file/d/'+encodeURIComponent(u.drive_file_id)+'/view'},409);
+    return fail('Không tìm thấy tệp trên R2. Cần quản trị kiểm tra đồng bộ.',404);
+   }
    return new Response(object.body,{headers:{'content-type':u.content_type,'content-disposition':'attachment; filename="download"','cache-control':'private, no-store'}});
   }
   await requireMenu(u.stage==='GIAO_HANG'?'orders.ship':'orders.pack');mustStageAccess(user,u,o);
