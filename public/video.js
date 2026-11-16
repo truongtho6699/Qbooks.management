@@ -102,7 +102,7 @@ async function refreshVideoList(restoreFocus=false){
  }catch(e){toast('Không đọc được danh sách: '+e.message);}
 }
 function navigate(view){
- if(view!==state.view&&!confirmLeave())return;
+ if((view!==state.view||state.selected)&&!confirmLeave())return;
  if(view==='more'){
   const options=NAV.filter(n=>can(n.id)&&!['dashboard','film','edit','booksProgress'].includes(n.id));
   $('page').innerHTML=panel('Các chức năng khác','<div class="two">'+options.map(n=>'<button class="btn" data-menu="'+n.id+'">'+n.icon+' '+E(n.text)+'</button>').join('')+'</div>');
@@ -397,6 +397,7 @@ function render(){
  $('page').innerHTML=html;
  wire();
  for(const form of $('page').querySelectorAll('form'))trackDraft(form);
+ for(const id of ['reviewNote','publishYoutube']){const control=$(id);if(control){const panel=control.closest('.panel');if(panel)trackDraft(panel);}}
 }
 function bindForm(id,callback){
  const form=$(id);if(!form)return;
@@ -522,7 +523,17 @@ function wire(){
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
  bindForm('filmForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'film',...b}));
  bindForm('editForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'edit',...b}));
- const reviewAction=async action=>{try{await api('PATCH','/api/video/items/'+state.selected.id,{action,note:$('reviewNote')?.value||'',youtube_url:$('publishYoutube')?.value||''});markDraftSaved($('editForm'));state.selected=null;await load();await refreshVideoList();toast('Đã cập nhật trạng thái video.');}catch(e){toast(e.message)}};
+ const reviewAction=async action=>{
+ const note=$('reviewNote'),url=$('publishYoutube');
+ if(action==='reject'&&!String(note?.value||'').trim()){if(note)showFieldError(note.closest('.panel'),'reviewNote','Nhập lý do để nhân viên biết nội dung cần sửa.');return;}
+ if(action==='publish'&&!String(url?.value||'').trim()){if(url)showFieldError(url.closest('.panel'),'publishYoutube','Nhập liên kết YouTube của video đã phát hành.');return;}
+ try{
+  await api('PATCH','/api/video/items/'+state.selected.id,{action,note:note?.value||'',youtube_url:url?.value||''});
+  markDraftSaved($('editForm'));
+  if(note)markDraftSaved(note.closest('.panel'));if(url)markDraftSaved(url.closest('.panel'));
+  state.selected=null;await load();await refreshVideoList();toast('Đã cập nhật trạng thái video.');
+ }catch(e){toast(e.message);const panel=(action==='publish'?url:note)?.closest('.panel');if(panel)showFormError(panel,e.message);}
+};
  if($('approveVideo'))$('approveVideo').onclick=()=>reviewAction('approve');
  if($('rejectVideo'))$('rejectVideo').onclick=()=>reviewAction('reject');
  if($('publishVideo'))$('publishVideo').onclick=()=>reviewAction('publish');
