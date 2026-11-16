@@ -28,8 +28,8 @@
    <div class="shipping-operation-title"><strong>Quản lý đơn hàng</strong><small>Chọn chức năng nghiệp vụ</small></div>
    <nav id="shippingOperationTabs" class="shipping-operation-tabs" aria-label="Các chức năng quản lý đơn hàng"></nav>
  </section>
- <section id="viewOnlyPanel" hidden aria-label="Xem trước giao diện chương trình">
-  <div class="view-only-banner"><strong>CHẾ ĐỘ VIEW – XEM GIAO DIỆN</strong><span>Không hiển thị dữ liệu thực tế • Không có quyền thao tác • Liên hệ Admin để cấp quyền nghiệp vụ</span></div>
+ <section id="viewOnlyPanel" hidden aria-label="Thông tin quyền chỉ xem">
+  <div class="view-only-banner"><strong>CHẾ ĐỘ CHỈ XEM</strong><span>Không thể tạo hoặc chỉnh sửa đơn • Chỉ hiển thị dữ liệu trong phạm vi quyền được cấp • Liên hệ quản trị khi cần thao tác</span></div>
   <div id="viewOnlyContent" class="view-only-content"></div>
  </section>
  <section id="overviewView" hidden>
@@ -47,7 +47,7 @@
 <div id="orderList" class="cards"></div>
 </section>
 <section id="saleView" hidden><div class="panel" id="newSalePanel"><h2>Sale · Lên đơn</h2>
-<p class="hint">Đơn mới được lưu trực tiếp vào Cloudflare D1 và sử dụng ngay cho Đóng hàng/Vận đơn. Google Sheets SALE_DONG_DON vẫn là nguồn riêng; hiện chưa tự ghi ngược đơn mới sang Google Sheets. Không nhập cùng mã hóa đơn ở hai nơi.</p>
+<p class="hint">Đơn lưu tại QBOOK sẽ chuyển sang Đóng hàng và Vận đơn. Lưu ý: đơn chưa tự đồng bộ về Google Sheets; không nhập lại cùng mã hóa đơn ở hai nơi.</p>
 <form id="saleForm"><div class="fields"><label>Mã hóa đơn (có thể nhập nhiều mã, cách nhau bằng dấu phẩy)<input name="invoice_codes" placeholder="HD0011, HD0012" required></label><label>Tên Sale<input name="sale_name" placeholder="Admin" required></label><label>Tên khách hàng<input name="customer" required></label><label>Số quyển<input name="quantity" type="number" min="1" step="1" value="1" required></label><label>Loại vận chuyển<input name="transport" placeholder="Gửi xe, Ship ngoài..."></label><label>Nhà xe (nếu có)<input name="carrier"></label><label>Địa chỉ<input name="address"></label><label class="check"><input name="urgent" type="checkbox"> Đơn gấp</label></div><button class="primary">LƯU ĐƠN SALE</button></form></div>
 <div class="panel"><h2>Gộp nhiều đơn vào một mã vận đơn</h2><p class="hint">Chỉ gộp các đơn tạo trên Qbook (nguồn D1). Đơn từ Google Sheets tiếp tục gộp tại SALE_GOP_VAN_DON.</p><div id="groupList" class="cards compact"></div><button class="secondary" id="createGroup">TẠO NHÓM VẬN ĐƠN</button></div></section>
 <section id="detailView" hidden><button class="textbtn" id="backBtn">← Quay lại danh sách</button><div class="panel"><div id="selectedOrder"></div><div id="packControls">
