@@ -86,3 +86,26 @@ test('QBOOK V3 closes drawer with focus returned through shared API',()=>{
  assert.equal(h.drawer.hidden,true);
  assert.equal(h.drawer.attrs['aria-modal'],'false');
 });
+
+test('QBOOK mobile drawer traps Tab at first and last interactive controls',()=>{
+ const h=harness();h.win.QbookNavigation.render(h.base);h.toggle.onclick();
+ const first={focused:false,getClientRects:()=>[{}],focus(){this.focused=true}};
+ const last={focused:false,getClientRects:()=>[{}],focus(){this.focused=true}};
+ h.drawer.querySelectorAll=()=>[first,last];
+ h.doc.activeElement=last;
+ let stopped=0;
+ h.doc.keydown({key:'Tab',shiftKey:false,preventDefault(){stopped++}});
+ assert.equal(stopped,1);assert.equal(first.focused,true);
+ h.doc.activeElement=first;
+ h.doc.keydown({key:'Tab',shiftKey:true,preventDefault(){stopped++}});
+ assert.equal(stopped,2);assert.equal(last.focused,true);
+});
+test('QBOOK V3 includes real-event Media trend and screen-reader-friendly empty state',()=>{
+ const source=readFileSync(new URL('../public/video.js',import.meta.url),'utf8');
+ const css=readFileSync(new URL('../public/ui-v3.css',import.meta.url),'utf8');
+ assert.ok(source.includes("activity.event_type==='FILM_COMPLETED'"));
+ assert.ok(source.includes("activity.event_type==='EDIT_SUBMITTED'"));
+ assert.ok(source.includes("Array.from({length:14}"));
+ assert.ok(source.includes('Chưa có sự kiện sản xuất'));
+ assert.ok(css.includes('.qb-trend'));
+});
