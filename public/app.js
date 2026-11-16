@@ -260,7 +260,7 @@ function setShellTitle(area,title,description=''){
 async function openMedia(view){
  const permitted=state.menuKeys.filter(key=>key.startsWith('media.')).map(key=>key.slice(6));
  if(!permitted.length&&!capabilities().admin)return notice('Bạn chưa được cấp quyền Quản lý Media.');
- const target=permitted.includes(view)?view:permitted[0]||'dashboard';
+ const target=permitted.includes(view)?view:permitted.includes(state.mediaView)?state.mediaView:permitted[0]||'dashboard';
  state.mediaView=target;
  setShellTitle('media','Đang mở Quản lý Media','Đang tải thông tin…');
  window.QbookNavigation?.focusMedia(target);
@@ -318,12 +318,12 @@ function renderTabs(){
  if(orderTabs.length)addMobile('orders','Giao hàng','▣',()=>tab(orderTabs[0][0]),active);
  const mediaMenus=state.menuKeys.filter(k=>k.startsWith('media.')).map(k=>k.slice(6));
  if(state.area==='media'){
-  for(const [id,label,symbol] of [['dashboard','Tổng quan','▦'],['film','Quay','◉'],['edit','Hậu kỳ','✎'],['booksProgress','Đầu sách','▧']]){
-   if(mediaMenus.includes(id))addMobile(id,label,symbol,()=>openMedia(id),state.mediaView===id);
-  }
-  if(!['dashboard','film','edit','booksProgress'].includes(state.mediaView)||!mediaMenus.some(x=>['dashboard','film','edit','booksProgress'].includes(x))){
-   addMobile('more','Menu','☰',()=>{$('qbnToggle').click();},true);
-  }
+  const primary=[['dashboard','Tổng quan','▦'],['film','Quay','◉'],['edit','Hậu kỳ','✎'],['booksProgress','Đầu sách','▧']].filter(([id])=>mediaMenus.includes(id));
+  const slots=orderTabs.length?3:4;
+  const visible=primary.slice(0,slots);
+  const overflow=mediaMenus.some(id=>!visible.some(([key])=>key===id));
+  for(const [id,label,symbol] of visible)addMobile(id,label,symbol,()=>openMedia(id),state.mediaView===id);
+  if(overflow&&mobile.children.length<5)addMobile('more','Danh mục','☰',()=>{$('qbnToggle').click();},!visible.some(([id])=>id===state.mediaView));
  }else if(mediaMenus.length)addMobile('media','Media','◉',()=>openMedia(),false);
  if(menuAllowed('system.admin')&&mobile.children.length<5)addMobile('admin','Quản trị','⚙',()=>tab('staff'),state.area==='admin');
  for(const [id,label]of orderTabs){const b=button(label,()=>tab(id),state.tab===id?'selected':'');b.classList.add('shipping-operation-tab');inner.append(b);}
