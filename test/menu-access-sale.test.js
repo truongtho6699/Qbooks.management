@@ -71,6 +71,15 @@ test('Sale creates an order in D1 when permitted, without requiring legacy toggl
  const insertion=env.binds.find(x=>x.sql.includes('INSERT INTO orders'));
  assert.ok(insertion);assert.equal(insertion.values[2],seller.name);
  assert.ok(insertion.sql.includes("'D1',0"));
+ const columnSpec=insertion.sql.match(/INSERT INTO orders\(([^)]+)\)\s*VALUES\(([^)]+)\)/);
+ assert.ok(columnSpec,'Sale INSERT must declare columns and values');
+ const columns=columnSpec[1].split(',').map(x=>x.trim());
+ const values=columnSpec[2].split(',').map(x=>x.trim());
+ assert.equal(columns.length,12,'Sale INSERT must supply all 12 columns');
+ assert.equal(values.length,columns.length,'Every Sale INSERT column needs a value');
+ assert.equal(values.filter(x=>x==='?').length,insertion.values.length,'Placeholder count must match D1 bound arguments');
+ assert.deepEqual(values.slice(-2),["'D1'",'0']);
+ assert.equal(insertion.values[9],seller.id,'created_by must bind current user ID');
 });
 test('Duplicate invoice code is rejected before database write',async()=>{
  const env=envForSeller({id:'old-order'});
