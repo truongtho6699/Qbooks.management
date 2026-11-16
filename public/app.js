@@ -220,7 +220,7 @@ async function bootstrap(){
   $('shippingUserBadge').textContent=r.user.name;
   $('saleForm').elements.sale_name.value=r.user.name;
   $('saleForm').elements.sale_name.readOnly=true;
-  show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;
+  show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;const skip=$('qbSkipLink');if(skip)skip.href='#appPage';
   // Always drop operational data kept by a previous session before showing the new identity.
   state.orders=[];state.overviewData=null;state.selected=null;state.lockedOrderIds.clear();
   const rights=capabilities(),keys=state.menuKeys;
@@ -232,7 +232,7 @@ async function bootstrap(){
   if(toAdmin&&rights.admin)window.QbookNavigation?.focusAdmin();else if(target)window.QbookNavigation?.focusOrders();
   if(!rights.admin&&!['overview','sale','pack','ship'].some(permitted)&&keys.some(k=>k.startsWith('media.'))){window.location.replace('/video.html');return;}
   renderTabs();switchView();
- }catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;notice(e.message);}
+ }catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';notice(e.message);}
 }
 function capabilities(){
  const r=state.user?.rights||{};
