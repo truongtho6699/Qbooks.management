@@ -395,7 +395,19 @@ async function downloadMedia(id,filename,btn){
  const old=btn.textContent;btn.disabled=true;btn.textContent='Đang lấy tệp…';
  try{
   const response=await fetch('/api/uploads/'+encodeURIComponent(id)+'/file',{headers:{authorization:'Bearer '+state.token}});
-  if(!response.ok){const error=await response.json().catch(()=>({}));throw Error(error.error||'Không thể đọc tệp.');}
+  if(!response.ok){
+   const error=await response.json().catch(()=>({}));
+   if(error.driveUrl){
+    try{const u=new URL(error.driveUrl);
+     if(u.protocol==='https:'&&u.hostname==='drive.google.com'){
+      notice('Tệp đã chuyển sang Google Drive. Bấm liên kết để mở tệp.');
+      const link=document.createElement('a');link.href=u.href;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Mở tệp trên Google Drive';link.className='qb-drive-download-link';
+      $('notice').append(' ',link);return;
+     }
+    }catch{}
+   }
+   throw Error(error.error||'Không thể đọc tệp.');
+  }
   const blob=await response.blob(),link=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=link;a.download=filename||'hoso';document.body.append(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(link),60000);
