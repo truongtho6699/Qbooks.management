@@ -337,26 +337,16 @@ function renderTabs(){
 }
 
 function viewOnlyLayout(key){
- const content=$('viewOnlyContent');
- const heading=(label)=>'<section class="view-only-section"><h2>'+label+'</h2><p>Chỉ xem bố cục. Không có dữ liệu hoặc quyền thao tác.</p>';
- const field=(label)=>'<div class="view-only-field"><span>'+label+'</span><div class="view-only-placeholder" aria-hidden="true"></div></div>';
- const exampleCard='<div class="view-only-card"><div class="view-only-placeholder"></div><div class="view-only-placeholder short"></div><small>Không hiển thị thông tin đơn hàng</small></div>';
- const views={
-  overview:`<div class="view-only-kpis">${['Tổng số đơn','Chờ đóng hàng','Chờ vận đơn','Đang giao','Hoàn thành'].map(x=>'<div class="view-only-kpi"><small>'+x+'</small><strong>—</strong></div>').join('')}</div>
-   ${heading('Danh sách đơn hàng')}<div class="view-only-table"><strong>Mã hóa đơn</strong><strong>Khách hàng</strong><strong>Trạng thái</strong><strong>Hồ sơ ảnh/video</strong></div>
-   <div class="view-only-empty">Không có quyền xem dữ liệu đơn hàng, khách hàng hoặc hồ sơ.</div></section>`,
-  sale:`${heading('Sale lên đơn')}<div class="view-only-fields">${['Giờ giao / Gấp','Mã hóa đơn','Loại vận chuyển','Tên khách hàng','Số quyển','Địa chỉ','Nhà xe'].map(field).join('')}</div>
-   <div class="view-only-disabled">Lưu đơn (không khả dụng)</div></section>
-   ${heading('Gộp đơn')}${exampleCard}<div class="view-only-disabled">Gộp đơn (không khả dụng)</div></section>`,
-  pack:`${heading('Đơn chờ đóng hàng')}${exampleCard}</section>
-   ${heading('Chi tiết đóng hàng')}<div class="view-only-fields">${['Ảnh hóa đơn','Video đóng hàng','Ảnh hàng hóa','Số thùng','Người đóng cùng','Ghi chú'].map(field).join('')}</div>
-   <div class="view-only-disabled">Lưu và đóng hàng (không khả dụng)</div></section>`,
-  ship:`${heading('Đơn chờ vận đơn')}${exampleCard}</section>
-   ${heading('Thông tin vận đơn')}<div class="view-only-fields">${['Loại ship','Người giao','Số điện thoại','Tiền ship','Hàng nặng','Phí bến','Phụ phí','Ảnh bàn giao'].map(field).join('')}</div>
-   <div class="view-only-disabled">Lưu vận đơn (không khả dụng)</div></section>`
- };
- content.innerHTML=views[key]||views.overview;
+ const labels={overview:'Tổng hợp',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn'};
+ const content=$('viewOnlyContent');content.replaceChildren();
+ const section=el('section',null,'qb-view-only-info');
+ section.setAttribute('role','status');
+ const title=el('h2','Chế độ chỉ xem · '+(labels[key]||'Giao hàng'));
+ const description=el('p','Tài khoản này không được phép tạo, thay đổi hay hoàn tất đơn trong chức năng này. Các tác vụ ghi dữ liệu đã được khóa.');
+ const explanation=el('p','Để thực hiện công việc, đề nghị quản trị viên cấp vai trò và quyền thao tác phù hợp.','qb-muted');
+ section.append(title,description,explanation);content.append(section);
 }
+
 function switchView(){
  const key=state.tab,isView=capabilities().view;
  if(key==='sale')trackDraft($('saleForm'));
