@@ -128,14 +128,33 @@ function readinessPanel(){
  return panel('Mức độ sẵn sàng vận hành Media',table(['Điều kiện','Hiện trạng','Nhận xét','Thao tác'],rows)+
  '<p class="mini-note">Chỉ là kiểm tra cấu hình và dữ liệu. Đường dẫn Drive đã lưu chưa đồng nghĩa đã kiểm tra quyền sửa thư mục. Chưa kiểm thử đăng nhập và tải tệp với tài khoản nhân viên thật.</p>');
 }
+function bookProgressViz(){
+ const bookRows=state.books.map(book=>{
+  const total=Number(book.target_count)||0,published=Number(book.published)||0;
+  return {name:book.code+' · '+book.name,total,published,ratio:total?Math.min(100,Math.round(published*100/total)):0};
+ }).filter(x=>x.total>0).sort((a,b)=>b.ratio-a.ratio||b.published-a.published).slice(0,10);
+ if(!bookRows.length)return panel('Tiến độ phát hành theo đầu sách','<div class="empty"><strong>Chưa có chỉ tiêu video</strong>Thiết lập kế hoạch cho từng đầu sách để theo dõi tiến độ.</div>');
+ return panel('Tiến độ phát hành theo đầu sách','<div class="qb-viz" role="list" aria-label="Tiến độ phát hành theo từng đầu sách">'+bookRows.map(x=>
+  '<div class="qb-viz-row" role="listitem" aria-label="'+E(x.name)+': '+x.ratio+' phần trăm, '+x.published+' trên '+x.total+' video">'+
+  '<span class="qb-viz-label" title="'+E(x.name)+'">'+E(x.name)+'</span>'+
+  '<div class="qb-viz-track" aria-hidden="true"><span class="qb-viz-bar" style="width:'+x.ratio+'%"></span></div>'+
+  '<span class="qb-viz-value">'+x.ratio+'%</span></div>'
+ ).join('')+'</div><p class="qb-viz-caption">Hiển thị tối đa 10 đầu sách có kế hoạch, sắp xếp theo tỷ lệ phát hành. Tỷ lệ tính từ dữ liệu D1, không phải số liệu giả.</p>');
+}
+function dashboardMeta(){
+ const timestamp=state.overview?.asOf;
+ return '<div class="qb-dashboard-meta"><span class="qb-dot" aria-hidden="true"></span>'+
+ 'Nguồn: Cloudflare D1 · '+E(timestamp?new Date(timestamp).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'Chưa có thời điểm cập nhật')+
+ '</div>';
+}
 function dashboard(){
  const o=state.overview||{totals:{},books:[],staff:[]},t=o.totals;
  const bookRows=(o.books||[]).slice(0,10).map(b=>[E(b.code),E(b.name),count(b.total),count(b.filmed),count(b.published)]);
  const top=(o.staff||[]).filter(x=>Number(x.filmed)||Number(x.edited)).slice(0,10).map(p=>[E(p.name),count(p.filmed),count(p.edited)]);
  const statusesRows=statuses.map(s=>[badge(s),count((o.statusCounts||[]).find(x=>x.status===s)?.total||0)]);
- return '<p class="qv-asof">Nguồn: Cloudflare D1 · Cập nhật: '+E(o.asOf?new Date(o.asOf).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'Chưa xác định')+'</p>'+kpis([{label:'Đầu sách kế hoạch',value:state.books.length,sub:'Danh mục hiện hành'},{label:'Bài/tiết dự kiến',value:state.lessons.length,sub:'Không phải video đã quay'},{label:'Video đã quay',value:t.filmed,sub:'Ghi nhận lần đầu'},{label:'Đã phát hành',value:t.published,sub:'Sau duyệt của quản lý'}])+
+ return dashboardMeta()+kpis([{label:'Đầu sách kế hoạch',value:state.books.length,sub:'Danh mục hiện hành'},{label:'Bài/tiết dự kiến',value:state.lessons.length,sub:'Không phải video đã quay'},{label:'Video đã quay',value:t.filmed,sub:'Ghi nhận lần đầu'},{label:'Đã phát hành',value:t.published,sub:'Sau duyệt của quản lý'}])+
  '<div class="two">'+panel('Tiến độ sản xuất theo đầu sách',table(['Mã sách','Đầu sách','Video','Đã quay','Phát hành'],bookRows,'Chưa có đầu sách'))+
- panel('Sản lượng nhân viên',table(['Nhân sự','Quay','Hậu kỳ'],top,'Chưa có sản lượng'))+'</div>'+
+ panel('Sản lượng nhân viên',table(['Nhân sự','Quay','Hậu kỳ'],top,'Chưa có sản lượng'))+'</div>'+bookProgressViz()+
  panel('Việc cần xử lý',table(['Tình trạng','Số video','Hành động'],[[badge('CHỜ DUYỆT'),count(t.pending_review||0),'<button type="button" class="link-action" data-goto="edit" data-review="PENDING">Xem video chờ duyệt</button>'],['Cần sửa',count(t.need_revision||0),'<button type="button" class="link-action" data-goto="edit" data-review="CHANGES_REQUESTED">Xem hậu kỳ</button>'],['Bài/tiết chưa gắn kế hoạch video',count(o.unplannedLessons||0),'Đối chiếu theo mã bài học']]))+panel('Tình trạng video toàn hệ thống',table(['Trạng thái','Số lượng'],statusesRows))+(state.rights.manage||state.rights.admin?readinessPanel():'');
 }
 function adminOverview(){
@@ -149,13 +168,13 @@ function adminOverview(){
    count(target),count(b.filmed),count(done),'<div class="progress"><span style="width:'+pct+'%"></span></div><span class="mini-note">'+pct+'%</span>'];
  });
  const people=staff.map(p=>[E(p.name),count(p.filmed),count(p.edited)]);
- return kpis([{label:'Đầu sách quản lý',value:state.books.length,sub:'Đã lập kế hoạch sản xuất'},
+ return dashboardMeta()+kpis([{label:'Đầu sách quản lý',value:state.books.length,sub:'Đã lập kế hoạch sản xuất'},
   {label:'Chỉ tiêu video',value:goals,sub:'Kế hoạch toàn hệ thống'},
   {label:'Video đã phát hành',value:t.published,sub:'Video có kết quả phát hành'},
   {label:'Chưa đạt kế hoạch',value:remaining,sub:'Theo chỉ tiêu đầu sách'}])+
  '<div class="two">'+panel('Tiến độ theo đầu sách',
  table(['Mã sách','Tên đầu sách','Kế hoạch','Đã quay','Phát hành','Hoàn thành'],progress,'Chưa có kế hoạch đầu sách'))+
- panel('Hiệu suất nhân sự',table(['Nhân sự','Video quay','Video hậu kỳ'],people,'Chưa có hoạt động nhân sự'))+'</div>'+
+ panel('Hiệu suất nhân sự',table(['Nhân sự','Video quay','Video hậu kỳ'],people,'Chưa có hoạt động nhân sự'))+'</div>'+bookProgressViz()+
  panel('Cơ cấu trạng thái',table(['Trạng thái','Số lượng video'],statuses.map(x=>[badge(x),count((o.statusCounts||[]).find(r=>r.status===x)?.total||0)])))+readinessPanel();
 }
 function bookDetail(){
