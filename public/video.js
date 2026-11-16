@@ -388,7 +388,7 @@ function permissions(){
 }
 function auditView(){return panel('Lịch sử thao tác',table(['Ngày','Nhân sự','Hành động','Video'],(state.audit||[]).map(a=>[date(a.created_at),E(a.actor_name||'—'),E(a.action),E(a.video_id||'—')])));}
 function render(){
- const screen={dashboard,adminOverview,bookDetail,filmOverview,film:filmList,createVideo,postOverview,edit:editList,production,booksProgress,report,books:booksAdmin,catalog,staff:staffAdmin,permissions,audit:auditView};
+ const screen={dashboard,adminOverview,bookDetail,filmOverview:filmingOverview,film:filmList,createVideo,postOverview,edit:editList,production,booksProgress,report,books:booksAdmin,catalog,staff:staffAdmin,permissions,audit:auditView};
  let html=screen[state.view]?.()||'<p>Chưa có nội dung.</p>';
  if(state.view==='film'&&state.selected)html=filmDetail(state.selected);
  if(state.view==='edit'&&state.selected)html=editDetail(state.selected);
