@@ -830,6 +830,7 @@ function showSavedMediaLinks(order,result,newStatus){
 }
 async function savePack(){
  if(state.saving||!state.selected)return;
+ let saved=false;
  const id=state.selected.id,uploads=[];
  for(const f of $('invoicePics').files)uploads.push(['ANH_HOA_DON',f]);
  for(const f of $('goodsPics').files)uploads.push(['HANG_HOA',f]);
@@ -840,16 +841,17 @@ async function savePack(){
   const uploaded=await uploadSelection(id,uploads);
   // R2 is the durable source. Background Cron mirrors files without staff Google permissions.
   const nguoiDongCung=$all('.packHelperChoice:checked').map(x=>x.value);
-  await api('POST','/api/orders/'+id+'/pack',{boxes:Number($('boxes').value),nguoiDongCung,note:$('packNote').value});
+  await api('POST','/api/orders/'+id+'/pack',{boxes:Number($('boxes').value),nguoiDongCung,note:$('packNote').value});saved=true;
   state.lockedOrderIds.delete(id);
   markDraftSaved($('packControls'));
   notice('Đã lưu đóng hàng. '+uploaded.length+' tệp được giữ an toàn trên R2 và xếp hàng chờ tự chuyển Drive. Dữ liệu Sheets đồng bộ riêng.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
- }catch(e){notice('Chưa lưu đóng hàng: '+e.message);showFormError($('packControls'),e.message);}
+ }catch(e){if(saved){notice('Đã lưu đóng hàng, nhưng chưa tải lại được danh sách: '+humanizeError(e.message),true);}else{notice('Chưa lưu đóng hàng: '+e.message);showFormError($('packControls'),e.message);}}
  finally{setBusy(false);}
 }
 async function saveShip(){
  if(state.saving||!state.selected)return;
+ let saved=false;
  setBusy(true);
  try{
   const id=state.selected.id,groupIds=$all('.shippingGroupCheck:checked').map(x=>x.value);
@@ -867,12 +869,13 @@ async function saveShip(){
   notice('Đang tải ảnh bàn giao (nếu có) và lưu vận đơn...');
   const uploaded=await uploadSelection(id,uploads);
   await api('POST','/api/shipments',{orderIds,loaiShip,tenShip,sdtShip,
-   tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:v('shippingStatus'),note:v('shippingNote')});
+   tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:v('shippingStatus'),note:v('shippingNote')});saved=true;
   for(const key of orderIds)state.lockedOrderIds.delete(key);
   markDraftSaved($('shipControls'));
   notice('Đã lưu vận đơn. '+uploaded.length+' tệp đã lưu R2 và xếp hàng chờ tự đồng bộ Drive. Dữ liệu Sheets đồng bộ riêng.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
  }catch(e){
+  if(saved){notice('Vận đơn đã lưu, nhưng chưa tải lại được danh sách: '+humanizeError(e.message),true);return;}
   const msg='Chưa lưu vận đơn: '+e.message;notice(msg);
   if(/loại ship/i.test(e.message))showFieldError($('shipControls'),'shippingType',e.message);
   else if(/tên ship/i.test(e.message))showFieldError($('shipControls'),'shippingPerson',e.message);
@@ -905,18 +908,20 @@ $('saleForm').addEventListener('submit',async e=>{
  e.preventDefault();
  const form=e.target,submit=form.querySelector('button[type=submit],button:not([type])');
  if(submit?.disabled)return;
+ let saved=false;
  const f=Object.fromEntries(new FormData(form));f.urgent=!!form.querySelector('[name=urgent]').checked;
  if(!String(f.invoice_codes||'').trim())return showFieldError(form,'invoice_codes','Cần nhập ít nhất một mã hóa đơn.');
  if(!String(f.customer||'').trim())return showFieldError(form,'customer','Nhập tên khách hàng trước khi lưu.');
  if(!Number.isSafeInteger(Number(f.quantity))||Number(f.quantity)<1)return showFieldError(form,'quantity','Số quyển phải là số nguyên lớn hơn 0.');
  if(submit){submit.disabled=true;submit.textContent='ĐANG LƯU ĐƠN…';}
  try{
-  await api('POST','/api/orders',f);
+  await api('POST','/api/orders',f);saved=true;
   form.reset();form.elements.sale_name.value=state.user.name;
   markDraftSaved(form);
   notice('Đã tạo đơn Sale trên D1. Đơn sẵn sàng chuyển Đóng hàng; chưa tự ghi sang Google Sheets.',true);
   await loadGroupOptions();await loadOrders();
  }catch(err){
+  if(saved){notice('Đơn đã được lưu thành công, nhưng chưa cập nhật được danh sách: '+humanizeError(err.message),true);return;}
   notice(err.message);
   if(/trùng|duplicate|đã tồn tại|mã hóa đơn/i.test(err.message))showFieldError(form,'invoice_codes',err.message);
   else showFormError(form,err.message);
