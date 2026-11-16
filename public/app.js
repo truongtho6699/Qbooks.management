@@ -856,7 +856,7 @@ async function savePack(){
   await api('POST','/api/orders/'+id+'/pack',{boxes:Number($('boxes').value),nguoiDongCung,note:$('packNote').value});saved=true;
   state.lockedOrderIds.delete(id);
   markDraftSaved($('packControls'));
-  notice('Đã lưu đóng hàng. '+uploaded.length+' tệp được giữ an toàn trên R2 và xếp hàng chờ tự chuyển Drive. Dữ liệu Sheets đồng bộ riêng.',true);
+  notice('Đã lưu đóng hàng. '+uploaded.length+' tệp đã ghi R2. Hệ thống chỉ chuyển Drive khi Worker được kích hoạt; chỉ xóa R2 sau khi kiểm chứng bản Drive. Dữ liệu Sheets đồng bộ riêng.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
  }catch(e){if(saved){notice('Đã lưu đóng hàng, nhưng chưa tải lại được danh sách: '+humanizeError(e.message),true);}else{notice('Chưa lưu đóng hàng: '+e.message);showFormError($('packControls'),e.message);}}
  finally{setBusy(false);}
@@ -884,7 +884,7 @@ async function saveShip(){
    tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:v('shippingStatus'),note:v('shippingNote')});saved=true;
   for(const key of orderIds)state.lockedOrderIds.delete(key);
   markDraftSaved($('shipControls'));
-  notice('Đã lưu vận đơn. '+uploaded.length+' tệp đã lưu R2 và xếp hàng chờ tự đồng bộ Drive. Dữ liệu Sheets đồng bộ riêng.',true);
+  notice('Đã lưu vận đơn. '+uploaded.length+' tệp đã ghi R2. Chuyển Drive khi Worker được kích hoạt; chỉ xóa R2 sau khi xác minh đủ tệp. Dữ liệu Sheets đồng bộ riêng.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
  }catch(e){
   if(saved){notice('Vận đơn đã lưu, nhưng chưa tải lại được danh sách: '+humanizeError(e.message),true);return;}
@@ -1043,17 +1043,18 @@ async function refreshGoogleSync(){
   const r=await api('GET','/api/sync/status');
   const waiting=r.uploads.filter(u=>!u.drive_file_id).length;
   const last=r.auto?.lastRun;
-  status.textContent='D1: '+r.orders.length+' đơn chờ ghi Sheets · R2: '+waiting+' tệp chờ Drive. '+
+  status.textContent='D1: '+r.orders.length+' đơn chờ ghi Sheets · R2: '+waiting+' tệp chưa chuyển Drive · '+
+   (r.auto?.moved||0)+' tệp đã xác minh Drive và dọn khỏi R2 · '+(r.auto?.awaitingR2Cleanup||0)+' tệp trên Drive chưa dọn R2. '+
    (last?'Lần chạy tự động gần nhất: '+last.started_at+' ('+last.status+').':
-   'Bộ chạy tự động đang chờ thiết lập quyền Google ngoại tuyến của máy chủ.');
+   'Chưa ghi nhận lần chạy tự động; kiểm tra quyền Google ngoại tuyến và trạng thái Worker.');
 
   const media=$('syncUploads');media.replaceChildren();
   if(!r.uploads.length)media.append(el('p','Không có ảnh/video mới cần kiểm tra.'));
   for(const file of r.uploads){
    const div=el('div',null,'order');
    const label=el('div',(file.order_id+' · '+file.stage+' · '+file.filename+' · '+(file.bytes/1048576).toFixed(1)+' MB'));
-   const span=el('span',file.drive_file_id?'Đã có trên Drive':file.auto_error?'Lỗi tạm thời – sẽ thử lại':(file.drive_offset?'Đã chuyển '+Math.floor(100*file.drive_offset/file.bytes)+'%':'Đang chờ đồng bộ'),'tag');
-   if(file.auto_error)span.title=file.auto_error;
+   const span=el('span',file.r2_deleted_at?'Đã chuyển Drive · Đã dọn R2':file.r2_delete_error?'Lỗi dọn R2 – vẫn giữ bản gốc':file.drive_file_id?'Đã có trên Drive · Chờ xác minh/dọn R2':file.auto_error?'Lỗi tạm thời – sẽ thử lại':(file.drive_offset?'Đã chuyển '+Math.floor(100*file.drive_offset/file.bytes)+'%':'Đang chờ đồng bộ'),'tag');
+   if(file.auto_error||file.r2_delete_error)span.title=file.auto_error||file.r2_delete_error;
    div.append(label,span);
    if(!file.drive_file_id){
     const btn=button(file.drive_offset?'Tiếp tục chuyển':'Chuyển sang Drive',()=>mirrorGoogleFile(file.id,btn),'secondary');
