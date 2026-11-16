@@ -1,6 +1,7 @@
 // Shared QBOOK form UX guard. Visual state only; never saves operational data.
 const baselines=new WeakMap();
 const tracked=new Set();
+const listenersInstalled=new WeakSet();
 function controls(root){
  return [...root.querySelectorAll('input,select,textarea')].filter(el=>!el.disabled&&el.type!=='hidden'&&el.type!=='button'&&el.type!=='submit');
 }
@@ -18,8 +19,15 @@ function isShown(node){
 export function trackDraft(root){
  if(!root)return;
  baselines.set(root,snapshot(root));tracked.add(root);
- root.addEventListener('input',event=>{if(event.target?.matches?.('[aria-invalid="true"]'))clearFieldError(event.target)});
- root.addEventListener('change',event=>{if(event.target?.matches?.('[aria-invalid="true"]'))clearFieldError(event.target)});
+ if(!listenersInstalled.has(root)){
+  const onEdit=event=>{
+   if(event.target?.matches?.('[aria-invalid="true"]'))clearFieldError(event.target);
+   root.querySelectorAll('.qb-form-error').forEach(node=>node.remove());
+  };
+  root.addEventListener('input',onEdit);
+  root.addEventListener('change',onEdit);
+  listenersInstalled.add(root);
+ }
 }
 export function markDraftSaved(root){if(root)baselines.set(root,snapshot(root));}
 export function hasUnsavedWork(){
