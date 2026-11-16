@@ -96,3 +96,16 @@ button{touch-action:manipulation;transition:background-color var(--qb-ease),bord
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}
 }
+
+/* V3.1: event-based Media production trend. No artificial data. */
+.qb-trend-legend{display:flex;flex-wrap:wrap;align-items:center;gap:18px;margin:10px 0 16px;font-size:12px;color:var(--qb-text-2)}
+.qb-trend-legend span{display:inline-flex;align-items:center;gap:7px}
+.qb-key{width:11px;height:11px;border-radius:3px;display:inline-block}
+.qb-key-film{background:var(--qb-primary)}.qb-key-edit{background:var(--qb-success)}
+.qb-trend{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:8px;height:210px;max-width:100%;border-bottom:1px solid var(--qb-border);padding:10px 0 0}
+.qb-trend-day{display:flex;flex-direction:column;justify-content:flex-end;gap:9px;min-width:0;text-align:center}
+.qb-trend-bars{height:155px;display:flex;align-items:flex-end;justify-content:center;gap:3px}
+.qb-trend-bars>span{display:block;flex:1;max-width:18px;min-height:0;border-radius:4px 4px 0 0}
+.qb-trend-film{background:var(--qb-primary)}.qb-trend-edit{background:var(--qb-success)}
+.qb-trend-label{white-space:nowrap;font-size:10px;color:var(--qb-text-2);font-variant-numeric:tabular-nums}
+@media(max-width:640px){.qb-trend{gap:3px;height:165px}.qb-trend-bars{height:118px;gap:1px}.qb-trend-label{writing-mode:vertical-rl;transform:rotate(180deg);margin:0 auto;font-size:9px}.qb-trend-legend{gap:12px}}
