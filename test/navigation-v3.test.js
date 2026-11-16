@@ -59,7 +59,9 @@ test('QBOOK V3 drawer is dismissed with Escape and restores focus',()=>{
  h.toggle.onclick();
  assert.equal(h.drawer.hidden,false);
  assert.equal(h.toggle.attrs['aria-expanded'],'true');
- h.doc.keydown({key:'Escape'});
+ assert.equal(h.drawer.attrs['role'],'dialog');
+ assert.equal(h.drawer.attrs['aria-modal'],'true');
+ h.doc.keydown({key:'Escape',preventDefault(){}});
  assert.equal(h.drawer.hidden,true);
  assert.equal(h.toggle.attrs['aria-expanded'],'false');
  assert.equal(h.toggle.focused,true);
@@ -73,4 +75,14 @@ test('QBOOK V3 shows allowed Media menu only and uses SVG icons',()=>{
  filmGroup.onclick();
  assert.ok(walk(h.desktop).some(n=>n.textContent==='Quay bài'));
  assert.ok(!walk(h.desktop).some(n=>n.textContent==='Phân quyền tài khoản'));
+});
+
+test('QBOOK V3 closes drawer with focus returned through shared API',()=>{
+ const h=harness();h.win.QbookNavigation.render(h.base);h.toggle.onclick();
+ assert.equal(h.drawer.hidden,false);
+ h.win.QbookNavigation.closeDrawer();
+ assert.equal(h.toggle.focused,true);
+ h.win.QbookNavigation.render(h.base);
+ assert.equal(h.drawer.hidden,true);
+ assert.equal(h.drawer.attrs['aria-modal'],'false');
 });
