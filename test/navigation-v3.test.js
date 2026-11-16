@@ -40,7 +40,7 @@ function harness(){
 }
 test('QBOOK V3 hides unassigned Media parent and system admin without rights',()=>{
  const h=harness();h.win.QbookNavigation.render(h.base);
- const menu=walk(h.desktop).filter(n=>n.className?.includes('qbn-branch'));
+ const menu=walk(h.desktop).filter(n=>n.className?.split(/\s+/).includes('qbn-branch'));
  assert.equal(menu.length,1);assert.equal(menu[0].attrs['aria-expanded'],'false');
  assert.ok(!walk(h.desktop).some(n=>n.textContent==='Quản lý Media'));
  assert.ok(!walk(h.desktop).some(n=>n.textContent==='Quản trị hệ thống'));
