@@ -1,0 +1,23 @@
+/* One application shell — Media is an in-place QBOOK module, never a second page. */
+body{background:var(--qb-bg)}
+.qbook-media-pane{min-width:0;width:100%}
+.qbook-media-pane[hidden]{display:none!important}
+.qbook-media-pane .qbook-media-head{display:none!important}
+.qbook-media-page{min-width:0;width:100%;max-width:none;margin:0;padding:20px 22px 50px;background:transparent}
+.qbook-media-page .panel{min-width:0}
+.qbook-media-page .two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.qbook-media-page .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.shipping-workspace.qbook-media-active .shipping-heading{margin-bottom:0}
+.shipping-workspace.qbook-media-active #shippingOperationGroup{display:none!important}
+.shipping-workspace.qbook-media-active #unifiedMediaView{display:block}
+.qbook-media-page .tablewrap{max-width:100%;overflow-x:auto}
+.qbook-media-page .panelhead h2{line-height:1.35}
+.qbook-media-page .filters{max-width:100%}
+.qbook-media-page .btn{min-height:44px}
+@media(max-width:1100px){.qbook-media-page .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:840px){
+ .qbook-media-page{padding:15px 12px calc(110px + env(safe-area-inset-bottom))}
+ .qbook-media-page .two{grid-template-columns:1fr}
+ .qbook-media-page .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:520px){.qbook-media-page .kpi{padding:13px}.qbook-media-page .kpi-number{font-size:25px}}
