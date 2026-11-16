@@ -58,7 +58,29 @@ test('P1 inline field errors have alert role, invalid state and focus',()=>{
  clearFieldError(field);
  assert.equal(field.getAttribute('aria-invalid'),undefined);
 });
-test('P1 UI keeps VIEW mode as read-only and does not request protected data',()=>{
- const appSource='placeholder';
- assert.ok(appSource);
+test('P1 VIEW screen contains no fake editable operational form and keeps overview access unchanged',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+ assert.ok(source.includes('Chế độ chỉ xem'));
+ assert.ok(source.includes("if(isView&&key!=='overview')"),'Keep server-controlled read-only overview behavior');
+ assert.ok(source.includes("return; // Security: VIEW never calls operational endpoints"));
+ assert.ok(!source.includes('view-only-fields'),'Do not pretend VIEW can edit simulated forms');
+});
+test('P1 Shipping and Media use the same unsaved-work and inline-error helpers',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+ const video=readFileSync(new URL('../public/video.js',import.meta.url),'utf8');
+ assert.ok(app.includes("from './ux-guard.js'"));
+ assert.ok(video.includes("from './ux-guard.js'"));
+ assert.ok(app.includes("if(!confirmLeave())return;await releaseLocks()"),'Logout must ask before discarding edits');
+ assert.ok(app.includes("markDraftSaved(form)"),'Sale must clear draft state only after successful save');
+ assert.ok(video.includes("if((view!==state.view||state.selected)&&!confirmLeave())return;"),'Media must not discard edits');
+ assert.ok(video.includes("for(const form of $('page').querySelectorAll('form'))trackDraft(form)"));
+});
+test('P1 Media form labels explicitly point to real editable controls',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const video=readFileSync(new URL('../public/video.js',import.meta.url),'utf8');
+ for(const id of ['rawFile','filmRawUrl','filmNote','editedFile','editOutputUrl','editStatus','editNote','reviewNote','publishYoutube']){
+  assert.ok(video.includes('<label for="'+id+'">'),id+' should have a persistent accessible name');
+ }
 });
