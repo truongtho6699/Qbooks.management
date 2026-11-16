@@ -40,7 +40,7 @@ async function getFolder(token,parent,name){
  if(!created.id)throw Error('Drive không trả mã thư mục.');
  return created.id;
 }
-async function targetFolder(token,order,stage){
+export async function targetFolder(token,order,stage){
  // Videos have a dedicated archival folder. Keep historical order/image folder layout untouched.
  if(stage==='VIDEO_DONG_HANG'){
   const folder=await gjson(GOOGLE_BASE+'/drive/v3/files/'+encodeURIComponent(VIDEO_ARCHIVE_FOLDER)+'?fields=id,name,mimeType,trashed,capabilities(canAddChildren)&supportsAllDrives=true',token);
