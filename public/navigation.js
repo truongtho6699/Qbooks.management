@@ -33,13 +33,13 @@ function render(config){
  const make=(tag,cls,label)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(label!=null)n.textContent=label;return n;};
  function repaint(){render(config);}
  function setRoot(root){expandedRoot=expandedRoot===root?null:root;if(root!=='media')expandedGroup=null;repaint();}
- function makeBranch(parent,label,open,depth,action,iconName='overview',key=''){
+ function makeBranch(parent,label,open,depth,action,iconName='overview',key='',scope='desktop'){
   const button=make('button','qbn-branch qbn-depth-'+depth+(open?' qbn-open':''));button.type='button';
   const name=make('span','qbn-branch-label');name.append(icon(iconName),document.createTextNode(label));
   const arrow=make('span','qbn-chevron',open?'▾':'▸');arrow.setAttribute('aria-hidden','true');
   button.append(name,arrow);button.setAttribute('aria-expanded',String(open));
-  if(key){button.dataset.navKey=key;button.setAttribute('aria-controls','qbn-panel-'+key);}
-  button.onclick=()=>{const isMobile=parent.closest?.('#qbnMobileTree')!==null;action();
+  if(key){button.dataset.navKey=key;button.setAttribute('aria-controls','qbn-panel-'+key+'-'+scope);}
+  button.onclick=()=>{const isMobile=scope==='mobile';action();
    const target=(isMobile?mobileTree:desktop)?.querySelector?.('[data-nav-key="'+key+'"]');target?.focus?.();
   };
   parent.append(button);return button;
@@ -50,27 +50,28 @@ function render(config){
   button.onclick=()=>{drawerOpen=false;render(config);action();};parent.append(button);return button;
  }
  for(const container of containers){
+  const scope=container===mobileTree?'mobile':'desktop';
   container.replaceChildren();
   const orderOpen=expandedRoot==='orders';
-  if(orders.length)makeBranch(container,'Quản lý giao hàng',orderOpen,1,()=>setRoot('orders'),'truck','orders');
+  if(orders.length)makeBranch(container,'Quản lý giao hàng',orderOpen,1,()=>setRoot('orders'),'truck','orders',scope);
   if(orderOpen&&orders.length){
-   const kids=make('div','qbn-children');kids.id='qbn-panel-orders';
+   const kids=make('div','qbn-children');kids.id='qbn-panel-orders-'+scope;
    const labels={overview:'Tổng hợp',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn'};
    for(const [key,label] of orders)makeLeaf(kids,label||labels[key]||key,area==='orders'&&activeView===key,2,()=>onOrder(key));
    container.append(kids);
   }
   const mediaOpen=expandedRoot==='media';
   const visibleMedia=MEDIA_GROUPS.some(group=>group.items.some(([id])=>canMedia(id)));
-  if(visibleMedia)makeBranch(container,'Quản lý Media',mediaOpen,1,()=>setRoot('media'),'video','media');
+  if(visibleMedia)makeBranch(container,'Quản lý Media',mediaOpen,1,()=>setRoot('media'),'video','media',scope);
   if(visibleMedia&&mediaOpen){
-   const section=make('div','qbn-children');section.id='qbn-panel-media';
+   const section=make('div','qbn-children');section.id='qbn-panel-media-'+scope;
    for(const group of MEDIA_GROUPS){
     const allowed=group.items.filter(([key])=>canMedia(key));
     if(!allowed.length)continue;
     const isOpen=expandedGroup===group.id;
-    makeBranch(section,group.name,isOpen,2,()=>{expandedGroup=isOpen?null:group.id;repaint();},group.id,'media-'+group.id);
+    makeBranch(section,group.name,isOpen,2,()=>{expandedGroup=isOpen?null:group.id;repaint();},group.id,'media-'+group.id,scope);
     if(isOpen){
-     const leaves=make('div','qbn-children');leaves.id='qbn-panel-media-'+group.id;
+     const leaves=make('div','qbn-children');leaves.id='qbn-panel-media-'+group.id+'-'+scope;
      for(const [key,label] of allowed)makeLeaf(leaves,label,area==='media'&&activeView===key,3,()=>{expandedGroup=group.id;onMedia(key);});
      section.append(leaves);
     }
