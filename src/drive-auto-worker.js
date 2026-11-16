@@ -1,6 +1,7 @@
 // Cloudflare Cron Worker — one durable batch of R2->Google Drive synchronization.
 // Credentials must be stored exclusively as Worker Secrets, never in Git or D1.
 import {driveInit,driveChunk} from './sync-google.js';
+import {moveEnabled,verifyAndMove} from './r2-drive-move.js';
 
 const RETRIES=[60,180,600,1800,3600,7200,14400,21600];
 const now=()=>Math.floor(Date.now()/1000);
@@ -29,21 +30,29 @@ export async function googleAccessToken(env){
  return obj.access_token;
 }
 async function runFile(env,uploadId,token,maxChunks=5){
+ const movable=moveEnabled(env);
  const claimed=await env.DB.prepare(
-  'UPDATE uploads SET auto_lease_until=?,auto_last_attempt_at=CURRENT_TIMESTAMP WHERE id=? AND status=\'COMPLETE\' AND drive_file_id IS NULL AND auto_next_attempt<=? AND auto_lease_until<=?')
+  'UPDATE uploads SET auto_lease_until=?,auto_last_attempt_at=CURRENT_TIMESTAMP WHERE id=? AND status=\'COMPLETE\' AND (drive_file_id IS NULL'+(movable?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=?')
   .bind(now()+9*60,uploadId,now(),now()).run();
  if(claimed.meta?.changes!==1)return {status:'SKIPPED',uploadId};
  try{
-  let progress=await driveInit(env,{uploadId,googleAccessToken:token});
+  const existing=await env.DB.prepare('SELECT * FROM uploads WHERE id=?').bind(uploadId).first();
+  if(!existing)throw new Error('Không tìm thấy bản ghi tải lên.');
+  let progress=existing.drive_file_id?{done:true,fileId:existing.drive_file_id}:await driveInit(env,{uploadId,googleAccessToken:token});
   let chunks=0;
   while(!progress.done&&chunks<maxChunks){
    progress=await driveChunk(env,{uploadId,googleAccessToken:token});
    chunks++;
   }
   if(progress.done){
+   let moved={status:'PRESERVED'};
+   if(movable){
+    const finalUpload=await env.DB.prepare('SELECT * FROM uploads WHERE id=?').bind(uploadId).first();
+    moved=await verifyAndMove(env,finalUpload,token);
+   }
    await env.DB.prepare('UPDATE uploads SET auto_error=\'\',auto_lease_until=0,auto_next_attempt=0 WHERE id=?')
     .bind(uploadId).run();
-   return {status:'DONE',uploadId,chunks,fileId:progress.fileId};
+   return {status:moved.status==='MOVED'?'MOVED':'DONE',uploadId,chunks,fileId:progress.fileId};
   }
   await env.DB.prepare('UPDATE uploads SET auto_lease_until=0,auto_next_attempt=0,auto_error=\'\' WHERE id=?').bind(uploadId).run();
   return {status:'PROGRESS',uploadId,chunks,offset:progress.offset,total:progress.total};
@@ -59,7 +68,7 @@ async function runFile(env,uploadId,token,maxChunks=5){
 export async function syncBatch(env,{maxFiles=2,maxChunks=5}={}){
  if(!configured(env))return {status:'DISABLED',processed:0,reason:'Cần quyền Google ngoại tuyến và SYNC_ENABLED=true'};
  const ids=await env.DB.prepare(
-  'SELECT id FROM uploads WHERE status=\'COMPLETE\' AND drive_file_id IS NULL AND auto_next_attempt<=? AND auto_lease_until<=? ORDER BY created_at,id LIMIT ?'
+  'SELECT id FROM uploads WHERE status=\'COMPLETE\' AND (drive_file_id IS NULL'+(moveEnabled(env)?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=? ORDER BY created_at,id LIMIT ?'
  ).bind(now(),now(),Math.min(3,Math.max(1,maxFiles))).all();
  const candidates=ids.results||[];
  if(!candidates.length)return {status:'IDLE',processed:0};
@@ -67,7 +76,7 @@ export async function syncBatch(env,{maxFiles=2,maxChunks=5}={}){
  const token=await googleAccessToken(env);
  const out=[];
  for(const {id} of candidates)out.push(await runFile(env,id,token,maxChunks));
- return {status:'COMPLETE',processed:out.length,completed:out.filter(x=>x.status==='DONE').length,
+ return {status:'COMPLETE',processed:out.length,completed:out.filter(x=>x.status==='DONE'||x.status==='MOVED').length,
    failed:out.filter(x=>x.status==='ERROR').length,items:out};
 }
 export default {
