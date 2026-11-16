@@ -1,4 +1,5 @@
 import {checkDriveFolderAccess,resumableDriveUpload} from './video-drive.js';
+import {trackDraft,markDraftSaved,confirmLeave,humanizeError,showFormError,showFieldError} from './ux-guard.js';
 const $=id=>document.getElementById(id);
 const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]},menuKeys:[]};
 const NAV=[
@@ -23,7 +24,7 @@ const statColor={'CHỜ QUAY':'','ĐÃ QUAY':'blue','ĐANG HẬU KỲ':'purple',
 const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const count=v=>Number(v||0).toLocaleString('vi-VN');
 const date=s=>s?new Date(String(s).replace(' ','T')+'Z').toLocaleDateString('vi-VN'):'—';
-const toast=(text)=>{const node=$('toast');node.textContent=text;node.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>node.hidden=true,5000)};
+const toast=(text)=>{const node=$('toast');node.textContent=humanizeError(text);node.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>node.hidden=true,5000)};
 async function api(method,path,data){
  const headers={'authorization':'Bearer '+state.token};if(data!==undefined)headers['content-type']='application/json';
  const r=await fetch(path,{method,headers,body:data===undefined?undefined:JSON.stringify(data)});
@@ -101,6 +102,7 @@ async function refreshVideoList(restoreFocus=false){
  }catch(e){toast('Không đọc được danh sách: '+e.message);}
 }
 function navigate(view){
+ if(view!==state.view&&!confirmLeave())return;
  if(view==='more'){
   const options=NAV.filter(n=>can(n.id)&&!['dashboard','film','edit','booksProgress'].includes(n.id));
   $('page').innerHTML=panel('Các chức năng khác','<div class="two">'+options.map(n=>'<button class="btn" data-menu="'+n.id+'">'+n.icon+' '+E(n.text)+'</button>').join('')+'</div>');
@@ -235,9 +237,9 @@ function filmList(){return (state.rights.manage||state.rights.admin?'<div class=
 function filmDetail(v){
  return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+'</div>')+
  panel('Quay bài · cập nhật tiến độ','<form id="filmForm" class="form-grid">'+
- '<div class="field full"><label>Chọn video quay để tải trực tiếp lên Google Drive</label><input id="rawFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadRawVideo" style="margin-top:10px">↑ Tải video lên Drive</button><span class="mini-note" id="rawUploadStatus">Tệp tối đa 2 GB. Có thể dùng liên kết Drive bên dưới thay cho tải tệp.</span></div>'+
- '<div class="field full"><label>Liên kết video gốc trên Google Drive *</label><input name="raw_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.raw_url||'')+'" required></div>'+
- '<div class="field full"><label>Ghi chú quay</label><textarea name="note">'+E(v.note||'')+'</textarea></div>'+
+ '<div class="field full"><label for="rawFile">Chọn video quay để tải trực tiếp lên Google Drive</label><input id="rawFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadRawVideo" style="margin-top:10px">↑ Tải video lên Drive</button><span class="mini-note" id="rawUploadStatus">Tệp tối đa 2 GB. Có thể dùng liên kết Drive bên dưới thay cho tải tệp.</span></div>'+
+ '<div class="field full"><label for="filmRawUrl">Liên kết video gốc trên Google Drive *</label><input id="filmRawUrl" name="raw_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.raw_url||'')+'" required></div>'+
+ '<div class="field full"><label for="filmNote">Ghi chú quay</label><textarea id="filmNote" name="note">'+E(v.note||'')+'</textarea></div>'+
  '<div class="actions full">'+btn('Quay lại danh sách','','backList')+btn('Lưu video đã quay','primary','','submit')+'</div></form>'+
  '<p class="mini-note">Video tải trực tiếp từ trình duyệt lên Google Drive, không đi qua máy chủ QBooks. Có thể nhập liên kết Drive nếu đã tải sẵn.</p>');
 }
@@ -257,16 +259,16 @@ function editDetail(v){
  let html=panel('Chi tiết xử lý','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong>'+badge(v.status)+'<p class="mini-note">Phê duyệt: '+E(v.review_status==='APPROVED'?'Đã được duyệt':pending?'Đang chờ duyệt':v.review_status==='CHANGES_REQUESTED'?'Cần sửa lại':'Chưa gửi duyệt')+'</p>'+(v.review_note?'<p>'+E(v.review_note)+'</p>':'')+'<span class="mini-note">Video gốc: '+(v.raw_url?'<a href="'+E(v.raw_url)+'" target="_blank" rel="noopener noreferrer">Mở video gốc</a>':'Chưa có liên kết')+'</span></div>');
  if(canEdit&&['ĐÃ QUAY','ĐANG HẬU KỲ'].includes(v.status)){
   html+=panel('Biên tập và gửi duyệt','<form id="editForm" class="form-grid">'+
-  '<div class="field full"><label>Tải video đã biên tập lên Drive</label><input id="editedFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadEditedVideo">↑ Tải lên Drive</button><span class="mini-note" id="editedUploadStatus">Có thể nhập liên kết đã có.</span></div>'+
-  '<div class="field full"><label>Link bản hậu kỳ</label><input name="output_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.output_url||'')+'"></div>'+
-  '<div class="field"><label>Trạng thái</label><select name="status"><option value="ĐANG HẬU KỲ">Đang hậu kỳ</option><option value="CHỜ DUYỆT">Gửi trưởng nhóm duyệt</option></select></div>'+
-  '<div class="field full"><label>Ghi chú</label><textarea name="note">'+E(v.note||'')+'</textarea></div>'+
+  '<div class="field full"><label for="editedFile">Tải video đã biên tập lên Drive</label><input id="editedFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadEditedVideo">↑ Tải lên Drive</button><span class="mini-note" id="editedUploadStatus">Có thể nhập liên kết đã có.</span></div>'+
+  '<div class="field full"><label for="editOutputUrl">Link bản hậu kỳ</label><input id="editOutputUrl" name="output_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.output_url||'')+'"></div>'+
+  '<div class="field"><label for="editStatus">Trạng thái</label><select id="editStatus" name="status"><option value="ĐANG HẬU KỲ">Đang hậu kỳ</option><option value="CHỜ DUYỆT">Gửi trưởng nhóm duyệt</option></select></div>'+
+  '<div class="field full"><label for="editNote">Ghi chú</label><textarea id="editNote" name="note">'+E(v.note||'')+'</textarea></div>'+
   '<div class="actions full">'+btn('Quay lại','','backList')+btn('Lưu / gửi duyệt','primary','','submit')+'</div></form>');
  }
  if(manager&&pending&&v.editor_id!==state.user?.id){
-  html+=panel('Phê duyệt trưởng nhóm','<div class="field"><label>Ghi chú / lý do trả sửa</label><textarea id="reviewNote" placeholder="Nhập lý do nếu yêu cầu sửa"></textarea></div><div class="actions"><button class="btn" id="rejectVideo">Yêu cầu sửa lại</button><button class="btn primary" id="approveVideo">Duyệt video</button></div>');
+  html+=panel('Phê duyệt trưởng nhóm','<div class="field"><label for="reviewNote">Ghi chú / lý do trả sửa</label><textarea id="reviewNote" placeholder="Nhập lý do nếu yêu cầu sửa"></textarea></div><div class="actions"><button class="btn" id="rejectVideo">Yêu cầu sửa lại</button><button class="btn primary" id="approveVideo">Duyệt video</button></div>');
  }
- if(manager&&approved)html+=panel('Phát hành video đã duyệt','<div class="field"><label>Liên kết YouTube công khai *</label><input id="publishYoutube" type="url" placeholder="https://www.youtube.com/watch?v=..." value="'+E(v.youtube_url||'')+'"></div><div class="actions"><button id="publishVideo" class="btn primary">Xác nhận đã phát hành</button></div>');
+ if(manager&&approved)html+=panel('Phát hành video đã duyệt','<div class="field"><label for="publishYoutube">Liên kết YouTube công khai *</label><input id="publishYoutube" type="url" placeholder="https://www.youtube.com/watch?v=..." value="'+E(v.youtube_url||'')+'"></div><div class="actions"><button id="publishVideo" class="btn primary">Xác nhận đã phát hành</button></div>');
  if(pending&&!manager)html+=panel('Đang chờ duyệt','<p>Video đã nộp cho trưởng nhóm. Chưa thể chỉnh sửa hoặc phát hành.</p>');
  if(!canEdit&&!manager)html+=panel('Thông tin video','<p>Bạn chưa có quyền xử lý video này.</p>');
  return html;
@@ -394,12 +396,30 @@ function render(){
  if(state.view==='edit'&&state.selected)html=editDetail(state.selected);
  $('page').innerHTML=html;
  wire();
+ for(const form of $('page').querySelectorAll('form'))trackDraft(form);
 }
 function bindForm(id,callback){
  const form=$(id);if(!form)return;
- form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button[type=submit]');if(b)b.disabled=true;
- try{await callback(Object.fromEntries(new FormData(form)));await load();state.selected=null;render();if(['film','edit'].includes(state.view))await refreshVideoList();toast('Đã lưu thành công.');}
- catch(err){toast('Không lưu được: '+err.message);}finally{if(b)b.disabled=false;}};
+ form.onsubmit=async e=>{
+  e.preventDefault();const button=form.querySelector('button[type=submit]');
+  if(button?.disabled)return;
+  if(!form.reportValidity())return;
+  if(button)button.disabled=true;
+  try{
+   await callback(Object.fromEntries(new FormData(form)));
+   markDraftSaved(form);
+   await load();state.selected=null;render();
+   if(['film','edit'].includes(state.view))await refreshVideoList();
+   toast('Đã lưu thành công.');
+  }catch(err){
+   toast('Không lưu được: '+err.message);
+   if(/liên kết|link|url/i.test(err.message)){
+    const target=form.querySelector('[name=raw_url],[name=output_url],[name=youtube_url]');
+    if(target)showFieldError(form,target.name,err.message);
+    else showFormError(form,err.message);
+   }else showFormError(form,err.message);
+  }finally{if(button)button.disabled=false;}
+ };
 }
 function csvExport(){
  const lines=[['Mã sách','Tên sách','Kế hoạch','Đã có','Phát hành'],...state.books.map(b=>[b.code,b.name,b.target_count,b.total,b.published])];
@@ -502,14 +522,14 @@ function wire(){
  bindForm('newVideoForm',b=>api('POST','/api/video/items',b));
  bindForm('filmForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'film',...b}));
  bindForm('editForm',b=>api('PATCH','/api/video/items/'+state.selected.id,{action:'edit',...b}));
- const reviewAction=async action=>{try{await api('PATCH','/api/video/items/'+state.selected.id,{action,note:$('reviewNote')?.value||'',youtube_url:$('publishYoutube')?.value||''});state.selected=null;await load();await refreshVideoList();toast('Đã cập nhật trạng thái video.');}catch(e){toast(e.message)}};
+ const reviewAction=async action=>{try{await api('PATCH','/api/video/items/'+state.selected.id,{action,note:$('reviewNote')?.value||'',youtube_url:$('publishYoutube')?.value||''});markDraftSaved($('editForm'));state.selected=null;await load();await refreshVideoList();toast('Đã cập nhật trạng thái video.');}catch(e){toast(e.message)}};
  if($('approveVideo'))$('approveVideo').onclick=()=>reviewAction('approve');
  if($('rejectVideo'))$('rejectVideo').onclick=()=>reviewAction('reject');
  if($('publishVideo'))$('publishVideo').onclick=()=>reviewAction('publish');
  if($('videoPrev'))$('videoPrev').onclick=async()=>{state.videoPage=Math.max(1,state.videoPage-1);await refreshVideoList();};
  if($('videoNext'))$('videoNext').onclick=async()=>{state.videoPage=Math.min(state.videoListPagination.pages,state.videoPage+1);await refreshVideoList();};
  const eform=$('editForm');if(eform&&state.selected)eform.elements.status.value=['ĐANG HẬU KỲ','CHỜ DUYỆT','ĐÃ PHÁT HÀNH'].includes(state.selected.status)?state.selected.status:'ĐANG HẬU KỲ';
- const back=$('backList');if(back)back.onclick=()=>{state.selected=null;render()};
+ const back=$('backList');if(back)back.onclick=()=>{if(!confirmLeave())return;state.selected=null;render()};
  let searchTimer;
  const queueFilter=restoreFocus=>{clearTimeout(searchTimer);state.videoPage=1;searchTimer=setTimeout(()=>refreshVideoList(restoreFocus),240);};
  if($('filterVideo'))$('filterVideo').oninput=e=>{state.videoFilter.q=e.target.value;queueFilter(true);};
@@ -526,6 +546,7 @@ function openVideo(id,action){
  const v=state.videoListItems.find(x=>x.id===id)||state.items.find(x=>x.id===id);if(!v)return toast('Không tìm thấy video.');
  if(action==='film'&&!state.rights.film&&!state.rights.admin)return toast('Chưa có quyền quay video.');
  if(action==='edit'&&!state.rights.edit&&!state.rights.manage&&!state.rights.admin)return toast('Chưa có quyền hậu kỳ hoặc quản lý.');
+ if(!confirmLeave())return;
  state.selected=v;state.view=action;renderNav();render();$('page').focus();
 }
 async function boot(){
