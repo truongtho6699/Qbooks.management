@@ -406,13 +406,15 @@ function bindForm(id,callback){
   if(button?.disabled)return;
   if(!form.reportValidity())return;
   if(button)button.disabled=true;
+  let saved=false;
   try{
-   await callback(Object.fromEntries(new FormData(form)));
+   await callback(Object.fromEntries(new FormData(form)));saved=true;
    markDraftSaved(form);
    await load();state.selected=null;render();
    if(['film','edit'].includes(state.view))await refreshVideoList();
    toast('Đã lưu thành công.');
   }catch(err){
+   if(saved){toast('Video đã lưu nhưng chưa cập nhật được danh sách: '+err.message);return;}
    toast('Không lưu được: '+err.message);
    if(/liên kết|link|url/i.test(err.message)){
     const target=form.querySelector('[name=raw_url],[name=output_url],[name=youtube_url]');
