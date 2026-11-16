@@ -80,13 +80,30 @@ function render(config){
   }
   if(admin){const adminButton=makeLeaf(container,'Quản trị hệ thống',area==='admin'||(area==='orders'&&activeView==='staff'),1,onAdmin);adminButton.prepend(icon('settings'));adminButton.classList.add('qbn-admin');}
  }
- if(drawer){drawer.hidden=!drawerOpen;drawer.setAttribute('aria-hidden',String(!drawerOpen));}
+ if(drawer){drawer.hidden=!drawerOpen;drawer.setAttribute('aria-hidden',String(!drawerOpen));drawer.setAttribute('role','dialog');drawer.setAttribute('aria-modal',String(drawerOpen));drawer.setAttribute('aria-label','Menu điều hướng QBOOK');}
  if(toggle){toggle.setAttribute('aria-expanded',String(drawerOpen));toggle.setAttribute('aria-controls','qbnDrawer');toggle.onclick=()=>{drawerOpen=!drawerOpen;repaint();if(drawerOpen){drawer?.querySelector?.('#qbnClose')?.focus?.();}else toggle.focus?.();};}
 }
-function closeDrawer(){drawerOpen=false;}
+function closeDrawer(){drawerOpen=false;const toggle=document.getElementById('qbnToggle');toggle?.focus?.();}
 function focusMedia(view){expandedRoot='media';expandedGroup=groupFor(view);hasInitialState=true;}
 function focusOrders(){expandedRoot='orders';expandedGroup=null;hasInitialState=true;}
 function focusAdmin(){expandedRoot=null;expandedGroup=null;hasInitialState=true;}
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&drawerOpen){drawerOpen=false;const drawer=document.getElementById('qbnDrawer');if(drawer){drawer.hidden=true;drawer.setAttribute('aria-hidden','true');}const toggle=document.getElementById('qbnToggle');toggle?.setAttribute('aria-expanded','false');toggle?.focus?.();}});
+document.addEventListener('keydown',event=>{
+ if(!drawerOpen)return;
+ const drawer=document.getElementById('qbnDrawer');
+ if(event.key==='Escape'){
+  event.preventDefault();
+  drawerOpen=false;
+  if(drawer){drawer.hidden=true;drawer.setAttribute('aria-hidden','true');drawer.setAttribute('aria-modal','false');}
+  const toggle=document.getElementById('qbnToggle');toggle?.setAttribute('aria-expanded','false');toggle?.focus?.();
+  return;
+ }
+ if(event.key==='Tab'&&drawer&&!drawer.hidden){
+  const nodes=[...drawer.querySelectorAll('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),[tabindex]:not([tabindex="-1"])')].filter(x=>x.getClientRects?.().length!==0);
+  if(!nodes.length)return;
+  const first=nodes[0],last=nodes[nodes.length-1];
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+ }
+});
 global.QbookNavigation={render,closeDrawer,focusMedia,focusOrders,focusAdmin,mediaGroups:MEDIA_GROUPS};
 })(window);
