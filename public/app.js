@@ -228,7 +228,7 @@ async function bootstrap(){
   state.tab=rights.admin?'overview':['overview','sale','pack','ship'].find(permitted)||'overview';
   const params=new URLSearchParams(window.location.search),tabParam=params.get('tab'),mediaParam=params.get('view'),section=params.get('section'),toAdmin=params.get('nav')==='admin';
   if(toAdmin&&rights.admin){tab('staff');return;}
-  if(section==='media'||params.get('nav')==='media'||(!hasOrders&&hasMedia)){
+  if(((section==='media'||params.get('nav')==='media')&&(hasMedia||rights.admin))||(!hasOrders&&hasMedia)){
    await openMedia(mediaParam||undefined);return;
   }
   if(['overview','sale','pack','ship'].includes(tabParam)&&permitted(tabParam))state.tab=tabParam;
@@ -892,7 +892,7 @@ async function loadGroupOptions(){
  }catch(e){notice(e.message)}
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();sessionStorage.removeItem('qbooks_token');const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();sessionStorage.removeItem('qbooks_token');window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>tab(state.tab);
