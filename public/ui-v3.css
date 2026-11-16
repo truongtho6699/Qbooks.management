@@ -109,3 +109,15 @@ button{touch-action:manipulation;transition:background-color var(--qb-ease),bord
 .qb-trend-film{background:var(--qb-primary)}.qb-trend-edit{background:var(--qb-success)}
 .qb-trend-label{white-space:nowrap;font-size:10px;color:var(--qb-text-2);font-variant-numeric:tabular-nums}
 @media(max-width:640px){.qb-trend{gap:3px;height:165px}.qb-trend-bars{height:118px;gap:1px}.qb-trend-label{writing-mode:vertical-rl;transform:rotate(180deg);margin:0 auto;font-size:9px}.qb-trend-legend{gap:12px}}
+
+/* QBOOK P1 — same accessible field and error pattern across Shipping and Media. */
+.qb-field-error{display:block;color:#991b1b;font-size:13px;font-weight:650;line-height:1.5;margin-top:6px;overflow-wrap:anywhere}
+.qb-form-error{padding:12px 14px;border-radius:10px;background:#fef2f2;border:1px solid #fca5a5;color:#7f1d1d;line-height:1.5;margin:8px 0 14px;overflow-wrap:anywhere}
+input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:#b91c1c!important;box-shadow:0 0 0 1px #b91c1c}
+:where(.qb-form-error,.qb-field-error):focus-visible{outline:3px solid #2563eb;outline-offset:3px}
+.qb-view-only-info{background:var(--qb-surface);border:1px solid var(--qb-border);border-radius:12px;padding:20px;max-width:700px;margin:16px auto}
+.qb-view-only-info h2{margin:0 0 10px;color:var(--qb-text);font-size:20px}
+.qb-view-only-info p{font-size:15px;line-height:1.6;margin:8px 0;color:var(--qb-text-2)}
+.qb-view-only-info .qb-muted{font-size:14px}
+#saleForm button[type="submit"]:disabled{cursor:progress;opacity:.75}
+@media(max-width:640px){.qb-field-error{font-size:14px}.qb-view-only-info{padding:16px}}
