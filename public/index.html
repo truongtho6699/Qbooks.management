@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><title>QBOOK · Quản lý chuyển hàng</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/navigation.css"><link rel="stylesheet" href="/ui-v3.css"></head>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><title>QBOOK · Hệ thống quản trị</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/video.css"><link rel="stylesheet" href="/navigation.css"><link rel="stylesheet" href="/ui-v3.css"><link rel="stylesheet" href="/unified.css"></head>
 <body>
 <a class="qb-skip" id="qbSkipLink" href="#loginPage">Bỏ qua menu, đến nội dung chính</a>
-<header class="top"><div class="brand"><span class="symbol">Q</span><div><strong>QBOOK · Chuyển hàng</strong><small>Sale lên đơn · Đóng hàng · Vận đơn</small></div></div><div class="profile"><span id="userInfo"></span><button class="ghost" id="logoutBtn" hidden>Thoát</button></div></header>
+<header class="top"><div class="brand"><span class="symbol">Q</span><div><strong>QBOOK · QUẢN TRỊ</strong><small>Giao hàng · Media · Hệ thống</small></div></div><div class="profile"><span id="userInfo"></span><button class="ghost" id="logoutBtn" hidden>Thoát</button></div></header>
 <main class="container"><div id="notice" class="notice" role="status" aria-live="polite"></div>
 <section id="loginPage" class="auth" tabindex="-1"><div class="auth-card"><h1>Đăng nhập QBooks</h1><p>Sử dụng tài khoản được quản trị cấp quyền.</p><form id="loginForm"><label>Email nhân sự<input name="email" type="email" autocomplete="username" required placeholder="email@congty.vn"></label><label>Mã PIN<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="3" maxlength="12" required></label><button class="primary" type="submit">ĐĂNG NHẬP</button></form><div class="google-section"><div class="google-separator">Hoặc tiếp tục bằng Google</div><div id="googleSignIn" class="google-sign-in"></div><button type="button" id="googleUnavailable" class="secondary" disabled>Đăng nhập / Đăng ký bằng Google (chưa cấu hình)</button><p class="hint" id="googleStatus">Tài khoản mới cần quản trị viên phê duyệt trước khi dùng.</p></div></section>
 <section id="appPage" tabindex="-1" hidden>
@@ -14,8 +14,17 @@
   <div class="shipping-sidebar-footer">QBOOKS · 2026</div>
  </aside>
  <div class="shipping-workspace">
- <div class="shipping-heading"><button id="qbnToggle" type="button" class="qbn-drawer-toggle" aria-label="Mở menu chức năng" aria-expanded="false">☰ Menu</button><div><small>QUẢN LÝ GIAO HÀNG</small><h1 id="shippingHeading">Tổng quan</h1><p id="shippingSubheading">Theo dõi toàn bộ quá trình xử lý đơn</p></div><span id="shippingUserBadge"></span></div>
- <section id="shippingOperationGroup" hidden>
+ <div class="shipping-heading"><button id="qbnToggle" type="button" class="qbn-drawer-toggle" aria-label="Mở menu chức năng" aria-expanded="false">☰ Menu</button><div><small id="qbookSectionLabel">QUẢN LÝ GIAO HÀNG</small><h1 id="shippingHeading">Tổng quan</h1><p id="shippingSubheading">Theo dõi toàn bộ quá trình xử lý đơn</p></div><span id="shippingUserBadge"></span></div>
+ <section id="unifiedMediaView" class="qbook-media-pane" hidden aria-label="Quản lý Media">
+  <div class="qbook-media-head" hidden aria-hidden="true">
+    <h2 id="viewTitle">Bảng điều khiển</h2>
+    <p id="viewSubtitle"></p>
+    <span id="currentUser"></span>
+  </div>
+  <main id="page" class="page qbook-media-page" tabindex="-1"></main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</section>
+<section id="shippingOperationGroup" hidden>
    <div class="shipping-operation-title"><strong>Quản lý đơn hàng</strong><small>Chọn chức năng nghiệp vụ</small></div>
    <nav id="shippingOperationTabs" class="shipping-operation-tabs" aria-label="Các chức năng quản lý đơn hàng"></nav>
  </section>
@@ -108,6 +117,6 @@
  <div id="orderSummaryInfo"></div>
  <h3>Hồ sơ ảnh/video & liên kết</h3>
  <div id="orderSummaryMedia" class="overview-media-links"></div>
-</dialog><footer>QBOOK · Quản lý chuyển hàng · Google Sheets · Drive · D1 · R2</footer><script src="/navigation.js"></script>
+</dialog><footer>QBOOK · Quản lý chuyển hàng · Google Sheets · Drive · D1 · R2</footer><script src="https://accounts.google.com/gsi/client" async defer></script><script src="/navigation.js"></script>
 <script type="module" src="/app.js"></script><div id="qbnDrawer" class="qbn-drawer" hidden aria-hidden="true"><div class="qbn-mobile-pane"><div class="qbn-mobile-head"><span>QBOOK · CHỨC NĂNG</span><button id="qbnClose" class="qbn-close" type="button">Đóng ✕</button></div><nav id="qbnMobileTree" class="qbn-tree" aria-label="Điều hướng trên điện thoại"></nav></div></div>
 </body></html>
