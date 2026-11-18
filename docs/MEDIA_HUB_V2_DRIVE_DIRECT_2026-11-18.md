@@ -43,3 +43,13 @@ Ngày: 18/11/2026. Chính sách **A: giữ toàn bộ video gốc, hậu kỳ v�
 - Chỉ tạo Preview sau khi có D1 thử nghiệm và (nếu cần test quy trình R2) bucket thử nghiệm, binding Preview không trỏ tài nguyên thật.
 - Google OAuth của ứng dụng Pages Production chưa hiện có hai secret ngoại tuyến. Không sao chép secret bằng văn bản từ Worker Cron.
 - Đã bổ sung kiểm thử giả lập hoàn chỉnh cho luồng POST phiên Drive → PUT đoạn → đối chiếu metadata → D1 COMPLETE; kiểm thử giả lập không thay thế nghiệm thu thật bằng tài khoản Google và Drive thử nghiệm.
+
+## Kết quả tách Preview và D1 thử nghiệm (18/11/2026)
+- **Đã tạo** D1 `qbooks-v2-staging` (UUID `31bcafb5-a5e5-4086-ab15-cdfd73793652`), schema clone **chỉ cấu trúc**, không sao chép dữ liệu khách hàng: 20 bảng nghiệp vụ, 22 index, 2 trigger, migration 0018 đã áp dụng.
+- Kiểm tra D1 staging: `users=0, orders=0, uploads=0, video_items=0`, có cột `storage_backend`.
+- Cloudflare Pages Preview: `DB` trỏ staging và **xóa binding R2 `MEDIA`**, Production vẫn trỏ D1 `qbooks-db` và R2 `qbooks-media`.
+- **Đã tạo** thư mục Google Drive riêng cho test: [QBOOKS_V2_STAGING_DO_NOT_USE_FOR_PRODUCTION](https://drive.google.com/drive/folders/1WnvrEKMuOzQVgUuL9KtsoWNMauvrvxAV) — không dùng làm nơi lưu vận hành.
+- Preview env plain text: `DRIVE_STAGING_MODE=true`, `DRIVE_STAGING_FOLDER_ID=1WnvrEKMuOzQVgUuL9KtsoWNMauvrvxAV`, `DRIVE_DIRECT_ENABLED=false`, `GOOGLE_CLIENT_ID` (Client ID OAuth ứng dụng Qbooks).
+- Preview **chưa có** hai secret `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`. Secret Production không tự chuyển vào Preview; phải nhập riêng dưới **Preview environment**, không gửi qua chat/GitHub.
+- Branch code đã sửa Worker để cho phép D1-only Preview, còn các endpoint R2 cũ trả lỗi rõ ràng nếu gọi trong Preview.
+- **KHÔNG BẬT FLAG Preview** trước khi kiểm tra quyền ghi bằng OAuth và chuẩn bị tài khoản thử nghiệm. Không tác động Production.
