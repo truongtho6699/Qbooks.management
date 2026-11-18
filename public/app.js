@@ -713,10 +713,52 @@ async function videoDuration(file){
   node.src=url;
  });
 }
+// Direct Drive v2: feature flag defaults off; legacy R2 remains the fallback.
+let driveConfigPromise;
+async function driveConfig(){
+ if(!driveConfigPromise)driveConfigPromise=api('GET','/api/storage/config').catch(()=>({driveDirect:false}));
+ return driveConfigPromise;
+}
+async function uploadOneToDrive(orderId,stage,file){
+ const key='v2_'+fingerprint(orderId,stage,file);
+ let id=localStorage.getItem(key),info;
+ if(id){
+  try{info=await api('GET','/api/drive-uploads/'+id);if(info.bytes!==file.size)throw Error('Dung lượng tệp thay đổi.');}
+  catch(e){if(/Không tìm thấy phiên tải|hết hạn|404/.test(e.message)){id=null;localStorage.removeItem(key)}else throw e;}
+ }
+ if(!id){
+  info=await api('POST','/api/drive-uploads',{orderId,stage,filename:file.name,contentType:file.type||(stage==='VIDEO_DONG_HANG'?'video/mp4':'image/jpeg'),size:file.size});
+  id=info.id;localStorage.setItem(key,id);
+ }
+ if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
+ let offset=info.offset||0;
+ while(offset<file.size){
+  progress(file.name,offset,file.size);
+  const end=Math.min(file.size,offset+CHUNK_BYTES),part=file.slice(offset,end);
+  let next,retries=0;
+  while(true){
+   try{next=await api('PUT','/api/drive-uploads/'+id+'/chunk?offset='+offset,part,true);break;}
+   catch(e){
+    if(++retries>=4)throw Error('Đang tải lên Drive bị gián đoạn: '+e.message);
+    await new Promise(r=>setTimeout(r,900*retries));
+    next=await api('GET','/api/drive-uploads/'+id);
+    if(next.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
+    if(next.offset!==offset)break;
+   }
+  }
+  if(!Number.isSafeInteger(next.offset)||next.offset<=offset||next.offset>file.size)throw Error('Google Drive trả tiến độ không hợp lệ.');
+  offset=next.offset;
+  if(next.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
+ }
+ const verified=await api('GET','/api/drive-uploads/'+id);
+ if(verified.status!=='COMPLETE')throw Error('Google Drive chưa xác nhận hoàn tất tệp.');
+ localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;
+}
 async function uploadOne(orderId,stage,file){
  const video=stage==='VIDEO_DONG_HANG',max=video?2*1024*1024*1024:25*1024*1024;
  if(!file.size||file.size>max)throw Error('Tệp '+file.name+' vượt giới hạn '+(video?'2 GB':'25 MB'));
  if(video)await videoDuration(file);
+ if((await driveConfig()).driveDirect)return uploadOneToDrive(orderId,stage,file);
  const key=fingerprint(orderId,stage,file);let id=localStorage.getItem(key);
  let info;
  if(id){try{info=await api('GET','/api/uploads/'+id);if(info.bytes!==undefined&&info.bytes!==file.size)id=null}
