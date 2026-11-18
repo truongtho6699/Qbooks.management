@@ -150,8 +150,8 @@ async function loadStaffUsers(){
    form.elements.role.onchange();
    markDraftSaved(form);
    $('saveStaffBtn').textContent='LƯU THAY ĐỔI NHÂN SỰ';
-   loadStaffMenuPermissions(person.id,person.name,person.role).catch(e=>notice('Không đọc được phân quyền: '+e.message));
-   form.scrollIntoView({behavior:'smooth',block:'center'});
+   if(state.adminPanel==='permissions')loadStaffMenuPermissions(person.id,person.name,person.role).catch(e=>notice('Không đọc được phân quyền: '+e.message));
+   (state.adminPanel==='permissions'?$('menuPermissionsPanel'):form).scrollIntoView({behavior:'smooth',block:'center'});
   },'order');
   list.append(row);
  }
@@ -409,7 +409,13 @@ function switchView(){
     if(panel.id==='menuPermissionsPanel')continue; // Show only after selecting an employee.
     panel.hidden=state.adminPanel==='permissions'?section!=='accounts':section!==state.adminPanel;
    }
-   if(['accounts','permissions'].includes(state.adminPanel)){trackDraft($('staffForm'));loadStaffUsers();}
+   if(['accounts','permissions'].includes(state.adminPanel)){
+    $('staffAdminTitle').textContent=state.adminPanel==='permissions'?'Phân quyền tài khoản':'Quản trị nhân sự / PIN';
+    $('staffForm').hidden=state.adminPanel==='permissions';
+    $('menuPermissionsPanel').hidden=true;
+    state.menuEditor=null;
+    trackDraft($('staffForm'));loadStaffUsers();
+   }
    if(state.adminPanel==='approvals')loadPendingGoogle();
    if(state.adminPanel==='sync')refreshGoogleSync();
    if(state.adminPanel==='logs')loadAdminReport('LOG').catch(e=>notice(e.message));
