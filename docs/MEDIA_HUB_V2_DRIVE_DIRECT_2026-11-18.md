@@ -35,3 +35,11 @@ Ngày: 18/11/2026. Chính sách **A: giữ toàn bộ video gốc, hậu kỳ v�
 - Kiểm chứng chức năng tải trực tiếp trên một môi trường Preview có dữ liệu thử và Google OAuth đã cấp.
 - Bổ sung quản lý media nguồn quay/hậu kỳ trực tiếp qua Drive, gắn với `video_items` (phân quyền FILM/EDIT, phiên bản video, link file) và tích hợp YouTube phát hành theo phê duyệt.
 - Đo tốc độ, khả năng xử lý file 2 GiB và ổn định/khôi phục phiên khi worker bị timeout.
+
+
+## Rà soát Cloudflare 18/11/2026 — rủi ro Preview dùng chung Production
+- Đã đọc cấu hình `qbooks-quantri`: **Preview DB ID = Production DB ID** (`17474d4c-8980-4c97-afb4-c52303b10325`); Preview bucket **qbooks-media = Production qbooks-media**. Không được chạy thử Preview trên binding hiện tại.
+- `preview_deployment_setting=none`, hiện chưa được bật nhánh xem thử. Không tự đổi cấu hình hoặc tạo dữ liệu/bucket mới khi chưa xác nhận chi phí và phân tách.
+- Chỉ tạo Preview sau khi có D1 thử nghiệm và (nếu cần test quy trình R2) bucket thử nghiệm, binding Preview không trỏ tài nguyên thật.
+- Google OAuth của ứng dụng Pages Production chưa hiện có hai secret ngoại tuyến. Không sao chép secret bằng văn bản từ Worker Cron.
+- Đã bổ sung kiểm thử giả lập hoàn chỉnh cho luồng POST phiên Drive → PUT đoạn → đối chiếu metadata → D1 COMPLETE; kiểm thử giả lập không thay thế nghiệm thu thật bằng tài khoản Google và Drive thử nghiệm.
