@@ -406,6 +406,7 @@ function switchView(){
  if(key==='staff'){
    for(const panel of document.querySelectorAll('#staffView [data-admin-section]')){
     const section=panel.dataset.adminSection;
+    if(panel.id==='menuPermissionsPanel')continue; // Show only after selecting an employee.
     panel.hidden=state.adminPanel==='permissions'?section!=='accounts':section!==state.adminPanel;
    }
    if(['accounts','permissions'].includes(state.adminPanel)){trackDraft($('staffForm'));loadStaffUsers();}
