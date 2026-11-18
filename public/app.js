@@ -256,6 +256,7 @@ async function bootstrap(){
   state.tab=rights.admin?'overview':['overview','sale','pack','ship'].find(permitted)||'overview';
   const params=new URLSearchParams(window.location.search),tabParam=params.get('tab'),mediaParam=params.get('view'),section=params.get('section'),toAdmin=params.get('nav')==='admin';
   if(toAdmin&&rights.admin){tab('staff');return;}
+  if(mediaParam==='permissions'&&rights.admin){tab('staff');return;}
   if(((section==='media'||params.get('nav')==='media')&&(hasMedia||rights.admin))||(!hasOrders&&hasMedia)){
    await openMedia(mediaParam||undefined);return;
   }
@@ -286,6 +287,10 @@ function setShellTitle(area,title,description=''){
  }
 }
 async function openMedia(view){
+ if(view==='permissions'){
+  if(capabilities().admin){tab('staff');return;}
+  return notice('Chức năng phân quyền đã chuyển sang Quản trị hệ thống.');
+ }
  if(state.area!=='media'||(view&&state.mediaView!==view)){if(!confirmLeave())return;}
  const permitted=state.menuKeys.filter(key=>key.startsWith('media.')).map(key=>key.slice(6));
  if(!permitted.length&&!capabilities().admin)return notice('Bạn chưa được cấp quyền Quản lý Media.');
