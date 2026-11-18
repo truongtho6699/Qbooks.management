@@ -4,7 +4,7 @@ import {verifyGoogleCredential} from './google-auth.js';
 import {normalizeV35Row,validateShippingForm,canGroup,parseVNDate} from './legacy-v35.js';
 import {syncStatus,driveInit,driveChunk,sheetCommit} from './sync-google.js';
 import {videoApi} from './video-manager.js';
-import {directEnabled,beginDriveUpload,inspectDriveUpload,putDriveChunk} from './drive-direct.js';
+import {directEnabled,browserDirectEnabled,browserDriveSession,beginDriveUpload,inspectDriveUpload,putDriveChunk} from './drive-direct.js';
 import {MENU_KEYS,MENU_LABELS,resolveMenuPermissions,allowedMenu} from './menu-permissions.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
@@ -555,7 +555,7 @@ async function handle(req,env){
    return json({ok:true});
   }
  }
- if(method==='GET'&&path==='/api/storage/config')return json({driveDirect:directEnabled(env),maxVideoBytes:MAX_VIDEO,retention:'KEEP_ALL'});
+ if(method==='GET'&&path==='/api/storage/config')return json({driveDirect:directEnabled(env),driveBrowserDirect:browserDirectEnabled(env),maxVideoBytes:MAX_VIDEO,retention:'KEEP_ALL'});
  if(method==='POST'&&path==='/api/drive-uploads'){
   const b=await requestJSON(req);await requireMenu(b.stage==='GIAO_HANG'?'orders.ship':'orders.pack');
   const order=await orderById(env,b.orderId);
@@ -567,7 +567,7 @@ async function handle(req,env){
   await audit(env,user,'DRIVE_UPLOAD_STARTED',order.id,result.id);
   return json(result,201);
  }
- const directMatch=path.match(/^\/api\/drive-uploads\/([a-f0-9-]{36})(?:\/chunk)?$/);
+ const directMatch=path.match(/^\/api\/drive-uploads\/([a-f0-9-]{36})(?:\/(chunk|browser-session))?$/);
  if(directMatch){
   const u=await pendingUpload(env,directMatch[1]);
   if(u.storage_backend!=='DRIVE')throw Object.assign(new Error('Không phải tệp Drive Direct.'),{status:409});
@@ -578,7 +578,8 @@ async function handle(req,env){
    mustStageAccess(user,u,order);
    await assertOrderLock(env,user,order.id,u.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG');
   }
-  if(method==='GET'&&path.endsWith(directMatch[1]))return json(await inspectDriveUpload(env,u));
+  if(method==='POST'&&directMatch[2]==='browser-session')return json(await browserDriveSession(env,u));
+  if(method==='GET'&&!directMatch[2])return json(await inspectDriveUpload(env,u));
   if(method==='PUT'&&path.endsWith('/chunk')){
    const result=await putDriveChunk(env,u,req);
    if(result.status==='COMPLETE')await audit(env,user,'DRIVE_UPLOAD_COMPLETE',order.id,u.id);
