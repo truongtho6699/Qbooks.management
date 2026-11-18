@@ -7,6 +7,7 @@ import {targetFolder} from './sync-google.js';
 
 export const DRIVE_CHUNK=8*1024*1024;
 export const directEnabled=env=>env.DRIVE_DIRECT_ENABLED==='true' &&
+ (env.DRIVE_STAGING_MODE!=='true'||/^[A-Za-z0-9_-]{10,}$/.test(String(env.DRIVE_STAGING_FOLDER_ID||''))) &&
  !!env.DB && !!env.GOOGLE_CLIENT_ID && !!env.GOOGLE_OAUTH_CLIENT_SECRET && !!env.GOOGLE_REFRESH_TOKEN;
 const error=(message,status=400)=>Object.assign(new Error(message),{status});
 const safeName=name=>String(name).replace(/[\/\\\x00-\x1f]/g,'_').slice(0,160);
@@ -60,7 +61,18 @@ async function finalize(env,record,fileId,token){
 export async function beginDriveUpload(env,{id,order,user,stage,name,type,size}){
  if(!directEnabled(env))throw error('Drive Direct chưa được kích hoạt.',503);
  const token=await googleAccessToken(env);
- const folder=await targetFolder(token,order,stage);
+ const folder=await (async()=>{
+  if(env.DRIVE_STAGING_MODE!=='true')return targetFolder(token,order,stage);
+  const folderId=String(env.DRIVE_STAGING_FOLDER_ID||'');
+  if(!/^[A-Za-z0-9_-]{10,}$/.test(folderId))throw error('Preview chưa cấu hình thư mục Drive thử nghiệm.',503);
+  const response=await fetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(folderId)+'?fields=id,name,mimeType,trashed,capabilities(canAddChildren)&supportsAllDrives=true',{
+    headers:{Authorization:'Bearer '+token},redirect:'manual'});
+  if(!response.ok)throw error('Không xác minh được quyền ghi thư mục Drive thử nghiệm.',502);
+  const info=await response.json();
+  if(info.id!==folderId||info.trashed||info.mimeType!=='application/vnd.google-apps.folder'||info.capabilities?.canAddChildren!==true)
+    throw error('Tài khoản Google không có quyền ghi thư mục Drive thử nghiệm.',403);
+  return {id:folderId,url:'https://drive.google.com/drive/folders/'+folderId};
+ })();
  const filename=safeName('QBOOKS_'+id+'_'+name);
  const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,parents,appProperties',{
   method:'POST',redirect:'manual',headers:{
