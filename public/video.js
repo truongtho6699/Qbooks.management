@@ -16,7 +16,6 @@ const NAV=[
  {id:'books',text:'Quản trị đầu sách',icon:'▧',group:'QUẢN TRỊ'},
  {id:'catalog',text:'Danh mục bài học',icon:'≡',group:'QUẢN TRỊ'},
  {id:'staff',text:'Quản trị nhân viên',icon:'♙',group:'QUẢN TRỊ'},
- {id:'permissions',text:'Phân quyền tài khoản',icon:'♙',group:'QUẢN TRỊ'},
  {id:'audit',text:'Lịch sử thao tác',icon:'◴',group:'QUẢN TRỊ'}
 ];
 const mobile=[{id:'dashboard',text:'Tổng quan',icon:'▦'},{id:'film',text:'Quay',icon:'◉'},{id:'edit',text:'Hậu kỳ',icon:'✎'},{id:'booksProgress',text:'Đầu sách',icon:'▧'},{id:'more',text:'Khác',icon:'☷'}];
@@ -32,7 +31,7 @@ async function api(method,path,data){
  if(!r.ok)throw Error(j.error||'Lỗi máy chủ '+r.status);return j;
 }
 function can(section){
- if(section==='permissions')return !!state.rights.admin;return !!state.rights.admin||state.menuKeys.includes('media.'+section);
+ return !!state.rights.admin||state.menuKeys.includes('media.'+section);
 }
 
 const panel=(title,content,subtitle='')=>'<section class="panel"><div class="panelhead"><div><h2>'+E(title)+'</h2>'+(subtitle?'<p class="sub">'+E(subtitle)+'</p>':'')+'</div></div>'+content+'</section>';
@@ -65,7 +64,7 @@ function renderNav(){
  });
  const active=state.view;
  $('mobileNav').innerHTML=mobile.filter(item=>item.id==='more'?NAV.some(n=>can(n.id)&&!['dashboard','film','edit','booksProgress'].includes(n.id)):can(item.id)).map(item=>{
-  const current=item.id==='more'?['books','catalog','staff','permissions','audit','report','production','filmOverview','postOverview'].includes(active):active===item.id;
+  const current=item.id==='more'?['books','catalog','staff','audit','report','production','filmOverview','postOverview'].includes(active):active===item.id;
   return '<button class="mobile-item '+(current?'active':'')+'" data-view="'+item.id+'"><span class="nav-icon">'+item.icon+'</span><span>'+E(item.text)+'</span></button>';
  }).join('');
  document.querySelectorAll('#mobileNav [data-view]').forEach(el=>el.onclick=()=>navigate(el.dataset.view));
@@ -109,6 +108,10 @@ function navigate(view){
   document.querySelectorAll('[data-menu]').forEach(b=>b.onclick=()=>navigate(b.dataset.menu));
   $('viewTitle').textContent='Danh mục chức năng';$('viewSubtitle').textContent='Các phân hệ quản lý và báo cáo';renderNav();return;
  }
+ if(view==='permissions'){
+  if(state.rights.admin){window.location.assign('/?nav=admin');return;}
+  return toast('Chỉ quản trị viên có quyền phân quyền tài khoản.');
+ }
  if(!can(view))return toast('Tài khoản chưa được cấp quyền chức năng này.');
  state.view=view;state.selected=null;window.QbookNavigation?.focusMedia(view);
  const title=NAV.find(x=>x.id===view)?.text||'Quản lý video';
@@ -122,7 +125,7 @@ function readinessPanel(){
  const roleUsers=state.staff.filter(p=>p.can_film||p.can_edit||p.can_manage);const rolesVisible=can('staff')||state.rights.admin;
  const oauth=!!state.googleClientId;
  const allowedBooks=can('books');
- const allowedRoles=can('permissions')||state.rights.admin;
+ const allowedRoles=!!state.rights.admin;
  const rows=[
   ['Thư mục Drive theo đầu sách',folderCount+'/'+state.books.length,folderCount===state.books.length?'Đã có đường dẫn':'Cần thiết lập thư mục cho từng đầu sách',allowedBooks?'<button class="link-action" data-goto="books">Cấu hình đầu sách</button>':'Liên hệ quản lý'],
   ['Google OAuth Client ID',oauth?'Đã cấu hình':'Chưa cấu hình',oauth?'Chưa xác nhận quyền Google của nhân viên':'Cần quản trị Cloudflare kiểm tra cấu hình','Kiểm thử tải với tài khoản Google'],
@@ -382,15 +385,9 @@ function initializeLessonSelection(){
 function staffAdmin(){
  return panel('Nhân viên QBooks',table(['Họ tên','Email','Vai trò QBooks','Quay','Hậu kỳ','Quản lý'],state.staff.map(p=>[E(p.name),E(p.email),E(p.role),p.can_film?'✓':'—',p.can_edit?'✓':'—',p.can_manage?'✓':'—'])));
 }
-function permissions(){
- if(!state.rights.admin)return panel('Phân quyền','<p>Chỉ quản trị viên có quyền thay đổi phân quyền.</p>');
- return panel('Phân quyền người dùng theo vai trò','<p class="sub">Chỉ áp dụng cho phân hệ Video, không tác động quyền Đóng hàng – Vận đơn.</p>'+
- state.staff.map(p=>'<form class="person-row" data-grant="'+E(p.id)+'"><div><strong>'+E(p.name)+'</strong><div class="mini-note">'+E(p.email)+'</div></div>'+
- '<div class="checkset"><label><input type="checkbox" name="can_film" '+(p.can_film?'checked':'')+'>Quay</label><label><input type="checkbox" name="can_edit" '+(p.can_edit?'checked':'')+'>Hậu kỳ</label><label><input type="checkbox" name="can_manage" '+(p.can_manage?'checked':'')+'>Quản lý</label><button class="btn primary" type="submit">Lưu</button></div></form>').join(''));
-}
 function auditView(){return panel('Lịch sử thao tác',table(['Ngày','Nhân sự','Hành động','Video'],(state.audit||[]).map(a=>[date(a.created_at),E(a.actor_name||'—'),E(a.action),E(a.video_id||'—')])));}
 function render(){
- const screen={dashboard,adminOverview,bookDetail,filmOverview:filmingOverview,film:filmList,createVideo,postOverview,edit:editList,production,booksProgress,report,books:booksAdmin,catalog,staff:staffAdmin,permissions,audit:auditView};
+ const screen={dashboard,adminOverview,bookDetail,filmOverview:filmingOverview,film:filmList,createVideo,postOverview,edit:editList,production,booksProgress,report,books:booksAdmin,catalog,staff:staffAdmin,audit:auditView};
  let html=screen[state.view]?.()||'<p>Chưa có nội dung.</p>';
  if(state.view==='film'&&state.selected)html=filmDetail(state.selected);
  if(state.view==='edit'&&state.selected)html=editDetail(state.selected);
@@ -549,10 +546,6 @@ function wire(){
  if($('filterBook'))$('filterBook').onchange=e=>{state.videoFilter.book=e.target.value;queueFilter(false);};
  if($('reviewFilter'))$('reviewFilter').onchange=e=>{state.videoFilter.review=e.target.value;queueFilter(false);};
  document.querySelectorAll('[data-action][data-id]').forEach(b=>b.onclick=()=>openVideo(b.dataset.id,b.dataset.action));
- document.querySelectorAll('[data-grant]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();try{
-  await api('POST','/api/video/staff',{user_id:form.dataset.grant,can_film:form.elements.can_film.checked,can_edit:form.elements.can_edit.checked,can_manage:form.elements.can_manage.checked});
-  await load();render();toast('Đã cập nhật quyền nhân sự.');
- }catch(err){toast(err.message)}});
  const exp=$('exportReport');if(exp)exp.onclick=csvExport;
 }
 function openVideo(id,action){
