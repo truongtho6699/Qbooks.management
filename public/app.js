@@ -2,8 +2,34 @@ import {trackDraft,markDraftSaved,confirmLeave,protectBeforeUnload,humanizeError
 
 const CHUNK_BYTES=8*1024*1024;
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null};
+const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
+const REMEMBER_EMAIL='qbooks_remember_email';
+const REMEMBER_TOKEN='qbooks_remember_token';
+function clearLoginSession(){
+ state.token='';
+ sessionStorage.removeItem('qbooks_token');
+ localStorage.removeItem(REMEMBER_TOKEN);
+}
+function saveLoginSession(result,email,remember){
+ // Do not save passwords/PINs, Google ID credentials or OAuth tokens.
+ state.token=result.token;
+ sessionStorage.setItem('qbooks_token',result.token);
+ if(remember){
+  localStorage.setItem(REMEMBER_TOKEN,result.token);
+  if(email)localStorage.setItem(REMEMBER_EMAIL,String(email).trim().toLowerCase());
+ }else{
+  localStorage.removeItem(REMEMBER_TOKEN);
+  localStorage.removeItem(REMEMBER_EMAIL);
+ }
+}
+function prefillRememberedAccount(){
+ const input=$('loginForm')?.elements?.email;
+ const saved=localStorage.getItem(REMEMBER_EMAIL);
+ if(input&&saved)input.value=saved;
+ const checkbox=$('rememberLogin');if(checkbox)checkbox.checked=!!localStorage.getItem(REMEMBER_TOKEN)||!!saved||!localStorage.getItem('qbooks_remember_preference');
+}
+
 const $all=(s)=>[...document.querySelectorAll(s)];
 function notice(text='',ok=false){$('notice').textContent=ok?text:humanizeError(text);$('notice').className=ok?'notice ok':'notice';}
 async function api(method,path,data,blob=false){
@@ -47,9 +73,9 @@ function makeCard(order,fn){
  card.type='button';card.append(orderCardContents(order));card.onclick=fn;
  return card;
 }
-async function login(email,pin){
+async function login(email,pin,remember){
  const res=await api('POST','/api/login',{email,pin});
- state.token=res.token;sessionStorage.setItem('qbooks_token',res.token);
+ saveLoginSession(res,res.user?.email||email,remember);
  await bootstrap();
 }
 async function loadGoogleSdk(){
@@ -86,8 +112,7 @@ async function initGoogleSignIn(){
       return notice(result.message,true);
      }
      if(!result.token)throw Error('Máy chủ chưa cấp phiên đăng nhập.');
-     state.token=result.token;
-     sessionStorage.setItem('qbooks_token',result.token);
+     saveLoginSession(result,result.user?.email||'',!!$('rememberLogin')?.checked);
      await bootstrap();
     }catch(e){notice('Đăng nhập Google thất bại: '+e.message);}
     finally{if(!state.user)$('googleStatus').textContent='Tài khoản mới cần quản trị phê duyệt trước khi sử dụng.';}
@@ -237,7 +262,7 @@ async function bootstrap(){
   if(['overview','sale','pack','ship'].includes(tabParam)&&permitted(tabParam))state.tab=tabParam;
   state.area='orders';switchView();
 
- }catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';notice(e.message);}
+ }catch(e){clearLoginSession();show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';notice(e.message);}
 }
 function syncRoute(area,view){
  const q=new URLSearchParams();
@@ -713,10 +738,52 @@ async function videoDuration(file){
   node.src=url;
  });
 }
+// Direct Drive v2: feature flag defaults off; legacy R2 remains the fallback.
+let driveConfigPromise;
+async function driveConfig(){
+ if(!driveConfigPromise)driveConfigPromise=api('GET','/api/storage/config').catch(e=>{driveConfigPromise=null;throw Error('Không xác định được kho lưu trữ. Dừng upload để tránh lưu nhầm R2: '+e.message);});
+ return driveConfigPromise;
+}
+async function uploadOneToDrive(orderId,stage,file){
+ const key='v2_'+fingerprint(orderId,stage,file);
+ let id=localStorage.getItem(key),info;
+ if(id){
+  try{info=await api('GET','/api/drive-uploads/'+id);if(info.bytes!==file.size)throw Error('Dung lượng tệp thay đổi.');}
+  catch(e){if(/Không tìm thấy phiên tải|hết hạn|404/.test(e.message)){id=null;localStorage.removeItem(key)}else throw e;}
+ }
+ if(!id){
+  info=await api('POST','/api/drive-uploads',{orderId,stage,filename:file.name,contentType:file.type||(stage==='VIDEO_DONG_HANG'?'video/mp4':'image/jpeg'),size:file.size});
+  id=info.id;localStorage.setItem(key,id);
+ }
+ if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
+ let offset=info.offset||0;
+ while(offset<file.size){
+  progress(file.name,offset,file.size);
+  const end=Math.min(file.size,offset+CHUNK_BYTES),part=file.slice(offset,end);
+  let next,retries=0;
+  while(true){
+   try{next=await api('PUT','/api/drive-uploads/'+id+'/chunk?offset='+offset,part,true);break;}
+   catch(e){
+    if(++retries>=4)throw Error('Đang tải lên Drive bị gián đoạn: '+e.message);
+    await new Promise(r=>setTimeout(r,900*retries));
+    next=await api('GET','/api/drive-uploads/'+id);
+    if(next.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
+    if(next.offset!==offset)break;
+   }
+  }
+  if(!Number.isSafeInteger(next.offset)||next.offset<=offset||next.offset>file.size)throw Error('Google Drive trả tiến độ không hợp lệ.');
+  offset=next.offset;
+  if(next.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
+ }
+ const verified=await api('GET','/api/drive-uploads/'+id);
+ if(verified.status!=='COMPLETE')throw Error('Google Drive chưa xác nhận hoàn tất tệp.');
+ localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;
+}
 async function uploadOne(orderId,stage,file){
  const video=stage==='VIDEO_DONG_HANG',max=video?2*1024*1024*1024:25*1024*1024;
  if(!file.size||file.size>max)throw Error('Tệp '+file.name+' vượt giới hạn '+(video?'2 GB':'25 MB'));
  if(video)await videoDuration(file);
+ if((await driveConfig()).driveDirect)return uploadOneToDrive(orderId,stage,file);
  const key=fingerprint(orderId,stage,file);let id=localStorage.getItem(key);
  let info;
  if(id){try{info=await api('GET','/api/uploads/'+id);if(info.bytes!==undefined&&info.bytes!==file.size)id=null}
@@ -909,8 +976,8 @@ async function loadGroupOptions(){
   if(!options.length)list.append(el('p','Không có đơn chưa gộp.'));
  }catch(e){notice(e.message)}
 }
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();sessionStorage.removeItem('qbooks_token');window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin,!!$('rememberLogin')?.checked)}catch(error){notice(error.message)}});
+$('logoutBtn').onclick=async()=>{if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packControls'));markDraftSaved($('shipControls'));tab(state.tab);};
@@ -1155,6 +1222,7 @@ $('overviewSearch').oninput=renderOverview;
 $('overviewStatus').onchange=renderOverview;
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
+prefillRememberedAccount();
 initGoogleSignIn();
 protectBeforeUnload();
 if(state.token)bootstrap();

@@ -32,7 +32,7 @@ export async function googleAccessToken(env){
 async function runFile(env,uploadId,token,maxChunks=5){
  const movable=moveEnabled(env);
  const claimed=await env.DB.prepare(
-  'UPDATE uploads SET auto_lease_until=?,auto_last_attempt_at=CURRENT_TIMESTAMP WHERE id=? AND status=\'COMPLETE\' AND (drive_file_id IS NULL'+(movable?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=?')
+  'UPDATE uploads SET auto_lease_until=?,auto_last_attempt_at=CURRENT_TIMESTAMP WHERE id=? AND status=\'COMPLETE\' AND storage_backend=\'R2\' AND (drive_file_id IS NULL'+(movable?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=?')
   .bind(now()+9*60,uploadId,now(),now()).run();
  if(claimed.meta?.changes!==1)return {status:'SKIPPED',uploadId};
  try{
@@ -68,7 +68,7 @@ async function runFile(env,uploadId,token,maxChunks=5){
 export async function syncBatch(env,{maxFiles=2,maxChunks=5}={}){
  if(!configured(env))return {status:'DISABLED',processed:0,reason:'Cần quyền Google ngoại tuyến và SYNC_ENABLED=true'};
  const ids=await env.DB.prepare(
-  'SELECT id FROM uploads WHERE status=\'COMPLETE\' AND (drive_file_id IS NULL'+(moveEnabled(env)?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=? ORDER BY created_at,id LIMIT ?'
+  'SELECT id FROM uploads WHERE status=\'COMPLETE\' AND storage_backend=\'R2\' AND (drive_file_id IS NULL'+(moveEnabled(env)?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=? ORDER BY created_at,id LIMIT ?'
  ).bind(now(),now(),Math.min(3,Math.max(1,maxFiles))).all();
  const candidates=ids.results||[];
  if(!candidates.length)return {status:'IDLE',processed:0};
