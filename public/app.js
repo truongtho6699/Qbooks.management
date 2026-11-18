@@ -756,6 +756,19 @@ async function uploadOneToDrive(orderId,stage,file){
   id=info.id;localStorage.setItem(key,id);
  }
  if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
+ if((await driveConfig()).driveBrowserDirect){
+  // The Worker receives only metadata/control requests. Media bytes go to Google.
+  const session=await api('POST','/api/drive-uploads/'+id+'/browser-session',{});
+  if(session.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
+  const {browserResumableUpload}=await import('./browser-drive-upload.js');
+  const verified=await browserResumableUpload(file,{
+   session,
+   refresh:()=>api('GET','/api/drive-uploads/'+id),
+   onProgress:p=>progress(file.name,p.offset,p.total)
+  });
+  if(verified.status!=='COMPLETE')throw Error('Google Drive chưa xác minh hoàn tất tệp.');
+  localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;
+ }
  let offset=info.offset||0;
  while(offset<file.size){
   progress(file.name,offset,file.size);
