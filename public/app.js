@@ -757,6 +757,7 @@ async function uploadOneToDrive(orderId,stage,file){
  }
  if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
  if((await driveConfig()).driveBrowserDirect){
+  $('uploadLabel').textContent='Đồng bộ trực tiếp Google Drive (không qua Cloudflare): '+file.name;
   // The Worker receives only metadata/control requests. Media bytes go to Google.
   const session=await api('POST','/api/drive-uploads/'+id+'/browser-session',{});
   if(session.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id;}
