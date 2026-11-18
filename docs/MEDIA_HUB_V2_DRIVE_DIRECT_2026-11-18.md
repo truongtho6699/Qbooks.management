@@ -58,3 +58,10 @@ Ngày: 18/11/2026. Chính sách **A: giữ toàn bộ video gốc, hậu kỳ v�
 - Cloudflare Pages source.preview_deployment_setting = `custom` và chỉ bao gồm nhánh `feature/media-hub-v2-drive-direct`; production branch = `main` không thay đổi.
 - Chỉ sau khi Preview nhận cả 2 Secret Google, kiểm tra đúng tài khoản Drive có quyền ghi ở thư mục staging, mới được bật `DRIVE_DIRECT_ENABLED=true` **ở Preview**. Không bật ở Production.
 - Để thử luồng giao hàng/đóng hàng, cần tạo một tài khoản và một đơn **giả lập** riêng trên D1 staging; tuyệt đối không dùng dữ liệu khách hàng thật.
+
+## Preview thử nghiệm thực tế — trạng thái cập nhật
+- Pages Preview đã build/deploy thành công tại `https://feature-media-hub-v2-drive-d.qbooks-quantri.pages.dev`. GitHub Actions CI #336 thành công; chưa có kết quả upload thực tế vì Preview thiếu hai Google Secret.
+- D1 staging đã có **hai đơn giả lập**: `DON_20261118_9901` / `TESTV2_0001` (CHỜ ĐÓNG HÀNG) và `DON_20261118_9902` / `TESTV2_0002` (CHỜ VẬN ĐƠN). Không có đơn hàng khách thật.
+- Drive staging hiện trống, không có tệp upload.
+- Admin/nhân viên Preview chưa được tạo (bảng users staging vẫn trống). Cần tạo admin Preview độc lập bằng `SETUP_KEY` riêng (hoặc phương án đăng nhập Google được cấp quyền đúng), rồi mới kiểm tra upload.
+- Để chạy thử: cấu hình **hai Secret ở Preview** (`GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`), xác nhận Google OAuth có quyền ghi thư mục staging, thiết lập admin Preview, sau đó mới bật **Preview** `DRIVE_DIRECT_ENABLED=true`. **Không nhập Secret vào GitHub hoặc cuộc trò chuyện.**
