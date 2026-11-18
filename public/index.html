@@ -89,8 +89,8 @@
 <form id="staffForm" class="fields"><label>Họ tên<input name="name" required></label><label>Email<input name="email" type="email" required></label><label>Vai trò chính<select name="role"><option value="VIEW" selected>VIEW – Chỉ xem (mặc định)</option><option value="SALE">SALE – Sale</option><option value="PACKER">PACKER – Đóng hàng</option><option value="SHIPPER">SHIPPER – Vận đơn</option><option value="ADMIN">ADMIN – Quản trị</option></select></label><label>PIN (3–8 chữ số, bỏ trống khi sửa)<input name="pin" type="password" inputmode="numeric" minlength="3" maxlength="8"></label><label class="check"><input type="checkbox" name="dongHang"> Đóng hàng</label><label class="check"><input type="checkbox" name="vanDon"> Vận đơn</label><label class="check"><input type="checkbox" name="admin"> Quản trị</label><label class="check"><input type="checkbox" name="active" checked> Hoạt động</label>
 <button class="primary" id="saveStaffBtn">TẠO NHÂN SỰ</button><button type="button" id="cancelStaffEdit" class="secondary">Nhập mới</button></form>
 <div class="panel" id="menuPermissionsPanel" hidden>
-<h3>Phân quyền từng menu và Quản lý Media</h3>
-<p class="hint">Chọn nhân sự hiện có hoặc tạo nhân sự mới. Tài khoản VIEW chỉ xem các menu được bật, không được chỉnh sửa nghiệp vụ.</p>
+<h3>Phân quyền tài khoản – Giao hàng, Media và Quản trị hệ thống</h3>
+<p class="hint">Quản lý tập trung tại Quản trị hệ thống: chọn nhân sự để cấp quyền menu Giao hàng, Media và quyền Quay / Hậu kỳ / Quản lý. Tài khoản VIEW chỉ xem các menu được bật, không được chỉnh sửa nghiệp vụ.</p>
 <div id="menuPermissionsUser" class="hint"></div>
 <div id="menuPermissionsGrid" class="menu-permissions-grid"></div>
 <fieldset class="menu-rights"><legend>Quyền thao tác Media</legend>
