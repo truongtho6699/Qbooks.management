@@ -4,6 +4,7 @@ import {verifyGoogleCredential} from './google-auth.js';
 import {normalizeV35Row,validateShippingForm,canGroup,parseVNDate} from './legacy-v35.js';
 import {syncStatus,driveInit,driveChunk,sheetCommit} from './sync-google.js';
 import {videoApi} from './video-manager.js';
+import {directEnabled,beginDriveUpload,inspectDriveUpload,putDriveChunk} from './drive-direct.js';
 import {MENU_KEYS,MENU_LABELS,resolveMenuPermissions,allowedMenu} from './menu-permissions.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
@@ -554,6 +555,37 @@ async function handle(req,env){
    return json({ok:true});
   }
  }
+ if(method==='GET'&&path==='/api/storage/config')return json({driveDirect:directEnabled(env),maxVideoBytes:MAX_VIDEO,retention:'KEEP_ALL'});
+ if(method==='POST'&&path==='/api/drive-uploads'){
+  const b=await requestJSON(req);await requireMenu(b.stage==='GIAO_HANG'?'orders.ship':'orders.pack');
+  const order=await orderById(env,b.orderId);
+  if(order.status!==(b.stage==='GIAO_HANG'?STATUS.SHIP:STATUS.PACK)||!hasRole(user,b.stage==='GIAO_HANG'?'SHIPPER':'PACKER'))throw Object.assign(new Error('Không có quyền tải lên đơn này.'),{status:403});
+  await assertOrderLock(env,user,order.id,b.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG');
+  const size=Number(b.size),name=clean(b.filename),type=clean(b.contentType);
+  validateUpload({stage:b.stage,filename:name,contentType:type,size});
+  const result=await beginDriveUpload(env,{id:uid(),order,user,stage:b.stage,name,type,size});
+  await audit(env,user,'DRIVE_UPLOAD_STARTED',order.id,result.id);
+  return json(result,201);
+ }
+ const directMatch=path.match(/^\/api\/drive-uploads\/([a-f0-9-]{36})(?:\/chunk)?$/);
+ if(directMatch){
+  const u=await pendingUpload(env,directMatch[1]);
+  if(u.storage_backend!=='DRIVE')throw Object.assign(new Error('Không phải tệp Drive Direct.'),{status:409});
+  const order=await orderById(env,u.order_id);
+  await requireMenu(u.stage==='GIAO_HANG'?'orders.ship':'orders.pack');
+  if(u.user_id!==user.id&&!hasRole(user,'ADMIN'))throw Object.assign(new Error('Phiên tải thuộc người khác.'),{status:403});
+  if(u.status!=='COMPLETE'){
+   mustStageAccess(user,u,order);
+   await assertOrderLock(env,user,order.id,u.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG');
+  }
+  if(method==='GET'&&path.endsWith(directMatch[1]))return json(await inspectDriveUpload(env,u));
+  if(method==='PUT'&&path.endsWith('/chunk')){
+   const result=await putDriveChunk(env,u,req);
+   if(result.status==='COMPLETE')await audit(env,user,'DRIVE_UPLOAD_COMPLETE',order.id,u.id);
+   return json(result);
+  }
+  return fail('Phương thức không hỗ trợ.',405);
+ }
  if(method==='POST'&&path==='/api/uploads'){
   const b=await requestJSON(req);await requireMenu(b.stage==='GIAO_HANG'?'orders.ship':'orders.pack');const order=await orderById(env,b.orderId);
   if(order.status!==(b.stage==='GIAO_HANG'?STATUS.SHIP:STATUS.PACK)||!hasRole(user,b.stage==='GIAO_HANG'?'SHIPPER':'PACKER'))throw Object.assign(new Error('Không có quyền tải lên đơn này.'),{status:403});
@@ -572,10 +604,12 @@ async function handle(req,env){
  if(uMatch){
   const id=uMatch[1],action=uMatch[2]||'',u=await pendingUpload(env,id),o=await orderById(env,u.order_id);
   const isFile=action==='file';
+  if(u.storage_backend==='DRIVE'&&!isFile)throw Object.assign(new Error('Dùng chức năng Drive Direct để tiếp tục tải.'),{status:409});
   if(isFile){
    await requireAnyMenu(['orders.overview','orders.pack','orders.ship']);if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
    if(method!=='GET')return fail('Không hỗ trợ.',405);
    if(u.status!=='COMPLETE')return fail('Tệp chưa sẵn sàng.',404);
+   if(u.storage_backend==='DRIVE'&&u.drive_file_id)return json({error:'Tệp lưu trên Google Drive.',driveUrl:'https://drive.google.com/file/d/'+encodeURIComponent(u.drive_file_id)+'/view'},409);
    const object=await env.MEDIA.get(u.object_key);
    if(!object){
     // After verified move the Drive copy is authoritative; never pretend an R2 download succeeded.
