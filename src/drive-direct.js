@@ -1,11 +1,14 @@
 // Qbooks Media Hub V2: direct-to-Google-Drive storage (no R2 writes).
-// The browser sends 8 MiB chunks to its authenticated Qbooks Worker; the Worker
-// streams them to the Google resumable session. No Google credential/session URL
-// is exposed to the client. The legacy R2 workflow remains independent.
+// The server creates a scoped Google resumable session; when enabled in Preview,
+// the browser can PUT media bytes straight to Google without proxying the file.
+// Google OAuth secrets stay server-side. The session URI is a short-lived
+// capability and is returned only after per-order access and lock checks.
+// Legacy proxy upload remains available behind its own feature flag.
 import {googleAccessToken} from './drive-auto-worker.js';
 import {targetFolder} from './sync-google.js';
 
 export const DRIVE_CHUNK=8*1024*1024;
+export const browserDirectEnabled=env=>directEnabled(env)&&env.DRIVE_BROWSER_DIRECT_ENABLED==='true';
 export const directEnabled=env=>env.DRIVE_DIRECT_ENABLED==='true' &&
  (env.DRIVE_STAGING_MODE!=='true'||/^[A-Za-z0-9_-]{10,}$/.test(String(env.DRIVE_STAGING_FOLDER_ID||''))) &&
  !!env.DB && !!env.GOOGLE_CLIENT_ID && !!env.GOOGLE_OAUTH_CLIENT_SECRET && !!env.GOOGLE_REFRESH_TOKEN;
@@ -86,6 +89,19 @@ export async function beginDriveUpload(env,{id,order,user,stage,name,type,size})
  .bind(id,order.id,user.id,stage,'drive/'+id,name,type,size,null,DRIVE_CHUNK,'DRIVE',session,folder.url).run();
  return {id,status:'UPLOADING',chunkSize:DRIVE_CHUNK,bytes:size,offset:0,storage:'DRIVE'};
 }
+export async function browserDriveSession(env,record){
+ if(!browserDirectEnabled(env))throw error('Upload trực tiếp từ trình duyệt chưa bật.',503);
+ if(record.storage_backend!=='DRIVE')throw error('Không phải phiên Drive Direct.',409);
+ if(record.status==='COMPLETE')return {id:record.id,status:'COMPLETE',bytes:record.bytes,offset:record.bytes};
+ if(record.status!=='UPLOADING')throw error('Phiên upload đã bị dừng.',409);
+ const progress=await inspectDriveUpload(env,record);
+ if(progress.status==='COMPLETE')return progress;
+ // Do not expose OAuth access/refresh tokens or Google credentials.
+ // The resumable session URI authorizes only this one previously-created file.
+ return {id:record.id,status:'UPLOADING',bytes:record.bytes,offset:progress.offset,
+  chunkSize:DRIVE_CHUNK,transport:'BROWSER_TO_GOOGLE',sessionUrl:driveSessionUrl(record.drive_session_url)};
+}
+
 async function probe(record){
  const session=driveSessionUrl(record.drive_session_url);
  const res=await fetch(session,{method:'PUT',redirect:'manual',headers:{'Content-Length':'0','Content-Range':'bytes */'+record.bytes}});
