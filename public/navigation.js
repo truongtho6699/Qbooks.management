@@ -2,11 +2,11 @@
 (function(global){
 'use strict';
 const MEDIA_GROUPS=[
- {id:'overview',name:'Tổng quan',icon:'▦',items:[['dashboard','Bảng điều khiển'],['adminOverview','Tổng quan quản trị']]},
- {id:'shoot',name:'Quay video',icon:'◉',items:[['filmOverview','Tổng quan quay'],['film','Quay bài'],['createVideo','Lập kế hoạch video']]},
+ {id:'overview',name:'Tổng quan',icon:'▦',items:[['dashboard','Bảng điều khiển']]},
+ {id:'shoot',name:'Quay video',icon:'◉',items:[['filmOverview','Tổng quan quay'],['film','Quay bài']]},
  {id:'post',name:'Hậu kỳ',icon:'◫',items:[['postOverview','Tổng quan hậu kỳ'],['edit','Xử lý video']]},
  {id:'manage',name:'Quản lý',icon:'▥',items:[['production','Sản lượng hằng ngày'],['booksProgress','Tiến độ đầu sách'],['report','Báo cáo tổng hợp']]},
- {id:'catalog',name:'Danh mục Media',icon:'▧',items:[['books','Quản trị đầu sách'],['catalog','Danh mục bài học'],['staff','Quản trị nhân viên'],['permissions','Phân quyền tài khoản'],['audit','Lịch sử thao tác']]}
+ {id:'catalog',name:'Danh mục Media',icon:'▧',items:[['books','Quản trị đầu sách'],['catalog','Danh mục bài học']]}
 ];
 const iconPaths={
  'truck':'<rect x="1" y="5" width="14" height="12" rx="2"/><path d="M15 9h4l3 4v4h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
@@ -26,7 +26,7 @@ function icon(name){
 let expandedRoot=null,expandedGroup=null,hasInitialState=false,drawerOpen=false;
 function groupFor(id){return MEDIA_GROUPS.find(g=>g.items.some(x=>x[0]===id))?.id||'overview';}
 function render(config){
- const {desktop,mobileTree,drawer,toggle,area,activeView,orders=[],admin=false,canMedia=()=>true,onOrder=()=>{},onMedia=()=>{},onAdmin=()=>{}}=config;
+ const {desktop,mobileTree,drawer,toggle,area,activeView,orders=[],admin=false,adminView='accounts',canMedia=()=>true,onOrder=()=>{},onMedia=()=>{},onAdmin=()=>{}}=config;
  if(!desktop)return;
  if(!hasInitialState){expandedRoot=area==='media'?'media':area==='admin'?'admin':null;expandedGroup=area==='media'?groupFor(activeView):null;hasInitialState=true;}
  const containers=[desktop,mobileTree].filter(Boolean);
@@ -78,7 +78,16 @@ function render(config){
    }
    container.append(section);
   }
-  if(admin){const adminButton=makeLeaf(container,'Quản trị hệ thống',area==='admin'||(area==='orders'&&activeView==='staff'),1,onAdmin);adminButton.prepend(icon('settings'));adminButton.classList.add('qbn-admin');}
+  if(admin){
+   const adminOpen=expandedRoot==='admin';
+   makeBranch(container,'Quản trị hệ thống',adminOpen,1,()=>setRoot('admin'),'settings','admin',scope);
+   if(adminOpen){
+    const children=make('div','qbn-children qbn-admin-children');children.id='qbn-panel-admin-'+scope;
+    const sections=[['accounts','Tài khoản và nhân sự'],['permissions','Phân quyền tài khoản'],['approvals','Duyệt tài khoản Google'],['sync','Đồng bộ dữ liệu'],['logs','Dữ liệu và nhật ký']];
+    for(const [key,label] of sections)makeLeaf(children,label,area==='admin'&&adminView===key,2,()=>onAdmin(key));
+    container.append(children);
+   }
+  }
  }
  if(drawer){drawer.hidden=!drawerOpen;drawer.setAttribute('aria-hidden',String(!drawerOpen));drawer.setAttribute('role','dialog');drawer.setAttribute('aria-modal',String(drawerOpen));drawer.setAttribute('aria-label','Menu điều hướng QBOOK');}
  if(toggle){toggle.setAttribute('aria-expanded',String(drawerOpen));toggle.setAttribute('aria-controls','qbnDrawer');toggle.onclick=()=>{drawerOpen=!drawerOpen;repaint();if(drawerOpen){drawer?.querySelector?.('#qbnClose')?.focus?.();}else toggle.focus?.();};}
@@ -86,7 +95,7 @@ function render(config){
 function closeDrawer(){drawerOpen=false;const toggle=document.getElementById('qbnToggle');toggle?.focus?.();}
 function focusMedia(view){expandedRoot='media';expandedGroup=groupFor(view);hasInitialState=true;}
 function focusOrders(){expandedRoot='orders';expandedGroup=null;hasInitialState=true;}
-function focusAdmin(){expandedRoot=null;expandedGroup=null;hasInitialState=true;}
+function focusAdmin(){expandedRoot='admin';expandedGroup=null;hasInitialState=true;}
 document.addEventListener('keydown',event=>{
  if(!drawerOpen)return;
  const drawer=document.getElementById('qbnDrawer');
