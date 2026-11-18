@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DRIVE_CHUNK,directEnabled,driveSessionUrl,driveFolderId} from '../src/drive-direct.js';
+import {DRIVE_CHUNK,directEnabled,driveSessionUrl,driveFolderId,offsetFromRange} from '../src/drive-direct.js';
 
 test('V2 is disabled by default, even when OAuth is present',()=>{
  const base={DB:{},GOOGLE_CLIENT_ID:'id',GOOGLE_OAUTH_CLIENT_SECRET:'secret',GOOGLE_REFRESH_TOKEN:'refresh'};
@@ -19,4 +19,21 @@ test('folder ID must be from an exact Google Drive folder URL',()=>{
  assert.equal(driveFolderId('https://drive.google.com/drive/folders/1I3yAbCsMn_PiJ-haPblWdNNujbDYmy2N'),'1I3yAbCsMn_PiJ-haPblWdNNujbDYmy2N');
  assert.throws(()=>driveFolderId('https://drive.google.com.evil.test/drive/folders/1I3yAbCsMn_PiJ-haPblWdNNujbDYmy2N'));
  assert.throws(()=>driveFolderId('https://drive.google.com/file/d/1I3yAbCsMn_PiJ-haPblWdNNujbDYmy2N/view'));
+});
+
+test('Google resumable Range is strict and bounded',()=>{
+ assert.equal(offsetFromRange(null,999),0);
+ assert.equal(offsetFromRange('bytes=0-7',999),8);
+ assert.equal(offsetFromRange('bytes=0-998',999),999);
+ for(const v of ['bytes=1-10','bytes=0-1000','bytes=0--1','bytes=0-9999','bytes 0-7']){
+  assert.throws(()=>offsetFromRange(v,999));
+ }
+});
+test('Google resumable URL rejects alternate path and credentials',()=>{
+ for(const value of ['https://www.googleapis.com/upload/drive/v3/files/anything',
+  'https://www.googleapis.com/upload/drive/v3/files.evil',
+  'https://user:pass@www.googleapis.com/upload/drive/v3/files',
+  'https://www.googleapis.com/oauth2/token']){
+  assert.throws(()=>driveSessionUrl(value));
+ }
 });
