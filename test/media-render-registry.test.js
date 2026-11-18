@@ -17,7 +17,8 @@ test('Media view registry exists and every screen handler references a declared 
  for(const {key,handler} of definedEntries){
   assert.ok(declarationNames.has(handler),`Screen "${key}" references missing function "${handler}"`);
  }
- assert.ok(definedEntries.length>=15,'Media must expose its operational menus');
+ assert.ok(definedEntries.length>=10,'Media must expose its retained operational menus');
+ for(const removed of ['adminOverview','createVideo','permissions','audit','staff'])assert.ok(!definedEntries.some(x=>x.key===removed),'Removed menu must no longer appear: '+removed);
 });
 test('Opening Media filming overview uses the existing filmingOverview handler',()=>{
  assert.match(entry?.[1]||'',/\bfilmOverview\s*:\s*filmingOverview\b/);
