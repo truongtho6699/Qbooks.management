@@ -716,7 +716,7 @@ async function videoDuration(file){
 // Direct Drive v2: feature flag defaults off; legacy R2 remains the fallback.
 let driveConfigPromise;
 async function driveConfig(){
- if(!driveConfigPromise)driveConfigPromise=api('GET','/api/storage/config').catch(()=>({driveDirect:false}));
+ if(!driveConfigPromise)driveConfigPromise=api('GET','/api/storage/config').catch(e=>{driveConfigPromise=null;throw Error('Không xác định được kho lưu trữ. Dừng upload để tránh lưu nhầm R2: '+e.message);});
  return driveConfigPromise;
 }
 async function uploadOneToDrive(orderId,stage,file){
