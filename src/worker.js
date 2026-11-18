@@ -593,6 +593,7 @@ async function handle(req,env){
   const size=Number(b.size),name=clean(b.filename),type=clean(b.contentType);
   validateUpload({stage:b.stage,filename:name,contentType:type,size});
   const id=uid(),key=filePath(order.id,b.stage,name),multipart=b.stage==='VIDEO_DONG_HANG';
+  if(!env.MEDIA)throw Object.assign(new Error('R2 không kết nối trong Preview; hãy cấu hình Drive Direct.'),{status:503});
   const upload=multipart?await env.MEDIA.createMultipartUpload(key,{httpMetadata:{contentType:type}}):null;
   try{
    await env.DB.prepare('INSERT INTO uploads(id,order_id,user_id,stage,object_key,filename,content_type,bytes,upload_id,chunk_size) VALUES(?,?,?,?,?,?,?,?,?,?)')
@@ -610,6 +611,7 @@ async function handle(req,env){
    if(method!=='GET')return fail('Không hỗ trợ.',405);
    if(u.status!=='COMPLETE')return fail('Tệp chưa sẵn sàng.',404);
    if(u.storage_backend==='DRIVE'&&u.drive_file_id)return json({error:'Tệp lưu trên Google Drive.',driveUrl:'https://drive.google.com/file/d/'+encodeURIComponent(u.drive_file_id)+'/view'},409);
+   if(!env.MEDIA)return fail('Tệp R2 không có trong môi trường Preview.',503);
    const object=await env.MEDIA.get(u.object_key);
    if(!object){
     // After verified move the Drive copy is authoritative; never pretend an R2 download succeeded.
@@ -701,7 +703,7 @@ export default {
   const url=new URL(request.url);
   if(!url.pathname.startsWith('/api/'))return env.ASSETS.fetch(request);
   try{
-   if(!env.DB||!env.MEDIA)return fail('Chưa gắn D1 và R2 cho Worker.',503);
+   if(!env.DB)return fail('Chưa gắn D1 cho Worker.',503);
    return await handle(request,env);
   }catch(e){return fail(e.message||'Lỗi hệ thống.',e.status||400);}
  }
