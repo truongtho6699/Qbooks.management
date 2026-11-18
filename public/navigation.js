@@ -6,7 +6,7 @@ const MEDIA_GROUPS=[
  {id:'shoot',name:'Quay video',icon:'◉',items:[['filmOverview','Tổng quan quay'],['film','Quay bài'],['createVideo','Lập kế hoạch video']]},
  {id:'post',name:'Hậu kỳ',icon:'◫',items:[['postOverview','Tổng quan hậu kỳ'],['edit','Xử lý video']]},
  {id:'manage',name:'Quản lý',icon:'▥',items:[['production','Sản lượng hằng ngày'],['booksProgress','Tiến độ đầu sách'],['report','Báo cáo tổng hợp']]},
- {id:'catalog',name:'Danh mục Media',icon:'▧',items:[['books','Quản trị đầu sách'],['catalog','Danh mục bài học'],['staff','Quản trị nhân viên'],['permissions','Phân quyền tài khoản'],['audit','Lịch sử thao tác']]}
+ {id:'catalog',name:'Danh mục Media',icon:'▧',items:[['books','Quản trị đầu sách'],['catalog','Danh mục bài học'],['staff','Quản trị nhân viên'],['audit','Lịch sử thao tác']]}
 ];
 const iconPaths={
  'truck':'<rect x="1" y="5" width="14" height="12" rx="2"/><path d="M15 9h4l3 4v4h-7"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
