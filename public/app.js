@@ -2,7 +2,7 @@ import {trackDraft,markDraftSaved,confirmLeave,protectBeforeUnload,humanizeError
 
 const CHUNK_BYTES=8*1024*1024;
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null};
+const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null,adminPanel:'accounts'};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
 const REMEMBER_EMAIL='qbooks_remember_email';
 const REMEMBER_TOKEN='qbooks_remember_token';
@@ -246,8 +246,8 @@ async function bootstrap(){
   const access=await api('GET','/api/menu-access');state.menuKeys=access.menus||[];
   $('userInfo').textContent=r.user.name+' · '+r.user.role;
   $('shippingUserBadge').textContent=r.user.name;
-  $('saleForm').elements.sale_name.value=r.user.name;
-  $('saleForm').elements.sale_name.readOnly=true;
+  $('accountMenuName').textContent=r.user.name;
+  $('accountMenuRole').textContent=r.user.role;
   show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;const skip=$('qbSkipLink');if(skip)skip.href='#appPage';
   // Always drop operational data kept by a previous session before showing the new identity.
   state.orders=[];state.overviewData=null;state.selected=null;state.lockedOrderIds.clear();
@@ -255,7 +255,7 @@ async function bootstrap(){
   const permitted=key=>keys.includes('orders.'+key),hasOrders=['overview','sale','pack','ship'].some(permitted),hasMedia=keys.some(k=>k.startsWith('media.'));
   state.tab=rights.admin?'overview':['overview','sale','pack','ship'].find(permitted)||'overview';
   const params=new URLSearchParams(window.location.search),tabParam=params.get('tab'),mediaParam=params.get('view'),section=params.get('section'),toAdmin=params.get('nav')==='admin';
-  if(toAdmin&&rights.admin){tab('staff');return;}
+  if(toAdmin&&rights.admin){state.adminPanel=['accounts','permissions','approvals','sync','logs'].includes(params.get('panel'))?params.get('panel'):'accounts';tab('staff',state.adminPanel);return;}
   if(((section==='media'||params.get('nav')==='media')&&(hasMedia||rights.admin))||(!hasOrders&&hasMedia)){
    await openMedia(mediaParam||undefined);return;
   }
@@ -267,7 +267,7 @@ async function bootstrap(){
 function syncRoute(area,view){
  const q=new URLSearchParams();
  if(area==='media'){q.set('section','media');q.set('view',view||'dashboard');}
- else if(area==='admin')q.set('nav','admin');
+ else if(area==='admin'){q.set('nav','admin');q.set('panel',state.adminPanel||'accounts');}
  else if(view&&view!=='overview')q.set('tab',view);
  const path=window.location.pathname+(q.size?'?'+q.toString():'');
  if(window.location.pathname+window.location.search!==path)window.history.replaceState(null,'',path);
@@ -333,10 +333,10 @@ function renderTabs(){
  if(!window.QbookNavigation)throw Error('Thiếu bộ điều hướng QBOOK');
  window.QbookNavigation.render({
    desktop,mobileTree:$('qbnMobileTree'),drawer:$('qbnDrawer'),toggle:$('qbnToggle'),
-   area:state.area==='media'?'media':state.tab==='staff'?'admin':'orders',activeView:state.area==='media'?state.mediaView:state.tab,orders:orderTabs,admin:menuAllowed('system.admin'),canMedia:id=>menuAllowed('media.'+id),
+   area:state.area==='media'?'media':state.tab==='staff'?'admin':'orders',activeView:state.area==='media'?state.mediaView:state.tab,orders:orderTabs,admin:menuAllowed('system.admin'),adminView:state.adminPanel,canMedia:id=>menuAllowed('media.'+id),
    onOrder:key=>tab(key),
    onMedia:key=>openMedia(key),
-   onAdmin:()=>tab('staff')
+   onAdmin:key=>tab('staff',key||'accounts')
  });
  const active=state.area==='orders'&&['overview','sale','pack','ship'].includes(state.tab);
  const addMobile=(id,label,icon,fn,isActive)=>{
@@ -354,7 +354,7 @@ function renderTabs(){
   for(const [id,label,symbol] of visible)addMobile(id,label,symbol,()=>openMedia(id),state.mediaView===id);
   if(overflow&&mobile.children.length<5)addMobile('more','Danh mục','☰',()=>{$('qbnToggle').click();},!visible.some(([id])=>id===state.mediaView));
  }else if(mediaMenus.length)addMobile('media','Media','◉',()=>openMedia(),false);
- if(menuAllowed('system.admin')&&mobile.children.length<5)addMobile('admin','Quản trị','⚙',()=>tab('staff'),state.area==='admin');
+ if(menuAllowed('system.admin')&&mobile.children.length<5)addMobile('admin','Quản trị','⚙',()=>tab('staff','accounts'),state.area==='admin');
  for(const [id,label]of orderTabs){const b=button(label,()=>tab(id),state.tab===id?'selected':'');b.classList.add('shipping-operation-tab');inner.append(b);}
  show('shippingOperationGroup',state.area==='orders'&&state.orderMenuExpanded&&active&&orderTabs.length>0);
  const close=$('qbnClose');
@@ -403,14 +403,23 @@ function switchView(){
  renderTabs();
  if(key==='overview')loadOverview().catch(e=>notice('Không đọc được tổng quan: '+e.message));
  if(key==='sale'){loadGroupOptions().catch(e=>notice(e.message));loadOrders().catch(e=>notice(e.message));}
- if(key==='staff'){trackDraft($('staffForm'));loadPendingGoogle();loadStaffUsers();refreshGoogleSync();}
+ if(key==='staff'){
+   for(const panel of document.querySelectorAll('#staffView [data-admin-section]')){
+    const section=panel.dataset.adminSection;
+    panel.hidden=state.adminPanel==='permissions'?section!=='accounts':section!==state.adminPanel;
+   }
+   if(['accounts','permissions'].includes(state.adminPanel)){trackDraft($('staffForm'));loadStaffUsers();}
+   if(state.adminPanel==='approvals')loadPendingGoogle();
+   if(state.adminPanel==='sync')refreshGoogleSync();
+   if(state.adminPanel==='logs')loadAdminReport('LOG').catch(e=>notice(e.message));
+  }
  if(key==='pack'||key==='ship')loadOrders().catch(e=>notice(e.message));
 }
 async function releaseLocks(){
  const ids=[...state.lockedOrderIds];state.lockedOrderIds.clear();
  await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
 }
-function tab(key){if((state.area!=='orders'||state.tab!==key)&&!confirmLeave())return;if(key==='staff'&&!menuAllowed('system.admin'))return notice('Chưa được cấp quyền Quản trị hệ thống.');if(key!=='staff'&&!menuAllowed('orders.'+key))return notice('Chưa được cấp quyền menu này.');if(state.lockedOrderIds.size)releaseLocks();state.tab=key;state.area=key==='staff'?'admin':'orders';state.orderMenuExpanded=key!=='staff';if(key==='staff')window.QbookNavigation?.focusAdmin();else window.QbookNavigation?.focusOrders();switchView();}
+function tab(key,panel){if((state.area!=='orders'||state.tab!==key||(key==='staff'&&panel&&state.adminPanel!==panel))&&!confirmLeave())return;if(key==='staff'&&!menuAllowed('system.admin'))return notice('Chưa được cấp quyền Quản trị hệ thống.');if(key!=='staff'&&!menuAllowed('orders.'+key))return notice('Chưa được cấp quyền menu này.');if(state.lockedOrderIds.size)releaseLocks();if(key==='staff'&&['accounts','permissions','approvals','sync','logs'].includes(panel))state.adminPanel=panel;state.tab=key;state.area=key==='staff'?'admin':'orders';state.orderMenuExpanded=key!=='staff';if(key==='staff')window.QbookNavigation?.focusAdmin();else window.QbookNavigation?.focusOrders();switchView();}
 const MEDIA_LABELS={ANH_HOA_DON:'Ảnh hóa đơn',VIDEO_DONG_HANG:'Video đóng hàng',HANG_HOA:'Ảnh hàng hóa',GIAO_HANG:'Ảnh bàn giao'};
 const LINK_LABELS=[['packing_folder_url','Thư mục đóng hàng'],['shipping_folder_url','Thư mục vận đơn'],['invoice_folder_url','Thư mục ảnh hóa đơn'],['video_folder_url','Thư mục video'],['goods_folder_url','Thư mục ảnh hàng hóa']];
 function safeDriveUrl(value){
@@ -713,7 +722,7 @@ async function openOrder(order){
   $('terminalFee').value=order.terminal_fee||0;
   $('extraFee').value=order.extra_fee||0;
   $('shippingNote').value=order.shipping_note||'';
-  $('shippingStatus').value='HOÀN THÀNH';
+  
   updateShippingTotal();
   showShippingGroup(order);
  }
@@ -906,7 +915,7 @@ async function saveShip(){
   notice('Đang tải ảnh bàn giao (nếu có) và lưu vận đơn...');
   const uploaded=await uploadSelection(id,uploads);
   await api('POST','/api/shipments',{orderIds,loaiShip,tenShip,sdtShip,
-   tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:v('shippingStatus'),note:v('shippingNote')});saved=true;
+   tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:'HOÀN THÀNH',note:v('shippingNote')});saved=true;
   for(const key of orderIds)state.lockedOrderIds.delete(key);
   markDraftSaved($('shipControls'));
   notice('Đã lưu vận đơn. '+uploaded.length+' tệp đã ghi R2. Chuyển Drive khi Worker được kích hoạt; chỉ xóa R2 sau khi xác minh đủ tệp. Dữ liệu Sheets đồng bộ riêng.',true);
@@ -941,19 +950,23 @@ $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packControls'));markDraftSaved($('shipControls'));tab(state.tab);};
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
+$('saleDeliveryMode').onchange=()=>{const timed=$('saleDeliveryMode').value==='THOI_GIAN';$('saleDeliveryTimeBox').hidden=!timed;$('saleDeliveryTime').required=timed;if(!timed)$('saleDeliveryTime').value='';};
 $('saleForm').addEventListener('submit',async e=>{
  e.preventDefault();
  const form=e.target,submit=form.querySelector('button[type=submit],button:not([type])');
  if(submit?.disabled)return;
  let saved=false;
- const f=Object.fromEntries(new FormData(form));f.urgent=!!form.querySelector('[name=urgent]').checked;
+ const f=Object.fromEntries(new FormData(form));f.urgent=f.delivery_mode==='GAP';
+  if(!f.delivery_mode)return showFieldError(form,'delivery_mode','Chọn GẤP hoặc thời gian giao.');
+  if(f.delivery_mode==='THOI_GIAN'&&!f.delivery_time)return showFieldError(form,'delivery_time','Cần chọn ngày giờ giao.');
+  if(!f.transport)return showFieldError(form,'transport','Cần chọn loại vận chuyển.');
  if(!String(f.invoice_codes||'').trim())return showFieldError(form,'invoice_codes','Cần nhập ít nhất một mã hóa đơn.');
  if(!String(f.customer||'').trim())return showFieldError(form,'customer','Nhập tên khách hàng trước khi lưu.');
  if(!Number.isSafeInteger(Number(f.quantity))||Number(f.quantity)<1)return showFieldError(form,'quantity','Số quyển phải là số nguyên lớn hơn 0.');
  if(submit){submit.disabled=true;submit.textContent='ĐANG LƯU ĐƠN…';}
  try{
   await api('POST','/api/orders',f);saved=true;
-  form.reset();form.elements.sale_name.value=state.user.name;
+  form.reset();$('saleDeliveryTimeBox').hidden=true;$('saleDeliveryTime').required=false;
   markDraftSaved(form);
   notice('Đã tạo đơn Sale trên D1. Đơn sẵn sàng chuyển Đóng hàng; chưa tự ghi sang Google Sheets.',true);
   await loadGroupOptions();await loadOrders();
