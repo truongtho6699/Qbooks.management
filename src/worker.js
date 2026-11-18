@@ -193,7 +193,7 @@ async function handle(req,env){
   const updated=await env.DB.prepare('UPDATE users SET pin_salt=?,pin_hash=?,failed_attempts=0,locked_until=0 WHERE id=? AND pin_hash=?')
    .bind(salt,hashed,user.id,owner.pin_hash).run();
   if(updated.meta.changes!==1)throw Object.assign(new Error('PIN đã thay đổi ở phiên khác. Vui lòng thử lại.'),{status:409});
-  const sessionToken=(req.headers.get('authorization')||'').replace(/^Bearer\\s+/i,'');
+  const sessionToken=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
   await env.DB.prepare('DELETE FROM sessions WHERE user_id=? AND token_hash<>?').bind(user.id,await sha(sessionToken)).run();
   await audit(env,user,'SELF_CHANGE_PIN');return json({ok:true});
  }
@@ -535,7 +535,7 @@ async function handle(req,env){
   const mode=clean(b.delivery_mode),urgent=mode==='GAP';
   if(!['GAP','THOI_GIAN'].includes(mode))throw Error('Cần chọn GẤP hoặc thời gian giao.');
   const deliveryTime=mode==='THOI_GIAN'?clean(b.delivery_time):'';
-  if(mode==='THOI_GIAN'&&!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(deliveryTime))throw Error('Thời gian giao phải có ngày và giờ hợp lệ.');
+  if(mode==='THOI_GIAN'&&!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(deliveryTime))throw Error('Thời gian giao phải có ngày và giờ hợp lệ.');
   if(deliveryTime&&!Number.isFinite(new Date(deliveryTime).getTime()))throw Error('Thời gian giao không hợp lệ.');
   const id=uid();
   try{
