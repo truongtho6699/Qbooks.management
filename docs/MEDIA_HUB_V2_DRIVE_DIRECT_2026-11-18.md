@@ -65,3 +65,15 @@ Ngày: 18/11/2026. Chính sách **A: giữ toàn bộ video gốc, hậu kỳ v�
 - Drive staging hiện trống, không có tệp upload.
 - Admin/nhân viên Preview chưa được tạo (bảng users staging vẫn trống). Cần tạo admin Preview độc lập bằng `SETUP_KEY` riêng (hoặc phương án đăng nhập Google được cấp quyền đúng), rồi mới kiểm tra upload.
 - Để chạy thử: cấu hình **hai Secret ở Preview** (`GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`), xác nhận Google OAuth có quyền ghi thư mục staging, thiết lập admin Preview, sau đó mới bật **Preview** `DRIVE_DIRECT_ENABLED=true`. **Không nhập Secret vào GitHub hoặc cuộc trò chuyện.**
+
+## Tăng tốc upload: Trình duyệt → Google Drive (Preview)
+
+**Lý do**: Đường truyền cũ đi qua Worker từng khối 8 MiB (browser → Worker → Drive), dễ phát sinh trung chuyển và thời gian chờ. Chế độ mới bỏ Worker khỏi luồng truyền byte.
+
+- Backend `POST /api/drive-uploads`: kiểm tra quyền/khóa đơn, tạo resumable session Google Drive, ghi D1.
+- Backend `POST /api/drive-uploads/:id/browser-session`: chỉ cho tài khoản sở hữu upload hoặc ADMIN có quyền theo đơn, kiểm tra khóa đơn và trạng thái; trả URI phiên upload một file, không trả access/refresh token OAuth. URI là quyền truy cập tạm: **không log hoặc chia sẻ**.
+- Front-end `public/browser-drive-upload.js`: upload khối 16 MiB trực tiếp Google bằng `PUT Content-Range`; sau mỗi khối nhờ backend `GET /api/drive-uploads/:id` kiểm tra Google tiến độ thực tế; lỗi mạng không được giả định thành công.
+- Backend chỉ đánh dấu COMPLETE sau đối chiếu file trên Drive: ID, dung lượng, MIME, thư mục và qbooksUploadId. Không tải vào R2.
+- Chỉ dùng khi **Preview** DRIVE_DIRECT_ENABLED=true và DRIVE_BROWSER_DIRECT_ENABLED=true. Khi tắt cờ browser, giữ luồng Worker V2 cũ để dự phòng. **Không bật trên Production** trước nghiệm thu.
+- Google Drive API resumable upload có thể chịu giới hạn CORS tùy trình duyệt; cần kiểm thử upload thật. Nếu CORS không cho phép, hiển thị lỗi; không lặng lẽ chuyển sang R2.
+- Test mới: `test/browser-drive-upload.test.js`, không chứa OAuth Secret.
