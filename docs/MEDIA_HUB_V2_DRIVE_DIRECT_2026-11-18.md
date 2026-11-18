@@ -53,3 +53,8 @@ Ngày: 18/11/2026. Chính sách **A: giữ toàn bộ video gốc, hậu kỳ v�
 - Preview **chưa có** hai secret `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`. Secret Production không tự chuyển vào Preview; phải nhập riêng dưới **Preview environment**, không gửi qua chat/GitHub.
 - Branch code đã sửa Worker để cho phép D1-only Preview, còn các endpoint R2 cũ trả lỗi rõ ràng nếu gọi trong Preview.
 - **KHÔNG BẬT FLAG Preview** trước khi kiểm tra quyền ghi bằng OAuth và chuẩn bị tài khoản thử nghiệm. Không tác động Production.
+
+## Preview deploy gate
+- Cloudflare Pages source.preview_deployment_setting = `custom` và chỉ bao gồm nhánh `feature/media-hub-v2-drive-direct`; production branch = `main` không thay đổi.
+- Chỉ sau khi Preview nhận cả 2 Secret Google, kiểm tra đúng tài khoản Drive có quyền ghi ở thư mục staging, mới được bật `DRIVE_DIRECT_ENABLED=true` **ở Preview**. Không bật ở Production.
+- Để thử luồng giao hàng/đóng hàng, cần tạo một tài khoản và một đơn **giả lập** riêng trên D1 staging; tuyệt đối không dùng dữ liệu khách hàng thật.
