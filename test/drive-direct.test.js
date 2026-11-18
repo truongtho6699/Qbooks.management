@@ -8,6 +8,11 @@ test('V2 is disabled by default, even when OAuth is present',()=>{
  assert.equal(directEnabled({...base,DRIVE_DIRECT_ENABLED:'true'}),true);
  assert.equal(directEnabled({...base,DRIVE_DIRECT_ENABLED:'true',GOOGLE_REFRESH_TOKEN:''}),false);
 });
+test('staging requires a separate Google Drive folder',()=>{
+ const env={DB:{},GOOGLE_CLIENT_ID:'id',GOOGLE_OAUTH_CLIENT_SECRET:'secret',GOOGLE_REFRESH_TOKEN:'refresh',DRIVE_DIRECT_ENABLED:'true',DRIVE_STAGING_MODE:'true'};
+ assert.equal(directEnabled(env),false);
+ assert.equal(directEnabled({...env,DRIVE_STAGING_FOLDER_ID:'1WnvrEKMuOzQVgUuL9KtsoWNMauvrvxAV'}),true);
+});
 test('resumable chunk is 8 MiB',()=>assert.equal(DRIVE_CHUNK,8388608));
 test('session URI must be trusted Google Drive upload endpoint',()=>{
  assert.equal(driveSessionUrl('https://www.googleapis.com/upload/drive/v3/files?upload_id=abc'),'https://www.googleapis.com/upload/drive/v3/files?upload_id=abc');
