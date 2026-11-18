@@ -49,3 +49,5 @@
 .summary-copy-actions{display:flex;justify-content:flex-end;margin:12px 0}
 #changePinForm{padding:12px 0}
 #accountTopBtn{font-size:12px;min-width:0;max-width:min(250px,40vw);overflow:hidden;text-overflow:ellipsis}
+
+#staffForm[hidden]{display:none!important}
