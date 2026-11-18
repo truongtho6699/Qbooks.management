@@ -60,7 +60,7 @@ function mockSellerDb(existing=null,menus={}){
 }
 function envForSeller(existing=null,menus={}){const db=mockSellerDb(existing,menus);return {DB:db,MEDIA:{},sqls:db.sqls,binds:db.binds};}
 async function saleCreate(env,invoice='HD_NEW_9001'){
- const req=new Request('https://qbooks.test/api/orders',{method:'POST',headers:{authorization:'Bearer test-session','content-type':'application/json'},body:JSON.stringify({invoice_codes:invoice,customer:'Khách A',quantity:'12',sale_name:'Tự đặt tên'})});
+ const req=new Request('https://qbooks.test/api/orders',{method:'POST',headers:{authorization:'Bearer test-session','content-type':'application/json'},body:JSON.stringify({invoice_codes:invoice,customer:'Khách A',quantity:'12',sale_name:'Tự đặt tên',transport:'SHIP NGOÀI',delivery_mode:'GAP'})});
  const res=await worker.fetch(req,env);return {status:res.status,data:await res.json()};
 }
 test('Sale creates an order in D1 when permitted, without requiring legacy toggle',async()=>{
@@ -75,11 +75,11 @@ test('Sale creates an order in D1 when permitted, without requiring legacy toggl
  assert.ok(columnSpec,'Sale INSERT must declare columns and values');
  const columns=columnSpec[1].split(',').map(x=>x.trim());
  const values=columnSpec[2].split(',').map(x=>x.trim());
- assert.equal(columns.length,12,'Sale INSERT must supply all 12 columns');
+ assert.equal(columns.length,13,'Sale INSERT must supply all 13 columns including delivery_time');
  assert.equal(values.length,columns.length,'Every Sale INSERT column needs a value');
  assert.equal(values.filter(x=>x==='?').length,insertion.values.length,'Placeholder count must match D1 bound arguments');
  assert.deepEqual(values.slice(-2),["'D1'",'0']);
- assert.equal(insertion.values[9],seller.id,'created_by must bind current user ID');
+ assert.equal(insertion.values[10],seller.id,'created_by must bind current user ID');
 });
 test('Duplicate invoice code is rejected before database write',async()=>{
  const env=envForSeller({id:'old-order'});
