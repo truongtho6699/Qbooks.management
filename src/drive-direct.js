@@ -18,12 +18,13 @@ export function driveFolderId(url){
  return id;
 }
 export function driveSessionUrl(value){
+ if(typeof value!=='string'||value.length>4096)throw error('Phiên Google Drive không hợp lệ.',502);
  const u=new URL(value);
  if(u.protocol!=='https:'||!['www.googleapis.com','content-googleapis.com'].includes(u.hostname)||
- u.username||u.password||!u.pathname.startsWith('/upload/drive/v3/files'))throw error('Phiên Google Drive không hợp lệ.',502);
+ u.username||u.password||u.pathname!=='/upload/drive/v3/files')throw error('Phiên Google Drive không hợp lệ.',502);
  return u.toString();
 }
-function offsetFromRange(range,total){
+export function offsetFromRange(range,total){
  if(!range)return 0;
  const m=/^bytes=0-(\d+)$/.exec(range);
  if(!m)throw error('Google trả Range không hợp lệ.',502);
@@ -100,13 +101,16 @@ export async function inspectDriveUpload(env,record){
 export async function putDriveChunk(env,record,req){
  if(record.storage_backend!=='DRIVE'||record.status!=='UPLOADING')throw error('Phiên tải không hợp lệ.',409);
  if(!record.drive_session_url)return inspectDriveUpload(env,record);
- const offset=Number(new URL(req.url).searchParams.get('offset'));
+ const offsetRaw=new URL(req.url).searchParams.get('offset');
+ if(offsetRaw===null||!/^(0|[1-9][0-9]*)$/.test(offsetRaw))throw error('Thiếu vị trí tải hợp lệ.');
+ const offset=Number(offsetRaw);
  if(!Number.isSafeInteger(offset)||offset<0)throw error('Vị trí tải không hợp lệ.');
  const current=await inspectDriveUpload(env,record);
  if(current.status==='COMPLETE')return current;
  if(offset!==current.offset)throw error('Tiến độ đã thay đổi. Kiểm tra lại rồi tiếp tục tải.',409);
  const length=Math.min(DRIVE_CHUNK,record.bytes-offset);
- if(Number(req.headers.get('content-length'))!==length)throw error('Đoạn dữ liệu có dung lượng không khớp.',400);
+ if(length<=0)throw error('Dữ liệu đã hoàn tất hoặc vị trí tải không hợp lệ.',409);
+ if(!req.headers.has('content-length')||Number(req.headers.get('content-length'))!==length)throw error('Đoạn dữ liệu có dung lượng không khớp.',400);
  const session=driveSessionUrl(record.drive_session_url);
  const res=await fetch(session,{method:'PUT',redirect:'manual',headers:{
   'Content-Length':String(length),'Content-Range':'bytes '+offset+'-'+(offset+length-1)+'/'+record.bytes,
