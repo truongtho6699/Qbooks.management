@@ -144,7 +144,7 @@ async function handle(req,env){
  const permittedMenus=async()=>{if(!user.menuKeys)user.menuKeys=(await resolveMenuPermissions(env.DB,user)).keys;return user.menuKeys;};
  const requireMenu=async key=>{if(user.can_admin===1||user.role==='ADMIN')return;const x=await permittedMenus();if(!x.includes(key))throw Object.assign(new Error('Chưa được cấp quyền menu '+(MENU_LABELS[key]||key)+'.'),{status:403});};
  const requireAnyMenu=async keys=>{if(user.can_admin===1||user.role==='ADMIN')return;const x=await permittedMenus();if(!keys.some(k=>x.includes(k)))throw Object.assign(new Error('Chưa được cấp quyền chức năng.'),{status:403});};
- if(user.role==='VIEW'&&!((method==='POST'&&path==='/api/logout')||(method==='GET'&&['/api/bootstrap','/api/menu-access'].includes(path)))){
+ if(user.role==='VIEW'&&!((method==='POST'&&['/api/logout','/api/account/change-pin'].includes(path))||(method==='GET'&&['/api/bootstrap','/api/menu-access'].includes(path)))){
   // VIEW never mutates. Only explicitly assigned screens can read protected data.
   if(method!=='GET')throw Object.assign(new Error('Tài khoản VIEW không có quyền ghi dữ liệu.'),{status:403});
   const access=await resolveMenuPermissions(env.DB,user);user.menuKeys=access.keys;
@@ -184,11 +184,20 @@ async function handle(req,env){
  }
  if(method==='POST'&&path==='/api/account/change-pin'){
   const b=await requestJSON(req),oldPin=String(b.oldPin||''),newPin=String(b.newPin||'');
-  if(!/^\\d{6,8}$/.test(newPin))throw Error('PIN mới phải có 6–8 chữ số.');
+  if(!/^\d{6,8}$/.test(newPin))throw Error('PIN mới phải có 6–8 chữ số.');
   if(oldPin===newPin)throw Error('PIN mới phải khác PIN hiện tại.');
-  const owner=await env.DB.prepare('SELECT pin_salt,pin_hash FROM users WHERE id=? AND active=1').bind(user.id).first();
+  const owner=await env.DB.prepare('SELECT pin_salt,pin_hash,locked_until FROM users WHERE id=? AND active=1').bind(user.id).first();
   if(!owner)throw authError();
-  if((await hashPin(oldPin,owner.pin_salt))!==owner.pin_hash)throw Object.assign(new Error('PIN hiện tại không đúng.'),{status:403});
+  if(owner.locked_until>now())throw Object.assign(new Error('Tài khoản tạm khóa thao tác PIN.'),{status:429});
+  if((await hashPin(oldPin,owner.pin_salt))!==owner.pin_hash){
+   // Self-service PIN changes use the same failed-attempt lockout as login.
+   const attempts=await env.DB.prepare('SELECT failed_attempts,locked_until FROM users WHERE id=?').bind(user.id).first();
+   if(attempts?.locked_until>now())throw Object.assign(new Error('Tài khoản tạm khóa thao tác PIN.'),{status:429});
+   const n=(attempts?.failed_attempts||0)+1;
+   await env.DB.prepare('UPDATE users SET failed_attempts=?,locked_until=? WHERE id=?')
+    .bind(n>=5?0:n,n>=5?now()+900:0,user.id).run();
+   throw Object.assign(new Error('PIN hiện tại không đúng.'),{status:403});
+  }
   const salt=uid(),hashed=await hashPin(newPin,salt);
   const updated=await env.DB.prepare('UPDATE users SET pin_salt=?,pin_hash=?,failed_attempts=0,locked_until=0 WHERE id=? AND pin_hash=?')
    .bind(salt,hashed,user.id,owner.pin_hash).run();
