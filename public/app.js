@@ -1241,6 +1241,38 @@ $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 $('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
 $('overviewSearch').oninput=renderOverview;
 $('overviewStatus').onchange=renderOverview;
+
+function openAccountInfo(){
+ if(!state.user)return notice('Cần đăng nhập để xem thông tin tài khoản.');
+ const wrap=$('accountInfoContent');wrap.replaceChildren();
+ for(const [key,value] of [['Họ và tên',state.user.name],['Email',state.user.email],['Vai trò',state.user.role],['Đóng hàng',state.user.rights?.dongHang?'Có':'Không'],['Vận đơn',state.user.rights?.vanDon?'Có':'Không']]){
+  const row=el('div',null,'summary-field');row.append(el('strong',key),el('span',String(value||'—')));wrap.append(row);
+ }
+ wrap.append(el('p','Mật khẩu tài khoản Google được quản lý tại Google; PIN Qbooks được đổi riêng trong chương trình.','hint'));
+ $('accountMenu').open=false;
+ $('accountInfoDialog').showModal();
+}
+$('accountInfoBtn').onclick=openAccountInfo;
+$('accountTopBtn').onclick=openAccountInfo;
+$('closeAccountInfo').onclick=()=>$('accountInfoDialog').close();
+$('changePinBtn').onclick=()=>{
+ $('accountMenu').open=false;$('changePinForm').reset();$('changePinStatus').textContent='';
+ $('changePinDialog').showModal();
+};
+$('closeChangePin').onclick=()=>$('changePinDialog').close();
+$('changePinForm').onsubmit=async event=>{
+ event.preventDefault();
+ const form=event.currentTarget,values=Object.fromEntries(new FormData(form));
+ if(values.newPin!==values.confirmPin){$('changePinStatus').textContent='PIN xác nhận không khớp.';return;}
+ const save=form.querySelector('button[type=submit]');save.disabled=true;
+ try{
+  await api('POST','/api/account/change-pin',{oldPin:values.oldPin,newPin:values.newPin});
+  form.reset();$('changePinStatus').textContent='Đã đổi mã PIN. Các phiên đăng nhập khác đã bị đăng xuất.';
+  notice('Đã đổi mã PIN Qbooks thành công.',true);
+ }catch(e){$('changePinStatus').textContent=e.message;}
+ finally{save.disabled=false;}
+};
+
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
 $('copyOrderInfo').onclick=copyOrderInformation;
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
