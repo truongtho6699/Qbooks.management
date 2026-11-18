@@ -87,3 +87,27 @@ test('direct Drive upload: initiate, stream and independently verify file before
  }finally{globalThis.fetch=original;}
  assert.equal(completed,1);
 });
+
+test('metadata mismatch never marks Drive upload COMPLETE',async()=>{
+ const prior=globalThis.fetch;
+ const id='123e4567-e89b-12d3-a456-426614174123',folder='1I3yAbCsMn_PiJ-haPblWdNNujbDYmy2N';
+ const statements=[];
+ const env={DB:{prepare(sql){return {bind(...args){return {async run(){statements.push(sql);return {meta:{changes:1}};}};}}}},
+  GOOGLE_CLIENT_ID:'id',GOOGLE_OAUTH_CLIENT_SECRET:'secret',GOOGLE_REFRESH_TOKEN:'refresh'};
+ globalThis.fetch=async(input,options={})=>{
+  const url=String(input);
+  if(url==='https://oauth2.googleapis.com/token')return Response.json({access_token:'fake'});
+  if(url.includes('/drive/v3/files/file-1234567890'))return Response.json({
+   id:'file-1234567890',size:'5',mimeType:'video/mp4',trashed:false,
+   parents:[folder],appProperties:{qbooksUploadId:id}
+  });
+  throw Error('Unexpected request '+url);
+ };
+ try{
+  const record={id,storage_backend:'DRIVE',status:'UPLOADING',drive_file_id:'file-1234567890',
+   drive_folder_url:'https://drive.google.com/drive/folders/'+folder,
+   bytes:4,content_type:'video/mp4'};
+  await assert.rejects(()=>inspectDriveUpload(env,record),/chưa khớp/);
+  assert.equal(statements.some(sql=>sql.includes("status='COMPLETE'")),false);
+ }finally{globalThis.fetch=prior;}
+});
