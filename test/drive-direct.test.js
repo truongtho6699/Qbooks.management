@@ -76,7 +76,7 @@ test('direct Drive upload: initiate, stream and independently verify file before
   assert.equal(begun.storage,'DRIVE');assert.equal(posted,1);
   const record={id:uploadId,user_id:'user-1',order_id:'DON_20261118_0001',status:'UPLOADING',storage_backend:'DRIVE',
    bytes:4,content_type:'video/mp4',drive_session_url:session,drive_folder_url:'https://drive.google.com/drive/folders/'+folderId,drive_offset:0};
-  const request=new Request('https://qbooks.local/api/drive-uploads/'+uploadId+'/chunk?offset=0',{method:'PUT',body:Buffer.from('abcd')});
+  const request=new Request('https://qbooks.local/api/drive-uploads/'+uploadId+'/chunk?offset=0',{method:'PUT',headers:{'content-length':'4'},body:Buffer.from('abcd')});
   const complete=await putDriveChunk(env,record,request);
   assert.equal(complete.status,'COMPLETE');assert.equal(complete.fileId,fileId);
   assert.equal(requestedOffset,0);
