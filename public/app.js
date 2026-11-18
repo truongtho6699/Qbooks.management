@@ -2,8 +2,34 @@ import {trackDraft,markDraftSaved,confirmLeave,protectBeforeUnload,humanizeError
 
 const CHUNK_BYTES=8*1024*1024;
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null};
+const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
+const REMEMBER_EMAIL='qbooks_remember_email';
+const REMEMBER_TOKEN='qbooks_remember_token';
+function clearLoginSession(){
+ state.token='';
+ sessionStorage.removeItem('qbooks_token');
+ localStorage.removeItem(REMEMBER_TOKEN);
+}
+function saveLoginSession(result,email,remember){
+ // Only store a temporary Qbooks session, never PIN/password or Google OAuth credentials.
+ state.token=result.token;
+ sessionStorage.setItem('qbooks_token',result.token);
+ if(remember){
+  localStorage.setItem(REMEMBER_TOKEN,result.token);
+  if(email)localStorage.setItem(REMEMBER_EMAIL,String(email).trim().toLowerCase());
+ }else{
+  localStorage.removeItem(REMEMBER_TOKEN);
+  localStorage.removeItem(REMEMBER_EMAIL);
+ }
+}
+function prefillRememberedAccount(){
+ const input=$('loginForm')?.elements?.email;
+ const saved=localStorage.getItem(REMEMBER_EMAIL);
+ if(input&&saved)input.value=saved;
+ const checkbox=$('rememberLogin');if(checkbox)checkbox.checked=!!localStorage.getItem(REMEMBER_TOKEN)||!!saved||!localStorage.getItem('qbooks_remember_preference');
+}
+
 const $all=(s)=>[...document.querySelectorAll(s)];
 function notice(text='',ok=false){$('notice').textContent=ok?text:humanizeError(text);$('notice').className=ok?'notice ok':'notice';}
 async function api(method,path,data,blob=false){
@@ -47,9 +73,9 @@ function makeCard(order,fn){
  card.type='button';card.append(orderCardContents(order));card.onclick=fn;
  return card;
 }
-async function login(email,pin){
+async function login(email,pin,remember){
  const res=await api('POST','/api/login',{email,pin});
- state.token=res.token;sessionStorage.setItem('qbooks_token',res.token);
+ saveLoginSession(res,res.user?.email||email,remember);
  await bootstrap();
 }
 async function loadGoogleSdk(){
@@ -86,8 +112,7 @@ async function initGoogleSignIn(){
       return notice(result.message,true);
      }
      if(!result.token)throw Error('Máy chủ chưa cấp phiên đăng nhập.');
-     state.token=result.token;
-     sessionStorage.setItem('qbooks_token',result.token);
+     saveLoginSession(result,result.user?.email||'',!!$('rememberLogin')?.checked);
      await bootstrap();
     }catch(e){notice('Đăng nhập Google thất bại: '+e.message);}
     finally{if(!state.user)$('googleStatus').textContent='Tài khoản mới cần quản trị phê duyệt trước khi sử dụng.';}
@@ -237,7 +262,7 @@ async function bootstrap(){
   if(['overview','sale','pack','ship'].includes(tabParam)&&permitted(tabParam))state.tab=tabParam;
   state.area='orders';switchView();
 
- }catch(e){state.token='';sessionStorage.removeItem('qbooks_token');show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';notice(e.message);}
+ }catch(e){clearLoginSession();show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';notice(e.message);}
 }
 function syncRoute(area,view){
  const q=new URLSearchParams();
@@ -909,8 +934,8 @@ async function loadGroupOptions(){
   if(!options.length)list.append(el('p','Không có đơn chưa gộp.'));
  }catch(e){notice(e.message)}
 }
-$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();sessionStorage.removeItem('qbooks_token');window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin,!!$('rememberLogin')?.checked)}catch(error){notice(error.message)}});
+$('logoutBtn').onclick=async()=>{if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packControls'));markDraftSaved($('shipControls'));tab(state.tab);};
@@ -1155,6 +1180,7 @@ $('overviewSearch').oninput=renderOverview;
 $('overviewStatus').onchange=renderOverview;
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
+prefillRememberedAccount();
 initGoogleSignIn();
 protectBeforeUnload();
 if(state.token)bootstrap();
