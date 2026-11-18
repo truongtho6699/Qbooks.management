@@ -2,7 +2,7 @@
 <html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><title>QBOOK · Hệ thống quản trị</title><link rel="stylesheet" href="/video.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/navigation.css"><link rel="stylesheet" href="/ui-v3.css"><link rel="stylesheet" href="/unified.css"></head>
 <body>
 <a class="qb-skip" id="qbSkipLink" href="#loginPage">Bỏ qua menu, đến nội dung chính</a>
-<header class="top"><div class="brand"><span class="symbol">Q</span><div><strong>QBOOK · QUẢN TRỊ</strong><small>Giao hàng · Media · Hệ thống</small></div></div><div class="profile"><span id="userInfo"></span><button class="ghost" id="logoutBtn" hidden>Thoát</button></div></header>
+<header class="top"><div class="brand"><span class="symbol">Q</span><div><strong>QBOOK · QUẢN TRỊ</strong><small>Giao hàng · Media · Hệ thống</small></div></div><div class="profile"><button type="button" id="accountTopBtn" class="ghost" aria-label="Quản lý tài khoản"><span id="userInfo"></span></button></div></header>
 <main class="container"><div id="notice" class="notice" role="status" aria-live="polite"></div>
 <section id="loginPage" class="auth" tabindex="-1"><div class="auth-card"><h1>Đăng nhập QBooks</h1><p>Sử dụng tài khoản được quản trị cấp quyền.</p><form id="loginForm"><label>Email nhân sự<input name="email" type="email" autocomplete="username" required placeholder="email@congty.vn"></label><label>Mã PIN<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="3" maxlength="12" required></label><label class="check"><input id="rememberLogin" name="remember" type="checkbox" checked> Ghi nhớ đăng nhập trên thiết bị này</label><p class="hint">Tự đăng nhập lại khi phiên còn hiệu lực (tối đa 12 giờ). Không lưu mã PIN.</p><button class="primary" type="submit">ĐĂNG NHẬP</button></form><div class="google-section"><div class="google-separator">Hoặc tiếp tục bằng Google</div><div id="googleSignIn" class="google-sign-in"></div><button type="button" id="googleUnavailable" class="secondary" disabled>Đăng nhập / Đăng ký bằng Google (chưa cấu hình)</button><p class="hint" id="googleStatus">Tài khoản mới cần quản trị viên phê duyệt trước khi dùng.</p></div></section>
 <section id="appPage" tabindex="-1" hidden>
@@ -11,7 +11,9 @@
   <div class="shipping-logo"><strong>QBOOK</strong><small>HỆ THỐNG QUẢN TRỊ</small></div>
   <div class="shipping-nav-title">CHỨC NĂNG</div>
   <nav class="tabs qbn-tree" id="tabs" aria-label="Điều hướng quản trị QBOOK"></nav>
-  <div class="shipping-sidebar-footer">QBOOKS · 2026</div>
+  <div class="shipping-sidebar-footer" id="accountSidebar">
+<details id="accountMenu"><summary class="qbook-account-trigger"><span class="qbook-account-avatar" aria-hidden="true">👤</span><span><strong id="accountMenuName">Tài khoản</strong><small id="accountMenuRole">Quản lý tài khoản</small></span><span aria-hidden="true">▴</span></summary>
+<div class="qbook-account-actions"><button type="button" id="accountInfoBtn">Thông tin tài khoản</button><button type="button" id="changePinBtn">Đổi mật khẩu / mã PIN</button><button type="button" id="logoutBtn" class="qbook-account-logout" hidden>Đăng xuất</button></div></details></div>
  </aside>
  <div class="shipping-workspace">
  <div class="shipping-heading"><button id="qbnToggle" type="button" class="qbn-drawer-toggle" aria-label="Mở menu chức năng" aria-expanded="false">☰ Menu</button><div><small id="qbookSectionLabel">QUẢN LÝ GIAO HÀNG</small><h1 id="shippingHeading">Tổng quan</h1><p id="shippingSubheading">Theo dõi toàn bộ quá trình xử lý đơn</p></div><span id="shippingUserBadge"></span></div>
@@ -48,7 +50,16 @@
 </section>
 <section id="saleView" hidden><div class="panel" id="newSalePanel"><h2>Sale · Lên đơn</h2>
 <p class="hint">Đơn lưu tại QBOOK sẽ chuyển sang Đóng hàng và Vận đơn. Lưu ý: đơn chưa tự đồng bộ về Google Sheets; không nhập lại cùng mã hóa đơn ở hai nơi.</p>
-<form id="saleForm"><div class="fields"><label>Mã hóa đơn (có thể nhập nhiều mã, cách nhau bằng dấu phẩy)<input name="invoice_codes" placeholder="HD0011, HD0012" required></label><label>Tên Sale<input name="sale_name" placeholder="Admin" required></label><label>Tên khách hàng<input name="customer" required></label><label>Số quyển<input name="quantity" type="number" min="1" step="1" value="1" required></label><label>Loại vận chuyển<input name="transport" placeholder="Gửi xe, Ship ngoài..."></label><label>Nhà xe (nếu có)<input name="carrier"></label><label>Địa chỉ<input name="address"></label><label class="check"><input name="urgent" type="checkbox"> Đơn gấp</label></div><button class="primary">LƯU ĐƠN SALE</button></form></div>
+<form id="saleForm"><div class="fields">
+<label class="span-all">Gấp / Thời gian giao *<select id="saleDeliveryMode" name="delivery_mode" required><option value="">-- Chọn gấp hoặc thời gian giao --</option><option value="GAP">GẤP</option><option value="THOI_GIAN">Chọn thời gian giao</option></select></label>
+<label class="span-all" id="saleDeliveryTimeBox" hidden>Ngày giờ giao *<input id="saleDeliveryTime" type="datetime-local" name="delivery_time"></label>
+<label>Mã hóa đơn (có thể nhập nhiều mã, cách nhau bằng dấu phẩy)<input name="invoice_codes" placeholder="HD0011, HD0012" required></label>
+<label>Loại vận chuyển *<select name="transport" required><option value="">-- Chọn loại vận chuyển --</option><option>SHIP NGOÀI</option><option>SHIP KIOT</option><option>GỬI XE</option><option>GỬI TÀU</option><option>GIAO HÀNG</option><option>ĐÓNG ĐƠN</option></select></label>
+<label>Tên khách hàng<input name="customer" required></label>
+<label>Địa chỉ<input name="address"></label>
+<label>Số quyển<input name="quantity" type="number" min="1" step="1" value="1" required></label>
+<label>Nhà xe (nếu có)<input name="carrier"></label>
+</div><button class="primary">LƯU ĐƠN SALE</button></form></div>
 <div class="panel"><h2>Gộp nhiều đơn vào một mã vận đơn</h2><p class="hint">Chỉ gộp các đơn tạo trên Qbook (nguồn D1). Đơn từ Google Sheets tiếp tục gộp tại SALE_GOP_VAN_DON.</p><div id="groupList" class="cards compact"></div><button class="secondary" id="createGroup">TẠO NHÓM VẬN ĐƠN</button></div></section>
 <section id="detailView" hidden><button class="textbtn" id="backBtn">← Quay lại danh sách</button><div class="panel"><div id="selectedOrder"></div><div id="packControls">
 <h2>Đóng hàng</h2><div class="fields"><label>Ảnh hóa đơn<input type="file" id="invoicePics" accept="image/*" multiple></label><label>Video đóng hàng (tối đa 60 phút, 2 GB/tệp)<input type="file" id="videos" accept="video/*" multiple></label><label>Ảnh hàng hóa<input type="file" id="goodsPics" accept="image/*" multiple></label><label>Số thùng<input type="number" id="boxes" min="0" value="0"></label><div class="field span-all"><strong>Người đóng cùng</strong><div id="packingHelpers" class="helper-checks"></div></div><label>Ghi chú đóng hàng<textarea id="packNote"></textarea></label></div><div class="drive-upload-control"><span id="packingDriveStatus" class="hint">Sau khi lưu, hệ thống sẽ đưa hồ sơ vào hàng đợi tự động chuyển sang Drive. Không cần kết nối Google của nhân viên.</span></div>
@@ -64,14 +75,14 @@
 <label>Phí bến <input id="terminalFee" type="number" min="0" value="0"></label>
 <label>Phụ phí <input id="extraFee" type="number" min="0" value="0"></label>
 <div class="field span-all"><strong>Tổng tiền</strong><div class="money-total" id="shippingTotal">0 đ</div></div>
-<label>Trạng thái sau lưu <select id="shippingStatus"><option value="HOÀN THÀNH">Hoàn thành</option><option value="ĐANG GIAO">Đang giao</option></select></label>
+
 <label>Ảnh bàn giao/giao hàng <input type="file" id="shippingPics" accept="image/*" multiple></label>
 <label>Ghi chú vận đơn <textarea id="shippingNote"></textarea></label></div>
 <div class="drive-upload-control"><span id="shippingDriveStatus" class="hint">Ảnh giao hàng được lưu R2 rồi chờ hệ thống tự chuyển Drive; không cần nhân viên kết nối Google.</span></div>
 <button class="primary" id="saveShipping">LƯU VẬN ĐƠN</button></div>
 <div class="progress-wrap" id="progressWrap" hidden><div id="uploadLabel">Đang tải lên...</div><progress id="uploadProgress" value="0" max="100"></progress><small id="uploadDetail"></small></div></div></section>
 <section id="staffView" hidden>
-<div class="panel" id="googleSyncPanel">
+<div class="panel" id="googleSyncPanel" data-admin-section="sync">
  <h2>Đồng bộ QBooks → Google</h2>
  <p class="hint">Chuyển ảnh/video từ R2 sang thư mục Drive của từng đơn, sau đó đối chiếu và cập nhật các ô thay đổi trong DATA_TONG. Tệp R2 được giữ nguyên.</p>
  <div class="sync-buttons">
@@ -84,12 +95,12 @@
  <label class="check"><input type="checkbox" id="syncSheetApprove"> Tôi đã kiểm tra đơn hàng và đồng ý ghi các trường thay đổi vào DATA_TONG sau khi chuyển đủ tệp.</label>
  <div id="syncOrders" class="cards compact"></div>
 </div>
-<div class="panel"><h2>Đối chiếu Google Sheets V35</h2><p class="hint">Chỉ đọc dữ liệu. Chưa được ghi về DATA_TONG hoặc tạo hồ sơ Drive trong chương trình này.</p><button type="button" class="secondary" id="connectGoogleSheets">Đọc Google Sheets bằng Google (chỉ đọc)</button><button type="button" class="secondary" id="connectGoogleDrive">Kiểm tra thư mục Drive (chỉ đọc)</button><button type="button" class="secondary" id="checkLegacy">Kiểm tra cầu nối máy chủ</button><button type="button" class="secondary" id="previewLegacy">Xem trước 50 đơn</button><div id="legacyStatus" class="hint"></div><div id="legacyPreview" class="cards compact"></div><div class="field"><label class="check"><input type="checkbox" id="confirmImport" disabled> Tôi đã đối chiếu danh sách nguồn và đồng ý <strong>chỉ nhập từ Google Sheets vào D1</strong>; không ghi ngược về trang tính hoặc Drive</label></div><button type="button" class="secondary" id="importGoogleSheets" disabled>NHẬP DỮ LIỆU ĐÃ ĐỐI CHIẾU VÀO D1</button><p class="hint">Cần dùng tài khoản Google có quyền đọc file gốc. Không lưu mã truy cập Google trên máy chủ hoặc trình duyệt sau khi đóng trang.</p></div><div class="panel"><h2>Đăng ký Google chờ duyệt</h2><p class="hint">Chỉ quản trị mới được cấp quyền cho tài khoản mới.</p><button type="button" class="secondary" id="refreshGooglePending">Làm mới danh sách đăng ký</button><div id="googlePendingList" class="cards compact"></div></div><div class="panel"><h2>Dữ liệu và nhật ký trên D1</h2><div class="row"><button type="button" class="secondary admin-report" data-kind="DATA">DATA_TONG</button><button type="button" class="secondary admin-report" data-kind="LOG">LOG</button><button type="button" class="secondary admin-report" data-kind="STAFF">Nhân sự</button></div><div id="adminReport" class="table-wrap"></div></div>
-<div class="panel"><h2>Quản trị nhân sự / PIN</h2><p class="hint">Một nhân sự có thể có nhiều quyền cùng lúc. Chọn nhân sự để sửa; không cần nhập lại PIN nếu chỉ đổi quyền.</p><div id="staffList" class="cards compact"></div>
+<div class="panel" data-admin-section="sync"><h2>Đối chiếu Google Sheets V35</h2><p class="hint">Chỉ đọc dữ liệu. Chưa được ghi về DATA_TONG hoặc tạo hồ sơ Drive trong chương trình này.</p><button type="button" class="secondary" id="connectGoogleSheets">Đọc Google Sheets bằng Google (chỉ đọc)</button><button type="button" class="secondary" id="connectGoogleDrive">Kiểm tra thư mục Drive (chỉ đọc)</button><button type="button" class="secondary" id="checkLegacy">Kiểm tra cầu nối máy chủ</button><button type="button" class="secondary" id="previewLegacy">Xem trước 50 đơn</button><div id="legacyStatus" class="hint"></div><div id="legacyPreview" class="cards compact"></div><div class="field"><label class="check"><input type="checkbox" id="confirmImport" disabled> Tôi đã đối chiếu danh sách nguồn và đồng ý <strong>chỉ nhập từ Google Sheets vào D1</strong>; không ghi ngược về trang tính hoặc Drive</label></div><button type="button" class="secondary" id="importGoogleSheets" disabled>NHẬP DỮ LIỆU ĐÃ ĐỐI CHIẾU VÀO D1</button><p class="hint">Cần dùng tài khoản Google có quyền đọc file gốc. Không lưu mã truy cập Google trên máy chủ hoặc trình duyệt sau khi đóng trang.</p></div><div class="panel" data-admin-section="approvals"><h2>Đăng ký Google chờ duyệt</h2><p class="hint">Chỉ quản trị mới được cấp quyền cho tài khoản mới.</p><button type="button" class="secondary" id="refreshGooglePending">Làm mới danh sách đăng ký</button><div id="googlePendingList" class="cards compact"></div></div><div class="panel" data-admin-section="logs"><h2>Dữ liệu và nhật ký trên D1</h2><div class="row"><button type="button" class="secondary admin-report" data-kind="DATA">DATA_TONG</button><button type="button" class="secondary admin-report" data-kind="LOG">LOG</button><button type="button" class="secondary admin-report" data-kind="STAFF">Nhân sự</button><button type="button" class="secondary admin-report" data-kind="VIDEO_LOG">Nhật ký Media</button></div><div id="adminReport" class="table-wrap"></div></div>
+<div class="panel" data-admin-section="accounts"><h2>Quản trị nhân sự / PIN</h2><p class="hint">Một nhân sự có thể có nhiều quyền cùng lúc. Chọn nhân sự để sửa; không cần nhập lại PIN nếu chỉ đổi quyền.</p><div id="staffList" class="cards compact"></div>
 <form id="staffForm" class="fields"><label>Họ tên<input name="name" required></label><label>Email<input name="email" type="email" required></label><label>Vai trò chính<select name="role"><option value="VIEW" selected>VIEW – Chỉ xem (mặc định)</option><option value="SALE">SALE – Sale</option><option value="PACKER">PACKER – Đóng hàng</option><option value="SHIPPER">SHIPPER – Vận đơn</option><option value="ADMIN">ADMIN – Quản trị</option></select></label><label>PIN (3–8 chữ số, bỏ trống khi sửa)<input name="pin" type="password" inputmode="numeric" minlength="3" maxlength="8"></label><label class="check"><input type="checkbox" name="dongHang"> Đóng hàng</label><label class="check"><input type="checkbox" name="vanDon"> Vận đơn</label><label class="check"><input type="checkbox" name="admin"> Quản trị</label><label class="check"><input type="checkbox" name="active" checked> Hoạt động</label>
 <button class="primary" id="saveStaffBtn">TẠO NHÂN SỰ</button><button type="button" id="cancelStaffEdit" class="secondary">Nhập mới</button></form>
-<div class="panel" id="menuPermissionsPanel" hidden>
-<h3>Phân quyền từng menu và Quản lý Media</h3>
+<div class="panel" id="menuPermissionsPanel" data-admin-section="accounts" hidden>
+<h3>Phân quyền tài khoản – Giao hàng, Media và Quản trị hệ thống</h3>
 <p class="hint">Chọn nhân sự hiện có hoặc tạo nhân sự mới. Tài khoản VIEW chỉ xem các menu được bật, không được chỉnh sửa nghiệp vụ.</p>
 <div id="menuPermissionsUser" class="hint"></div>
 <div id="menuPermissionsGrid" class="menu-permissions-grid"></div>
@@ -113,10 +124,13 @@
  <div id="drivePreviewMedia" class="drive-preview-media"></div>
 </dialog>
 <dialog id="orderSummaryDialog" class="order-summary-dialog">
- <div class="summary-header"><h2>Chi tiết đơn hàng</h2><button type="button" id="closeOrderSummary" class="secondary" aria-label="Đóng">Đóng ✕</button></div>
- <div id="orderSummaryInfo"></div>
- <h3>Hồ sơ ảnh/video & liên kết</h3>
+ <div class="summary-header"><h2>Chi tiết đơn</h2><button type="button" id="closeOrderSummary" class="secondary" aria-label="Đóng">Đóng ✕</button></div>
+ <div id="orderSummaryInfo"></div><div class="summary-copy-actions"><button type="button" id="copyOrderInfo" class="primary">Copy thông tin đơn</button></div>
+ <h3>Hồ sơ chi tiết</h3>
  <div id="orderSummaryMedia" class="overview-media-links"></div>
-</dialog><footer>QBOOK · Giao hàng · Media · Quản trị hệ thống · D1 · Drive · R2</footer><script src="https://accounts.google.com/gsi/client" async defer></script><script src="/navigation.js"></script>
+</dialog>
+<dialog id="accountInfoDialog" class="order-summary-dialog"><div class="summary-header"><h2>Thông tin tài khoản</h2><button type="button" id="closeAccountInfo" class="secondary">Đóng ✕</button></div><div id="accountInfoContent"></div></dialog>
+<dialog id="changePinDialog" class="order-summary-dialog"><div class="summary-header"><h2>Đổi mật khẩu / mã PIN Qbooks</h2><button type="button" id="closeChangePin" class="secondary">Đóng ✕</button></div><form id="changePinForm" class="fields"><p class="hint span-all">Mã PIN Qbooks khác mật khẩu Google. Người đăng nhập chỉ bằng Google và chưa có PIN hãy liên hệ quản trị viên để đặt PIN lần đầu.</p><label>PIN hiện tại<input name="oldPin" type="password" inputmode="numeric" autocomplete="current-password" required></label><label>PIN mới (6–8 chữ số)<input name="newPin" type="password" inputmode="numeric" minlength="6" maxlength="8" pattern="[0-9]{6,8}" autocomplete="new-password" required></label><label>Xác nhận PIN mới<input name="confirmPin" type="password" inputmode="numeric" minlength="6" maxlength="8" pattern="[0-9]{6,8}" autocomplete="new-password" required></label><button type="submit" class="primary">Cập nhật PIN</button><p id="changePinStatus" class="hint span-all" role="status"></p></form></dialog>
+<footer>QBOOK · Giao hàng · Media · Quản trị hệ thống · D1 · Drive · R2</footer><script src="https://accounts.google.com/gsi/client" async defer></script><script src="/navigation.js"></script>
 <script type="module" src="/app.js"></script><div id="qbnDrawer" class="qbn-drawer" hidden aria-hidden="true"><div class="qbn-mobile-pane"><div class="qbn-mobile-head"><span>QBOOK · CHỨC NĂNG</span><button id="qbnClose" class="qbn-close" type="button">Đóng ✕</button></div><nav id="qbnMobileTree" class="qbn-tree" aria-label="Điều hướng trên điện thoại"></nav></div></div>
 </body></html>
