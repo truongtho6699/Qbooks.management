@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/worker.js && node --check src/domain.js && node --check public/app.js && node --check src/drive-auto-worker.js && node --check src/r2-drive-move.js && node --check src/sync-google.js && node scripts/build-drive-worker.mjs",
+    "check": "node --check src/drive-direct.js && node --check src/worker.js && node --check src/domain.js && node --check public/app.js && node --check src/drive-auto-worker.js && node --check src/r2-drive-move.js && node --check src/sync-google.js && node scripts/build-drive-worker.mjs",
     "build:drive-worker": "node scripts/build-drive-worker.mjs"
   },
   "engines": {
