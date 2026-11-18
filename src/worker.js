@@ -144,7 +144,7 @@ async function handle(req,env){
  const permittedMenus=async()=>{if(!user.menuKeys)user.menuKeys=(await resolveMenuPermissions(env.DB,user)).keys;return user.menuKeys;};
  const requireMenu=async key=>{if(user.can_admin===1||user.role==='ADMIN')return;const x=await permittedMenus();if(!x.includes(key))throw Object.assign(new Error('Chưa được cấp quyền menu '+(MENU_LABELS[key]||key)+'.'),{status:403});};
  const requireAnyMenu=async keys=>{if(user.can_admin===1||user.role==='ADMIN')return;const x=await permittedMenus();if(!keys.some(k=>x.includes(k)))throw Object.assign(new Error('Chưa được cấp quyền chức năng.'),{status:403});};
- if(user.role==='VIEW'&&!((method==='POST'&&path==='/api/logout')||(method==='GET'&&['/api/bootstrap','/api/menu-access'].includes(path)))){
+ if(user.role==='VIEW'&&!((method==='POST'&&['/api/logout','/api/account/change-pin'].includes(path))||(method==='GET'&&['/api/bootstrap','/api/menu-access'].includes(path)))){
   // VIEW never mutates. Only explicitly assigned screens can read protected data.
   if(method!=='GET')throw Object.assign(new Error('Tài khoản VIEW không có quyền ghi dữ liệu.'),{status:403});
   const access=await resolveMenuPermissions(env.DB,user);user.menuKeys=access.keys;
@@ -181,6 +181,30 @@ async function handle(req,env){
    return json({ok:true,userId:targetId});
   }
   throw Object.assign(new Error('Phương thức không hợp lệ.'),{status:405});
+ }
+ if(method==='POST'&&path==='/api/account/change-pin'){
+  const b=await requestJSON(req),oldPin=String(b.oldPin||''),newPin=String(b.newPin||'');
+  if(!/^\d{6,8}$/.test(newPin))throw Error('PIN mới phải có 6–8 chữ số.');
+  if(oldPin===newPin)throw Error('PIN mới phải khác PIN hiện tại.');
+  const owner=await env.DB.prepare('SELECT pin_salt,pin_hash,locked_until FROM users WHERE id=? AND active=1').bind(user.id).first();
+  if(!owner)throw authError();
+  if(owner.locked_until>now())throw Object.assign(new Error('Tài khoản tạm khóa thao tác PIN.'),{status:429});
+  if((await hashPin(oldPin,owner.pin_salt))!==owner.pin_hash){
+   // Self-service PIN changes use the same failed-attempt lockout as login.
+   const attempts=await env.DB.prepare('SELECT failed_attempts,locked_until FROM users WHERE id=?').bind(user.id).first();
+   if(attempts?.locked_until>now())throw Object.assign(new Error('Tài khoản tạm khóa thao tác PIN.'),{status:429});
+   const n=(attempts?.failed_attempts||0)+1;
+   await env.DB.prepare('UPDATE users SET failed_attempts=?,locked_until=? WHERE id=?')
+    .bind(n>=5?0:n,n>=5?now()+900:0,user.id).run();
+   throw Object.assign(new Error('PIN hiện tại không đúng.'),{status:403});
+  }
+  const salt=uid(),hashed=await hashPin(newPin,salt);
+  const updated=await env.DB.prepare('UPDATE users SET pin_salt=?,pin_hash=?,failed_attempts=0,locked_until=0 WHERE id=? AND pin_hash=?')
+   .bind(salt,hashed,user.id,owner.pin_hash).run();
+  if(updated.meta.changes!==1)throw Object.assign(new Error('PIN đã thay đổi ở phiên khác. Vui lòng thử lại.'),{status:409});
+  const sessionToken=(req.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id=? AND token_hash<>?').bind(user.id,await sha(sessionToken)).run();
+  await audit(env,user,'SELF_CHANGE_PIN');return json({ok:true});
  }
  if(method==='POST'&&path==='/api/logout'){
   const token=req.headers.get('authorization').replace(/^Bearer\s+/i,'');
@@ -404,6 +428,10 @@ async function handle(req,env){
    const result=await env.DB.prepare('SELECT created_at,action,order_id,details FROM audit_log ORDER BY id DESC LIMIT 300').all();
    return json({headers:['THOI_GIAN','HANH_DONG','ID_DON','CHI_TIET'],rows:(result.results||[]).map(x=>[x.created_at,x.action,x.order_id,x.details])});
   }
+  if(kind==='VIDEO_LOG'){
+   const result=await env.DB.prepare('SELECT a.created_at,u.name AS actor_name,a.action,a.video_id,a.details FROM video_audit a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.id DESC LIMIT 300').all();
+   return json({headers:['THOI_GIAN','NHAN_SU','HANH_DONG','ID_VIDEO','CHI_TIET'],rows:(result.results||[]).map(x=>[x.created_at,x.actor_name||'',x.action,x.video_id||'',x.details||''])});
+  }
   if(kind==='STAFF'){
    const result=await env.DB.prepare("SELECT u.email,u.name,CASE WHEN vr.user_id IS NOT NULL THEN 'VIEW' ELSE u.role END AS role,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_pack END AS can_pack,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_ship END AS can_ship,CASE WHEN vr.user_id IS NOT NULL THEN 0 ELSE u.can_admin END AS can_admin,u.active FROM users u LEFT JOIN user_view_roles vr ON vr.user_id=u.id ORDER BY u.name LIMIT 300").all();
    return json({headers:['EMAIL','HO_TEN','VAI_TRO','DONG_HANG','VAN_DON','ADMIN','TRANG_THAI'],rows:(result.results||[]).map(x=>[x.email,x.name,x.role,x.can_pack,x.can_ship,x.can_admin,x.active?'HOẠT ĐỘNG':'NGỪNG'])});
@@ -466,7 +494,7 @@ async function handle(req,env){
   const isManager=hasRole(user,'ADMIN');
   // Overview is scoped to accessible operational orders for non-admin workers.
   const where=isManager||user.role==='VIEW'?'':hasRole(user,'PACKER')&&hasRole(user,'SHIPPER')?'':hasRole(user,'PACKER')?" WHERE status IN ('CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN')":" WHERE status IN ('CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH')";
-  const data=await env.DB.prepare('SELECT id,invoice_codes,customer,sale_name,quantity,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').all();
+  const data=await env.DB.prepare('SELECT id,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').all();
   const orders=data.results||[];
   const byId=new Map(orders.map(o=>[o.id,{...o,media:[]}]));
   if(orders.length){
@@ -511,10 +539,17 @@ async function handle(req,env){
   if(!Number.isSafeInteger(qty)||qty<=0||qty>1000000)throw Error('Số lượng quyển phải là số nguyên dương.');
   const existing=await env.DB.prepare("SELECT id FROM orders WHERE REPLACE(REPLACE(UPPER(TRIM(invoice_codes)),' ',''),CHAR(9),'')=REPLACE(REPLACE(UPPER(TRIM(?)),' ',''),CHAR(9),'') LIMIT 1").bind(invoice).first();
   if(existing)throw Object.assign(new Error('Mã hóa đơn đã tồn tại trong D1/Google Sheets. Hãy kiểm tra để tránh tạo trùng.'),{status:409});
+  const transport=clean(b.transport).toUpperCase();
+  if(!['SHIP NGOÀI','SHIP KIOT','GỬI XE','GỬI TÀU','GIAO HÀNG','ĐÓNG ĐƠN'].includes(transport))throw Error('Cần chọn loại vận chuyển hợp lệ.');
+  const mode=clean(b.delivery_mode),urgent=mode==='GAP';
+  if(!['GAP','THOI_GIAN'].includes(mode))throw Error('Cần chọn GẤP hoặc thời gian giao.');
+  const deliveryTime=mode==='THOI_GIAN'?clean(b.delivery_time):'';
+  if(mode==='THOI_GIAN'&&!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(deliveryTime))throw Error('Thời gian giao phải có ngày và giờ hợp lệ.');
+  if(deliveryTime&&!Number.isFinite(new Date(deliveryTime).getTime()))throw Error('Thời gian giao không hợp lệ.');
   const id=uid();
   try{
-   await env.DB.prepare("INSERT INTO orders(id,invoice_codes,sale_name,customer,quantity,address,carrier,transport,urgent,created_by,source_system,local_dirty) VALUES(?,?,?,?,?,?,?,?,?,?,'D1',0)")
-     .bind(id,invoice,saleName,customer,qty,clean(b.address),clean(b.carrier),clean(b.transport),b.urgent?1:0,user.id).run();
+   await env.DB.prepare("INSERT INTO orders(id,invoice_codes,sale_name,customer,quantity,address,carrier,transport,urgent,delivery_time,created_by,source_system,local_dirty) VALUES(?,?,?,?,?,?,?,?,?,?,?,'D1',0)")
+     .bind(id,invoice,saleName,customer,qty,clean(b.address),clean(b.carrier),transport,urgent?1:0,deliveryTime,user.id).run();
   }catch(e){if(/UNIQUE constraint failed/i.test(e.message))throw Object.assign(new Error('Mã hóa đơn đã tồn tại. Không tạo thêm đơn trùng.'),{status:409});throw e;}
   await audit(env,user,'CREATE_ORDER_D1',id,invoice);return json({id,source:'D1',googleSynced:false},201);
  }
@@ -648,7 +683,7 @@ async function handle(req,env){
   for(const id of ids){await assertOrderLock(env,user,id,'VAN_DON');await checkUploads(env,id,['GIAO_HANG']);}
   const form=validateShippingForm({loaiShip:b.loaiShip,sdtShip:b.sdtShip,tenShip:b.tenShip,
    tienShip:b.tienShip,hangNang:b.hangNang,phiBen:b.phiBen,phuPhi:b.phuPhi});
-  const target=b.status===STATUS.MOVING?STATUS.MOVING:STATUS.DONE;
+  const target=STATUS.DONE; // Saving the shipment completes the order.
   const groupId=groupIds[0]||('VD_'+new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14)+'_'+uid().slice(0,4));
   const stmts=[];
   if(!groupIds.length)stmts.push(env.DB.prepare('INSERT INTO shipping_groups(id,created_by) VALUES(?,?)').bind(groupId,user.id));

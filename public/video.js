@@ -4,20 +4,15 @@ const $=id=>document.getElementById(id);
 const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]},menuKeys:[]};
 const NAV=[
  {id:'dashboard',text:'Bảng điều khiển',icon:'▦',group:'CHUNG'},
- {id:'adminOverview',text:'Tổng quan quản trị',icon:'▤',group:'CHUNG'},
  {id:'filmOverview',text:'Tổng quan quay',icon:'▣',group:'QUAY VIDEO'},
  {id:'film',text:'Quay bài',icon:'◉',group:'QUAY VIDEO'},
- {id:'createVideo',text:'Lập kế hoạch video',icon:'＋',group:'QUAY VIDEO'},
  {id:'postOverview',text:'Tổng quan hậu kỳ',icon:'◫',group:'HẬU KỲ'},
  {id:'edit',text:'Xử lý video',icon:'✎',group:'HẬU KỲ'},
  {id:'production',text:'Sản lượng hằng ngày',icon:'▤',group:'QUẢN LÝ'},
  {id:'booksProgress',text:'Tiến độ đầu sách',icon:'◷',group:'QUẢN LÝ'},
  {id:'report',text:'Báo cáo tổng hợp',icon:'▥',group:'QUẢN LÝ'},
  {id:'books',text:'Quản trị đầu sách',icon:'▧',group:'QUẢN TRỊ'},
- {id:'catalog',text:'Danh mục bài học',icon:'≡',group:'QUẢN TRỊ'},
- {id:'staff',text:'Quản trị nhân viên',icon:'♙',group:'QUẢN TRỊ'},
- {id:'permissions',text:'Phân quyền tài khoản',icon:'♙',group:'QUẢN TRỊ'},
- {id:'audit',text:'Lịch sử thao tác',icon:'◴',group:'QUẢN TRỊ'}
+ {id:'catalog',text:'Danh mục bài học',icon:'≡',group:'QUẢN TRỊ'}
 ];
 const mobile=[{id:'dashboard',text:'Tổng quan',icon:'▦'},{id:'film',text:'Quay',icon:'◉'},{id:'edit',text:'Hậu kỳ',icon:'✎'},{id:'booksProgress',text:'Đầu sách',icon:'▧'},{id:'more',text:'Khác',icon:'☷'}];
 const statColor={'CHỜ QUAY':'','ĐÃ QUAY':'blue','ĐANG HẬU KỲ':'purple','CHỜ DUYỆT':'amber','ĐÃ PHÁT HÀNH':'green'};
@@ -32,7 +27,7 @@ async function api(method,path,data){
  if(!r.ok)throw Error(j.error||'Lỗi máy chủ '+r.status);return j;
 }
 function can(section){
- if(section==='permissions')return !!state.rights.admin;return !!state.rights.admin||state.menuKeys.includes('media.'+section);
+ return !!state.rights.admin||state.menuKeys.includes('media.'+section);
 }
 
 const panel=(title,content,subtitle='')=>'<section class="panel"><div class="panelhead"><div><h2>'+E(title)+'</h2>'+(subtitle?'<p class="sub">'+E(subtitle)+'</p>':'')+'</div></div>'+content+'</section>';
@@ -65,7 +60,7 @@ function renderNav(){
  });
  const active=state.view;
  $('mobileNav').innerHTML=mobile.filter(item=>item.id==='more'?NAV.some(n=>can(n.id)&&!['dashboard','film','edit','booksProgress'].includes(n.id)):can(item.id)).map(item=>{
-  const current=item.id==='more'?['books','catalog','staff','permissions','audit','report','production','filmOverview','postOverview'].includes(active):active===item.id;
+  const current=item.id==='more'?['books','catalog','report','production','filmOverview','postOverview'].includes(active):active===item.id;
   return '<button class="mobile-item '+(current?'active':'')+'" data-view="'+item.id+'"><span class="nav-icon">'+item.icon+'</span><span>'+E(item.text)+'</span></button>';
  }).join('');
  document.querySelectorAll('#mobileNav [data-view]').forEach(el=>el.onclick=()=>navigate(el.dataset.view));
@@ -74,8 +69,8 @@ function renderNav(){
 }
 
 async function load(){
- const overviewMenus=['dashboard','adminOverview','filmOverview','postOverview','booksProgress','report','production'];
- const itemMenus=['dashboard','adminOverview','filmOverview','postOverview','film','edit','createVideo','booksProgress','report'];
+ const overviewMenus=['dashboard','filmOverview','postOverview','booksProgress','report','production'];
+ const itemMenus=['dashboard','filmOverview','postOverview','film','edit','booksProgress','report'];
  const canOverview=overviewMenus.some(can),canItems=itemMenus.some(can);
  const [bs,vs,ov,ls]=await Promise.all([
   api('GET','/api/video/books'),
@@ -103,6 +98,11 @@ async function refreshVideoList(restoreFocus=false){
 }
 function navigate(view){
  if((view!==state.view||state.selected)&&!confirmLeave())return;
+ if(['adminOverview','permissions','staff','audit','createVideo'].includes(view)){
+  if(view==='adminOverview')view='dashboard';
+  else if(state.rights.admin&&['permissions','staff','audit'].includes(view)){window.location.href='/?nav=admin&panel='+(view==='audit'?'logs':'accounts');return;}
+  else return toast('Chức năng đã được chuyển hoặc ẩn khỏi menu.');
+ }
  if(view==='more'){
   const options=NAV.filter(n=>can(n.id)&&!['dashboard','film','edit','booksProgress'].includes(n.id));
   $('page').innerHTML=panel('Các chức năng khác','<div class="two">'+options.map(n=>'<button class="btn" data-menu="'+n.id+'">'+n.icon+' '+E(n.text)+'</button>').join('')+'</div>');
@@ -122,7 +122,7 @@ function readinessPanel(){
  const roleUsers=state.staff.filter(p=>p.can_film||p.can_edit||p.can_manage);const rolesVisible=can('staff')||state.rights.admin;
  const oauth=!!state.googleClientId;
  const allowedBooks=can('books');
- const allowedRoles=can('permissions')||state.rights.admin;
+ const allowedRoles=!!state.rights.admin;
  const rows=[
   ['Thư mục Drive theo đầu sách',folderCount+'/'+state.books.length,folderCount===state.books.length?'Đã có đường dẫn':'Cần thiết lập thư mục cho từng đầu sách',allowedBooks?'<button class="link-action" data-goto="books">Cấu hình đầu sách</button>':'Liên hệ quản lý'],
   ['Google OAuth Client ID',oauth?'Đã cấu hình':'Chưa cấu hình',oauth?'Chưa xác nhận quyền Google của nhân viên':'Cần quản trị Cloudflare kiểm tra cấu hình','Kiểm thử tải với tài khoản Google'],
@@ -233,7 +233,7 @@ function filmingOverview(){
 function makeVideoRows(items,action){
  return items.map(v=>[E(v.book_code),'<strong>'+E(v.title)+'</strong><div class="mini-note">'+E(v.lesson||'')+'</div>',E(v.teacher||'—'),E(v.camera_name||'—'),badge(v.status),'<button type="button" class="link-action" data-action="'+action+'" data-id="'+E(v.id)+'">'+(action==='film'?'Quay / Chi tiết':'Xử lý / Chi tiết')+'</button>']);
 }
-function filmList(){return (state.rights.manage||state.rights.admin?'<div class="actions" style="margin-bottom:15px"><button class="btn primary" data-goto="createVideo">＋ Lập kế hoạch video</button></div>':'')+panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học" value="'+E(state.videoFilter.q||'')+'"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),state.videoFilter.book||'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.videoListItems,'film'),'Chưa có video')+'</div>'+pager());}
+function filmList(){return panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học" value="'+E(state.videoFilter.q||'')+'"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),state.videoFilter.book||'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.videoListItems,'film'),'Chưa có video')+'</div>'+pager());}
 function filmDetail(v){
  return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+'</div>')+
  panel('Quay bài · cập nhật tiến độ','<form id="filmForm" class="form-grid">'+
@@ -390,7 +390,7 @@ function permissions(){
 }
 function auditView(){return panel('Lịch sử thao tác',table(['Ngày','Nhân sự','Hành động','Video'],(state.audit||[]).map(a=>[date(a.created_at),E(a.actor_name||'—'),E(a.action),E(a.video_id||'—')])));}
 function render(){
- const screen={dashboard,adminOverview,bookDetail,filmOverview:filmingOverview,film:filmList,createVideo,postOverview,edit:editList,production,booksProgress,report,books:booksAdmin,catalog,staff:staffAdmin,permissions,audit:auditView};
+ const screen={dashboard,bookDetail,filmOverview:filmingOverview,film:filmList,postOverview,edit:editList,production,booksProgress,report,books:booksAdmin,catalog};
  let html=screen[state.view]?.()||'<p>Chưa có nội dung.</p>';
  if(state.view==='film'&&state.selected)html=filmDetail(state.selected);
  if(state.view==='edit'&&state.selected)html=editDetail(state.selected);
@@ -570,7 +570,7 @@ async function boot(){
   $('currentUser').textContent=b.user.name;
   const embedded=!!document.getElementById('unifiedMediaView');
   const googleCfg=await fetch('/api/google/config').then(r=>r.json()).catch(()=>({}));state.googleClientId=googleCfg.clientId||'';
-  await load();const requested=new URLSearchParams(window.location.search).get('view');const target=requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:NAV.find(n=>can(n.id))?.id;if(target)navigate(target);else {document.getElementById('page').textContent='Tài khoản chưa được cấp quyền menu Media. Liên hệ Quản trị hệ thống.';renderNav();}
+  await load();const queryView=new URLSearchParams(window.location.search).get('view');const requested=queryView==='adminOverview'?'dashboard':queryView;const target=requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:NAV.find(n=>can(n.id))?.id;if(target)navigate(target);else {document.getElementById('page').textContent='Tài khoản chưa được cấp quyền menu Media. Liên hệ Quản trị hệ thống.';renderNav();}
   return true;
  }catch(err){
   if(err.message.includes('đăng nhập')||err.message.includes('401')){
