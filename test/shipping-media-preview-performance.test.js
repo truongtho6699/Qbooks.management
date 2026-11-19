@@ -26,7 +26,7 @@ test('multiple images may upload concurrently while video stays sequential',()=>
  assert.match(app,/for\(const i of videos\)/);
  assert.match(app,/xhr\.upload\.onprogress/);
  assert.match(app,/xhr\.timeout=150000/);
- assert.match(app,/uploadPhotoWithProgress\(id,stage,file\)/);
+ assert.match(app,/uploadPhotoWithProgress\(id,stage,file,background\)/);
 });
 test('overview GET loads are deduplicated, network calls have bounded waits',()=>{
  assert.match(app,/if\(overviewLoading\)return overviewLoading/);
