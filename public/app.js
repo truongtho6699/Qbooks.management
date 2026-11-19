@@ -439,7 +439,9 @@ function switchView(){
  if(key==='pack'||key==='ship')loadOrders().catch(e=>notice(e.message));
 }
 async function releaseLocks(){
- const ids=[...state.lockedOrderIds];state.lockedOrderIds.clear();
+ const protectedId=state.backgroundJob?.orderId;
+ const ids=[...state.lockedOrderIds].filter(id=>id!==protectedId);
+ for(const id of ids)state.lockedOrderIds.delete(id);
  await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
 }
 function tab(key,panel){if((state.area!=='orders'||state.tab!==key||(key==='staff'&&panel&&state.adminPanel!==panel))&&!confirmLeave())return;if(key==='staff'&&!menuAllowed('system.admin'))return notice('Chưa được cấp quyền Quản trị hệ thống.');if(key!=='staff'&&!menuAllowed('orders.'+key))return notice('Chưa được cấp quyền menu này.');if(state.lockedOrderIds.size)releaseLocks();if(key==='staff'&&['accounts','permissions','approvals','sync','logs'].includes(panel))state.adminPanel=panel;state.tab=key;state.area=key==='staff'?'admin':'orders';state.orderMenuExpanded=key!=='staff';if(key==='staff')window.QbookNavigation?.focusAdmin();else window.QbookNavigation?.focusOrders();switchView();}
@@ -885,6 +887,7 @@ async function loadPackingHelpers(){
 }
 async function openOrder(order){
  if(state.saving)return;
+ if(state.backgroundJob?.orderId===order.id)return notice('Đơn này đang tải video nền. Vui lòng theo dõi thanh trạng thái.');
  const r=capabilities(),pack=order.status==='CHỜ ĐÓNG HÀNG'&&r.pack,ship=order.status==='CHỜ VẬN ĐƠN'&&r.ship;
  if(!pack&&!ship)return notice('Không có quyền thực hiện với đơn này.');
  try{
@@ -917,6 +920,12 @@ async function openOrder(order){
  notice('');
 }
 function progress(file,done,total){
+ if(state.backgroundJob){
+  $('backgroundUploadBar').hidden=false;
+  $('backgroundUploadTitle').textContent='Đang tải nền: '+file;
+  $('backgroundUploadProgress').value=total?Math.min(100,Math.round(done/total*100)):0;
+  $('backgroundUploadDetail').textContent=Math.round(done/1048576)+' / '+Math.round(total/1048576)+' MB. Có thể chuyển menu, nhưng phải giữ tab Qbooks mở.';
+ }
  $('progressWrap').hidden=false;$('uploadLabel').textContent='Đang tải: '+file;
  $('uploadProgress').value=Math.min(100,Math.round(done/total*100));
  $('uploadDetail').textContent=Math.round(done/1048576)+' / '+Math.round(total/1048576)+' MB đã ghi nhận tại R2';
@@ -1095,27 +1104,59 @@ function showSavedMediaLinks(order,result,newStatus){
 }
 async function savePack(){
  if(state.saving||!state.selected)return;
- let saved=false;
- const id=state.selected.id,uploads=[];
+ if(state.backgroundJob)return notice('Đang có một tác vụ tải video nền. Vui lòng hoàn thành trước khi lưu đơn tiếp theo.');
+ const order=state.selected,id=order.id,uploads=[];
  for(const f of $('invoicePics').files)uploads.push(['ANH_HOA_DON',f]);
  for(const f of $('goodsPics').files)uploads.push(['HANG_HOA',f]);
  for(const f of $('videos').files)uploads.push(['VIDEO_DONG_HANG',f]);
- setBusy(true);
- try{
-  notice('Đang tải hồ sơ R2 (nếu có), sau đó lưu đóng hàng...');
-  const uploaded=await uploadSelection(id,uploads);
-  // R2 is the durable source. Background Cron mirrors files without staff Google permissions.
-  const nguoiDongCung=$all('.packHelperChoice:checked').map(x=>x.value);
-  await api('POST','/api/orders/'+id+'/pack',{boxes:Number($('boxes').value),nguoiDongCung,note:$('packNote').value});saved=true;
-  state.lockedOrderIds.delete(id);
-  markDraftSaved($('packControls'));
-  notice('Đã lưu đóng hàng. '+uploaded.length+' tệp đã ghi R2. Hệ thống chỉ chuyển Drive khi Worker được kích hoạt; chỉ xóa R2 sau khi kiểm chứng bản Drive. Dữ liệu Sheets đồng bộ riêng.',true);
-  show('detailView',false);show('ordersView',true);await loadOrders();
- }catch(e){if(saved){notice('Đã lưu đóng hàng, nhưng chưa tải lại được danh sách: '+humanizeError(e.message),true);}else{notice('Chưa lưu đóng hàng: '+e.message);showFormError($('packControls'),e.message);}}
- finally{setBusy(false);}
+ const payload={boxes:Number($('boxes').value),nguoiDongCung:$all('.packHelperChoice:checked').map(x=>x.value),note:$('packNote').value};
+ const hasVideo=uploads.some(([stage])=>stage==='VIDEO_DONG_HANG');
+ if(!hasVideo){
+  setBusy(true);
+  try{
+   const saved=await uploadSelection(id,uploads);
+   await api('POST','/api/orders/'+id+'/pack',payload);
+   state.lockedOrderIds.delete(id);markDraftSaved($('packControls'));
+   notice('Đã hoàn thành đóng hàng, '+saved.length+' tệp đã lưu R2.',true);
+   show('detailView',false);show('ordersView',true);await loadOrders();
+  }catch(e){notice('Chưa lưu được đóng hàng: '+e.message);showFormError($('packControls'),e.message);}
+  finally{setBusy(false);}
+  return;
+ }
+ // Files stay referenced by this in-page task; it survives SPA menu switches,
+ // NOT browser/tab termination. Multipart upload IDs enable safe manual resume.
+ state.backgroundJob={orderId:id,filename:uploads.filter(x=>x[0]==='VIDEO_DONG_HANG').map(x=>x[1].name).join(', '),status:'RUNNING'};
+ $('backgroundUploadBar').hidden=false;
+ $('backgroundUploadProgress').value=0;
+ $('backgroundUploadTitle').textContent='Đang tải nền video cho đơn '+(order.invoice_codes||id);
+ $('backgroundUploadDetail').textContent='Đang khởi tạo. Có thể chuyển menu, không đóng tab.';
+ markDraftSaved($('packControls'));
+ notice('Đã chuyển tải video sang chế độ nền trong Qbooks. Có thể chuyển menu; giữ tab mở.',true);
+ // Deliberately not awaited: render/navigation continue while upload runs.
+ void (async()=>{
+  try{
+   const saved=await uploadSelection(id,uploads);
+   await api('POST','/api/orders/'+id+'/pack',payload);
+   state.lockedOrderIds.delete(id);
+   $('backgroundUploadProgress').value=100;
+   $('backgroundUploadTitle').textContent='Đã hoàn thành tải video và đóng đơn '+(order.invoice_codes||id);
+   $('backgroundUploadDetail').textContent='Đã lưu '+saved.length+' tệp. Có thể đóng tab.';
+   if(state.area==='orders'&&state.tab==='pack'){
+    show('detailView',false);show('ordersView',true);
+    await loadOrders().catch(()=>{});
+   }
+  }catch(e){
+   $('backgroundUploadTitle').textContent='Tải nền chưa hoàn thành: '+(order.invoice_codes||id);
+   $('backgroundUploadDetail').textContent=e.message+' · Mở lại đơn và chọn lại tệp để tiếp tục.';
+   notice('Tải video nền gặp lỗi: '+e.message);
+   state.lockedOrderIds.delete(id);
+   await api('DELETE','/api/orders/'+id+'/lock').catch(()=>{});
+  }finally{state.backgroundJob=null;}
+ })();
 }
 async function saveShip(){
  if(state.saving||!state.selected)return;
+ if(state.backgroundJob)return notice('Đang tải video nền. Vui lòng chờ trước khi lưu vận đơn khác.');
  let saved=false;
  setBusy(true);
  try{
@@ -1163,7 +1204,7 @@ async function loadGroupOptions(){
  }catch(e){notice(e.message)}
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin,!!$('rememberLogin')?.checked)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{if(state.backgroundJob)return notice('Video đang tải nền. Chờ hoàn thành trước khi đăng xuất.');if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packControls'));markDraftSaved($('shipControls'));tab(state.tab);};
@@ -1448,6 +1489,7 @@ $('closeEditOrder').onclick=()=>$('editOrderDialog').close();
 $('editOrderForm').onsubmit=saveOrderEdit;
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
+window.addEventListener('beforeunload',e=>{if(state.backgroundJob){e.preventDefault();e.returnValue='';}});
 prefillRememberedAccount();
 initGoogleSignIn();
 protectBeforeUnload();
