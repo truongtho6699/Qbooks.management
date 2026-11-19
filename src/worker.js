@@ -570,6 +570,43 @@ async function handle(req,env){
   }catch(e){if(/UNIQUE constraint failed/i.test(e.message))throw Object.assign(new Error('Mã hóa đơn đã tồn tại. Không tạo thêm đơn trùng.'),{status:409});throw e;}
   await audit(env,user,'CREATE_ORDER_D1',id,invoice);return json({id,source:'D1',googleSynced:false},201);
  }
+ const editOrderMatch=path.match(/^\/api\/orders\/([a-f0-9-]{36})$/);
+ if(editOrderMatch&&method==='PATCH'){
+  await requireAnyMenu(['orders.sale','system.admin']);
+  const id=editOrderMatch[1],before=await orderById(env,id);
+  if(user.role==='VIEW')throw Object.assign(new Error('Tài khoản chỉ xem không thể sửa đơn.'),{status:403});
+  const admin=hasRole(user,'ADMIN'),isOwner=before.created_by===user.id;
+  if(!admin&&(!isOwner||!hasRole(user,'SALE')||before.status!==STATUS.PACK))
+   throw Object.assign(new Error('Chỉ Sale tạo đơn được sửa đơn còn chờ đóng hàng; quản trị viên có thể sửa các trạng thái khác.'),{status:403});
+  const b=await requestJSON(req);
+  if(clean(b.expected_updated_at)!==clean(before.updated_at))
+   throw Object.assign(new Error('Đơn vừa được người khác cập nhật. Tải lại trước khi sửa.'),{status:409});
+  const invoice=clean(b.invoice_codes).replace(/\s*,\s*/g,', '),customer=clean(b.customer);
+  const qty=Number(b.quantity),transport=clean(b.transport).toUpperCase();
+  if(!invoice||!customer||invoice.length>300||customer.length>250)throw Error('Số hóa đơn hoặc khách hàng không hợp lệ.');
+  if(!Number.isSafeInteger(qty)||qty<1||qty>1000000)throw Error('Số quyển không hợp lệ.');
+  if(!['SHIP NGOÀI','SHIP KIOT','GỬI XE','GỬI TÀU','GIAO HÀNG','ĐÓNG ĐƠN'].includes(transport))
+   throw Error('Loại vận chuyển không hợp lệ.');
+  const mode=clean(b.delivery_mode),urgent=mode==='GAP';
+  if(!['GAP','THOI_GIAN'].includes(mode))throw Error('Chọn GẤP hoặc thời gian giao.');
+  const deliveryTime=mode==='THOI_GIAN'?clean(b.delivery_time):'';
+  if(mode==='THOI_GIAN'&&(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(deliveryTime)||!Number.isFinite(new Date(deliveryTime).getTime())))
+   throw Error('Ngày giờ giao không hợp lệ.');
+  const duplicate=await env.DB.prepare("SELECT id FROM orders WHERE id<>? AND REPLACE(REPLACE(UPPER(TRIM(invoice_codes)),' ',''),CHAR(9),'')=REPLACE(REPLACE(UPPER(TRIM(?)),' ',''),CHAR(9),'') LIMIT 1").bind(id,invoice).first();
+  if(duplicate)throw Object.assign(new Error('Số hóa đơn đã tồn tại ở đơn khác.'),{status:409});
+  const changes={invoice_codes:invoice,customer,quantity:qty,address:clean(b.address).slice(0,1000),
+   carrier:clean(b.carrier).slice(0,250),transport,urgent:urgent?1:0,delivery_time:deliveryTime};
+  const current=Object.fromEntries(Object.keys(changes).map(k=>[k,before[k]]));
+  // Respect order locks held by a different operator; never edit a live packing job.
+  const lock=await env.DB.prepare('SELECT user_id,expires_at FROM order_locks WHERE order_id=?').bind(id).first();
+  if(lock?.expires_at>now()&&lock.user_id!==user.id)
+   throw Object.assign(new Error('Đơn đang được nhân viên khác xử lý.'),{status:409});
+  const update=await env.DB.prepare("UPDATE orders SET invoice_codes=?,customer=?,quantity=?,address=?,carrier=?,transport=?,urgent=?,delivery_time=?,updated_at=CURRENT_TIMESTAMP,local_dirty=CASE WHEN source_system='GOOGLE_SHEETS' THEN 1 ELSE local_dirty END WHERE id=? AND updated_at=? AND status=?")
+   .bind(changes.invoice_codes,changes.customer,changes.quantity,changes.address,changes.carrier,changes.transport,changes.urgent,changes.delivery_time,id,before.updated_at,before.status).run();
+  if(update.meta.changes!==1)throw Object.assign(new Error('Đơn đã thay đổi trong khi lưu, vui lòng tải lại.'),{status:409});
+  await audit(env,user,'EDIT_ORDER',id,JSON.stringify({before:current,after:changes}));
+  return json({ok:true,id,changed:true});
+ }
  if(method==='POST'&&path==='/api/groups'){
   await requireAnyMenu(['orders.sale','orders.ship']);needRole(user,'SALE','SHIPPER');
   const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
