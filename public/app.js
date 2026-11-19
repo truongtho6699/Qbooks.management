@@ -929,8 +929,8 @@ async function openOrder(order){
  trackDraft(pack?$('packControls'):$('shipControls'));
  notice('');
 }
-function progress(file,done,total){
- if(state.backgroundJob){
+function progress(file,done,total,background=false){
+ if(background&&state.backgroundJob){
   $('backgroundUploadBar').hidden=false;
   $('backgroundUploadTitle').textContent='Đang tải nền: '+file;
   $('backgroundUploadProgress').value=total?Math.min(100,Math.round(done/total*100)):0;
@@ -953,7 +953,7 @@ async function videoDuration(file){
   node.src=url;
  });
 }
-function uploadPhotoWithProgress(id,stage,file){
+function uploadPhotoWithProgress(id,stage,file,background=false){
  // XMLHttpRequest exposes real upload bytes; fetch() does not expose request upload progress.
  return new Promise((resolve,reject)=>{
   const xhr=new XMLHttpRequest();
@@ -961,7 +961,7 @@ function uploadPhotoWithProgress(id,stage,file){
   xhr.setRequestHeader('authorization','Bearer '+state.token);
   xhr.timeout=150000;
   xhr.upload.onprogress=event=>{
-   if(event.lengthComputable)progress(stage+' · '+file.name,event.loaded,event.total);
+   if(event.lengthComputable)progress(stage+' · '+file.name,event.loaded,event.total,background);
   };
   xhr.onerror=()=>reject(Error('Mất kết nối khi tải ảnh '+file.name+'. Có thể bấm Lưu để tiếp tục.'));
   xhr.ontimeout=()=>reject(Error('Tải ảnh '+file.name+' quá lâu. Kiểm tra tốc độ mạng và thử lại.'));
@@ -973,7 +973,7 @@ function uploadPhotoWithProgress(id,stage,file){
   xhr.send(file);
  });
 }
-async function uploadOne(orderId,stage,file){
+async function uploadOne(orderId,stage,file,background=false){
  const video=stage==='VIDEO_DONG_HANG',max=video?2*1024*1024*1024:25*1024*1024;
  if(!file.size||file.size>max)throw Error('Tệp '+file.name+' vượt giới hạn '+(video?'2 GB':'25 MB'));
  if(video)await videoDuration(file);
@@ -985,15 +985,15 @@ async function uploadOne(orderId,stage,file){
   const result=await api('POST','/api/uploads',{orderId,stage,filename:file.name,contentType:file.type|| (video?'video/mp4':'image/jpeg'),size:file.size});
   id=result.id;localStorage.setItem(key,id);info={status:'UPLOADING',chunkSize:result.chunkSize,parts:[]};
  }
- if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id}
+ if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size,background);return id}
  if(!video){
-  progress(stage+' · '+file.name,0,file.size);await uploadPhotoWithProgress(id,stage,file);
-  progress(file.name,file.size,file.size);localStorage.removeItem(key);return id;
+  progress(stage+' · '+file.name,0,file.size,background);await uploadPhotoWithProgress(id,stage,file,background);
+  progress(file.name,file.size,file.size,background);localStorage.removeItem(key);return id;
  }
  const chunk=info.chunkSize||CHUNK_BYTES;
  const count=Math.ceil(file.size/chunk),parts=new Set((info.parts||[]).map(p=>p.part_number));
  let done=Math.min(file.size,info.parts.reduce((sum,p)=>sum+p.bytes,0));
- progress(file.name,done,file.size);
+ progress(file.name,done,file.size,background);
  for(let n=1;n<=count;n++){
   if(parts.has(n))continue;
   const start=(n-1)*chunk,end=Math.min(start+chunk,file.size),piece=file.slice(start,end);
@@ -1002,14 +1002,14 @@ async function uploadOne(orderId,stage,file){
    try{await api('PUT','/api/uploads/'+id+'/parts/'+n,piece,true);break;}
    catch(e){if(++retries>=4)throw Error('Tải video gián đoạn ở phần '+n+'/'+count+': '+e.message);await new Promise(r=>setTimeout(r,900*retries));}
   }
-  done+=piece.size;progress(file.name,done,file.size);
+  done+=piece.size;progress(file.name,done,file.size,background);
  }
  await api('POST','/api/uploads/'+id+'/complete',{});
  localStorage.removeItem(key);
- progress(file.name,file.size,file.size);
+ progress(file.name,file.size,file.size,background);
  return id;
 }
-async function uploadSelection(orderId,items){
+async function uploadSelection(orderId,items,background=false){
  // Photos use independent R2 objects. Allow up to 3 uploads concurrently instead
  // of blocking on every image. Preserve video sequential upload to limit bandwidth.
  const uploaded=new Array(items.length),photos=[],videos=[];
@@ -1018,14 +1018,14 @@ async function uploadSelection(orderId,items){
  const runPhoto=async()=>{
   while(next<photos.length){
    const i=photos[next++],[stage,file]=items[i];
-   const id=await uploadOne(orderId,stage,file);
+   const id=await uploadOne(orderId,stage,file,background);
    uploaded[i]={id,stage,filename:file.name};
    $('uploadLabel').textContent='Đã lưu '+(++complete)+'/'+items.length+' tệp vào Qbooks';
   }
  };
  await Promise.all(Array.from({length:Math.min(3,photos.length)},()=>runPhoto()));
  for(const i of videos){
-  const [stage,file]=items[i],id=await uploadOne(orderId,stage,file);
+  const [stage,file]=items[i],id=await uploadOne(orderId,stage,file,background);
   uploaded[i]={id,stage,filename:file.name};
   $('uploadLabel').textContent='Đã lưu '+(++complete)+'/'+items.length+' tệp vào Qbooks';
  }
@@ -1114,17 +1114,18 @@ function showSavedMediaLinks(order,result,newStatus){
 }
 async function savePack(){
  if(state.saving||!state.selected)return;
- if(state.backgroundJob)return notice('Đang có một tác vụ tải video nền. Vui lòng hoàn thành trước khi lưu đơn tiếp theo.');
+ 
  const order=state.selected,id=order.id,uploads=[];
  for(const f of $('invoicePics').files)uploads.push(['ANH_HOA_DON',f]);
  for(const f of $('goodsPics').files)uploads.push(['HANG_HOA',f]);
  for(const f of $('videos').files)uploads.push(['VIDEO_DONG_HANG',f]);
  const payload={boxes:Number($('boxes').value),nguoiDongCung:$all('.packHelperChoice:checked').map(x=>x.value),note:$('packNote').value};
  const hasVideo=uploads.some(([stage])=>stage==='VIDEO_DONG_HANG');
+ if(state.backgroundJob&&(hasVideo||state.backgroundJob.orderId===id))return notice('Đang có video tải nền. Bạn có thể tiếp tục đóng đơn khác không kèm video.');
  if(!hasVideo){
   setBusy(true);
   try{
-   const saved=await uploadSelection(id,uploads);
+   const saved=await uploadSelection(id,uploads,true);
    await api('POST','/api/orders/'+id+'/pack',payload);
    state.lockedOrderIds.delete(id);markDraftSaved($('packControls'));
    notice('Đã hoàn thành đóng hàng, '+saved.length+' tệp đã lưu R2.',true);
@@ -1151,7 +1152,7 @@ async function savePack(){
    $('backgroundUploadProgress').value=100;
    $('backgroundUploadTitle').textContent='Đã hoàn thành tải video và đóng đơn '+(order.invoice_codes||id);
    $('backgroundUploadDetail').textContent='Đã lưu '+saved.length+' tệp. Có thể đóng tab.';
-   if(state.area==='orders'&&state.tab==='pack'){
+   if(state.area==='orders'&&state.tab==='pack'&&state.selected?.id===id){
     show('detailView',false);show('ordersView',true);
     await loadOrders().catch(()=>{});
    }
@@ -1166,7 +1167,7 @@ async function savePack(){
 }
 async function saveShip(){
  if(state.saving||!state.selected)return;
- if(state.backgroundJob)return notice('Đang tải video nền. Vui lòng chờ trước khi lưu vận đơn khác.');
+ 
  let saved=false;
  setBusy(true);
  try{
