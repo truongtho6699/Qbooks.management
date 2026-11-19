@@ -492,9 +492,26 @@ async function handle(req,env){
  if(method==='GET'&&path==='/api/shipping/overview'){
   await requireMenu('orders.overview');if(user.role!=='VIEW')needRole(user,'PACKER','SHIPPER');
   const isManager=hasRole(user,'ADMIN');
+  // Filter by the order creation date in Asia/Ho_Chi_Minh (+07:00, no DST),
+  // not by delivery time. Inclusive today, exclusive next-day boundary.
+  const period=clean(url.searchParams.get('period')||'today');
+  if(!['today','7days','month','all'].includes(period))throw Error('Khoảng thời gian không hợp lệ.');
+  const vietnamNow=new Date(Date.now()+7*3600000);
+  const year=vietnamNow.getUTCFullYear(),month=vietnamNow.getUTCMonth(),day=vietnamNow.getUTCDate();
+  const midnightUTC=(y,m,d)=>new Date(Date.UTC(y,m,d)-7*3600000).toISOString().slice(0,19).replace('T',' ');
+  const from=period==='today'?midnightUTC(year,month,day):
+   period==='7days'?midnightUTC(year,month,day-6):
+   period==='month'?midnightUTC(year,month,1):null;
+  const through=midnightUTC(year,month,day+1);
+  const conditions=[],args=[];
   // Overview is scoped to accessible operational orders for non-admin workers.
-  const where=isManager||user.role==='VIEW'?'':hasRole(user,'PACKER')&&hasRole(user,'SHIPPER')?'':hasRole(user,'PACKER')?" WHERE status IN ('CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN')":" WHERE status IN ('CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH')";
-  const data=await env.DB.prepare('SELECT id,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').all();
+  if(!(isManager||user.role==='VIEW')){
+   if(hasRole(user,'PACKER')&&!hasRole(user,'SHIPPER'))conditions.push("status IN ('CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN')");
+   else if(!hasRole(user,'PACKER'))conditions.push("status IN ('CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH')");
+  }
+  if(from){conditions.push('created_at>=? AND created_at<?');args.push(from,through);}
+  const where=conditions.length?' WHERE '+conditions.join(' AND '):'';
+  const data=await env.DB.prepare('SELECT id,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').bind(...args).all();
   const orders=data.results||[];
   const byId=new Map(orders.map(o=>[o.id,{...o,media:[]}]));
   if(orders.length){
@@ -505,7 +522,7 @@ async function handle(req,env){
     for(const media of files.results||[])byId.get(media.order_id)?.media.push(media);
    }
   }
-  return json({orders:[...byId.values()],manager:isManager,totals:{
+  return json({orders:[...byId.values()],manager:isManager,period,totals:{
     total:orders.length,
     waitingPacking:orders.filter(o=>o.status==='CHỜ ĐÓNG HÀNG').length,
     waitingShipping:orders.filter(o=>o.status==='CHỜ VẬN ĐƠN').length,
