@@ -65,7 +65,7 @@ body{background:#eef2f9}
 .shipping-kpi strong{font-size:29px;letter-spacing:-.035em;color:#192c48}
 .shipping-kpi.pack{background:#fff3da}.shipping-kpi.ship{background:#e7efff}.shipping-kpi.moving{background:#eee7ff}.shipping-kpi.done{background:#dcf7e9}
 .shipping-workspace .panel{border-radius:11px;box-shadow:0 3px 10px #1235610a;border:1px solid #e3e9f4}
-.shipping-overview-filters{display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:12px;margin:16px 0}
+.shipping-overview-filters{display:grid;grid-template-columns:minmax(145px,0.8fr) minmax(0,2fr) minmax(180px,1fr);gap:12px;margin:16px 0}
 .shipping-overview-filters input,.shipping-overview-filters select{padding:12px;border-radius:8px;border:1px solid #dce5f2;background:white;width:100%;min-width:0}
 .shipping-table-scroll{width:100%;overflow:auto;border:1px solid #e8edf5;border-radius:9px}
 .shipping-table{border-collapse:collapse;width:100%;min-width:750px;font-size:12px}
