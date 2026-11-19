@@ -123,6 +123,24 @@
  <div id="drivePreviewFiles" class="drive-preview-files"></div>
  <div id="drivePreviewMedia" class="drive-preview-media"></div>
 </dialog>
+<dialog id="editOrderDialog" class="order-summary-dialog"><div class="summary-header"><h2>Sửa đơn hàng</h2><button type="button" id="closeEditOrder" class="secondary">Đóng ✕</button></div>
+<form id="editOrderForm" class="fields">
+<label class="span-all">Gấp / Thời gian giao<select name="delivery_mode" id="editOrderDeliveryMode" required><option value="GAP">GẤP</option><option value="THOI_GIAN">Theo thời gian giao</option></select></label>
+<label id="editOrderDeliveryTimeWrap" class="span-all" hidden>Ngày giờ giao<input name="delivery_time" type="datetime-local"></label>
+<label>Số hóa đơn<input name="invoice_codes" maxlength="300" required></label>
+<label>Loại vận chuyển<select name="transport" required><option>SHIP NGOÀI</option><option>SHIP KIOT</option><option>GỬI XE</option><option>GỬI TÀU</option><option>GIAO HÀNG</option><option>ĐÓNG ĐƠN</option></select></label>
+<label>Tên khách<input name="customer" maxlength="250" required></label>
+<label>Số quyển<input name="quantity" type="number" min="1" max="1000000" required></label>
+<label class="span-all">Địa chỉ<input name="address" maxlength="1000"></label>
+<label class="span-all">Nhà xe (nếu có)<input name="carrier" maxlength="250"></label>
+<p class="hint span-all">Chỉ sửa thông tin đơn hàng. Ảnh, video và trạng thái xử lý không thay đổi. Mọi thay đổi được ghi nhật ký.</p>
+<div class="span-all"><button id="submitEditOrder" type="submit" class="primary">Lưu thay đổi</button></div>
+</form></dialog>
+<div id="backgroundUploadBar" class="qbook-background-upload" role="status" aria-live="polite" hidden>
+<strong id="backgroundUploadTitle">Đang tải video nền…</strong>
+<progress id="backgroundUploadProgress" max="100" value="0"></progress>
+<small id="backgroundUploadDetail">Vẫn tiếp tục khi chuyển menu trong Qbooks. Không đóng tab.</small>
+</div>
 <dialog id="orderSummaryDialog" class="order-summary-dialog">
  <div class="summary-header"><h2>Chi tiết đơn</h2><button type="button" id="closeOrderSummary" class="secondary" aria-label="Đóng">Đóng ✕</button></div>
  <div id="orderSummaryInfo"></div>
