@@ -663,7 +663,7 @@ function orderContentSegments(order){
 }
 function orderContentLine(order){return orderContentSegments(order).join(' - ');}
 function orderContentLines(order){
- const names=['Gấp/Thời gian giao','Mã hóa đơn','Loại vận chuyển','Tên khách','Địa chỉ',
+ const names=['Gấp/Thời gian giao','Số hóa đơn','Loại vận chuyển','Tên khách','Địa chỉ',
   'Số quyển','Nhà xe (nếu có)','Tên ship','SĐT ship'];
  const when=order.urgent?'GẤP':String(order.delivery_time||'').trim().replace('T',' ');
  const values=[when,order.invoice_codes,order.transport,order.customer,order.address,order.quantity,
@@ -809,7 +809,7 @@ function renderOverview(){
  const table=$('overviewRows'),cardsHolder=$('overviewCards');table.replaceChildren();cardsHolder.replaceChildren();
  if(rows.length){for(const o of rows)appendOverviewRow(o,table,cardsHolder);}
  else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=6;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
- $('overviewHint').textContent='Đang hiển thị '+rows.length+'/'+r.orders.length+' đơn. Liên kết Drive mở trong tab mới; ảnh/video trên R2 được tải qua phiên đăng nhập.';
+ $('overviewHint').textContent='Đang hiển thị '+rows.length+'/'+r.orders.length+' đơn trong kỳ '+$('overviewPeriod').selectedOptions[0].textContent+'. Lọc theo ngày tạo đơn (giờ Việt Nam). Liên kết Drive mở trong tab mới.';
 }
 let overviewLoading=null;
 async function loadOverview(){
@@ -818,7 +818,7 @@ async function loadOverview(){
  $('overviewHint').textContent='Đang đọc dữ liệu đơn và hồ sơ…';
  overviewLoading=(async()=>{
   try{
-   const r=await api('GET','/api/shipping/overview');
+   const r=await api('GET','/api/shipping/overview?period='+encodeURIComponent($('overviewPeriod').value));
    state.overviewData=r;renderOverview();
   }catch(e){
    $('overviewHint').textContent='Không tải được dữ liệu: '+e.message;
@@ -1375,6 +1375,7 @@ $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 $('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
 $('overviewSearch').oninput=renderOverview;
 $('overviewStatus').onchange=renderOverview;
+$('overviewPeriod').onchange=()=>loadOverview().catch(e=>notice(e.message));
 
 function openAccountInfo(){
  if(!state.user)return notice('Cần đăng nhập để xem thông tin tài khoản.');
