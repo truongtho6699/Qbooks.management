@@ -60,3 +60,14 @@
 .copy-order-btn{font-weight:740;white-space:nowrap}
 .overview-card-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
 .overview-card-actions button{flex:1 1 auto}
+
+/* Persistent upload status stays visible when switching between Qbooks modules. */
+.qbook-background-upload{position:fixed;right:18px;bottom:18px;z-index:9999;width:min(390px,calc(100vw - 36px));box-shadow:0 12px 32px #0b2b4d35;border:1px solid #9cbdec;border-radius:14px;padding:14px;background:#fff;color:#19375d;display:grid;gap:8px}
+.qbook-background-upload[hidden]{display:none!important}
+.qbook-background-upload strong{font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+.qbook-background-upload progress{width:100%;height:10px}
+.qbook-background-upload small{color:#546b89;line-height:1.5;font-size:12px;overflow-wrap:anywhere}
+#editOrderDialog .fields{padding:12px 0}
+#editOrderDialog [hidden]{display:none!important}
+#saleOrdersList .order{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+#saleOrdersList .order small{flex:1 1 220px}
