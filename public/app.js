@@ -35,12 +35,28 @@ function notice(text='',ok=false){$('notice').textContent=ok?text:humanizeError(
 async function api(method,path,data,blob=false){
  const headers={};if(state.token)headers.authorization='Bearer '+state.token;
  if(!blob&&data!=null)headers['content-type']='application/json';
- let res;
- try{res=await fetch(path,{method,headers,body:data==null?undefined:blob?data:JSON.stringify(data)})}
- catch(e){throw Error('Lỗi kết nối. Kiểm tra Wi-Fi/3G rồi thử lại: '+e.message)}
- let result;try{result=await res.json()}catch{result={error:'Máy chủ không trả JSON.'}}
- if(!res.ok)throw Error(result.error||'Máy chủ trả lỗi '+res.status);
- return result;
+ // Read-only calls may retry after a transient network error; never retry writes.
+ const attempts=method==='GET'?2:1;
+ for(let attempt=0;attempt<attempts;attempt++){
+  const controller=new AbortController();
+  const wait=blob?150000:method==='GET'?20000:45000;
+  const timer=setTimeout(()=>controller.abort(),wait);
+  let res;
+  try{
+   res=await fetch(path,{method,headers,
+    body:data==null?undefined:blob?data:JSON.stringify(data),
+    signal:controller.signal,cache:method==='GET'?'no-store':'default'});
+  }catch(e){
+   clearTimeout(timer);
+   if(method==='GET'&&attempt<attempts-1)continue;
+   throw Error(e.name==='AbortError'?'Máy chủ phản hồi quá chậm, đã dừng yêu cầu. Vui lòng thử lại.':
+    'Lỗi kết nối. Kiểm tra Wi-Fi/3G rồi thử lại: '+e.message);
+  }
+  clearTimeout(timer);
+  let result;try{result=await res.json()}catch{result={error:'Máy chủ không trả JSON.'}}
+  if(!res.ok)throw Error(result.error||'Máy chủ trả lỗi '+res.status);
+  return result;
+ }
 }
 function show(id,yes){$(id).hidden=!yes;}
 function setBusy(value){state.saving=value;['savePacking','saveShipping','createGroup'].forEach(k=>$(k).disabled=value)}
@@ -688,6 +704,39 @@ function goodsImageCard(order){
  link.append(el('span','▣','goods-image-card-icon'),el('span','Ảnh hàng hóa'));
  return link;
 }
+async function openStoredImage(upload){
+ // Authenticated view of an image not yet synchronized to Drive. Open tab immediately
+ // inside the user click to avoid popup blockers; never expose a Bearer token in a URL.
+ const win=window.open('about:blank','_blank');
+ if(win){
+  try{win.opener=null;win.document.title='Đang mở ảnh Qbooks…';win.document.body.textContent='Đang tải ảnh đã lưu trên Qbooks…';}
+  catch{}
+ }
+ try{
+  const res=await fetch('/api/uploads/'+encodeURIComponent(upload.id)+'/file',{
+   headers:{authorization:'Bearer '+state.token},cache:'no-store',
+   signal:AbortSignal.timeout(60000)
+  });
+  if(!res.ok){
+   const data=await res.json().catch(()=>({}));
+   const drive=safeDriveUrl(data.driveUrl);
+   if(drive){if(win)win.location.replace(drive);else window.open(drive,'_blank','noopener');return;}
+   throw Error(data.error||'Tệp chưa sẵn sàng để xem.');
+  }
+  const blob=await res.blob();
+  if(!blob.type.startsWith('image/')&&blob.type!=='application/pdf')
+   throw Error('Chỉ xem trực tiếp ảnh/PDF; các tệp khác cần được đồng bộ lên Drive.');
+  const url=URL.createObjectURL(blob);
+  if(win)win.location.replace(url);
+  else{
+   const a=el('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.click();
+  }
+  setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
+ }catch(e){
+  try{if(win&&!win.closed)win.close();}catch{}
+  notice('Không mở được ảnh: '+e.message);
+ }
+}
 function overviewMediaLinks(container,order){
  const labels=[['HANG_HOA','Ảnh hàng hóa'],['GIAO_HANG','Ảnh giao hàng']];
  for(const [stage,label] of labels){
@@ -699,7 +748,10 @@ function overviewMediaLinks(container,order){
     const link=el('a',label+(items.length>1?' · '+item.filename:''),'overview-link');
     link.href=href;link.target='_blank';link.rel='noopener noreferrer';container.append(link);count++;
    }else{
-    const btn=button(label+' · Tải tệp',()=>downloadMedia(item.id,item.filename,btn),'overview-link');
+    // The file may be on R2 while the Drive synchronization is pending.
+    // Preview it after authentication instead of forcing an attachment download.
+    const btn=button(label+(items.length>1?' · '+item.filename:''),()=>openStoredImage(item),'overview-link');
+    btn.title='Xem ảnh đã lưu trên Qbooks; khi đồng bộ xong sẽ mở trực tiếp Google Drive';
     container.append(btn);count++;
    }
   }
@@ -745,10 +797,6 @@ function showOrderSummary(order){
  const media=$('orderSummaryMedia');media.replaceChildren();overviewMediaLinks(media,order);
  if(typeof modal.showModal==='function')modal.showModal();else modal.hidden=false;
 }
-async function copyOrderInformation(){
- const order=state.summaryOrder;if(!order)return notice('Hãy chọn đơn trước khi sao chép.');
- await copyOrderToClipboard(order);
-}
 function renderOverview(){
  const r=state.overviewData;if(!r)return;
  const kpis=$('shippingKpis');kpis.replaceChildren();
@@ -763,10 +811,21 @@ function renderOverview(){
  else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=6;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
  $('overviewHint').textContent='Đang hiển thị '+rows.length+'/'+r.orders.length+' đơn. Liên kết Drive mở trong tab mới; ảnh/video trên R2 được tải qua phiên đăng nhập.';
 }
+let overviewLoading=null;
 async function loadOverview(){
+ // Prevent parallel refresh requests when opening a menu and pressing Refresh.
+ if(overviewLoading)return overviewLoading;
  $('overviewHint').textContent='Đang đọc dữ liệu đơn và hồ sơ…';
- const r=await api('GET','/api/shipping/overview');
- state.overviewData=r;renderOverview();
+ overviewLoading=(async()=>{
+  try{
+   const r=await api('GET','/api/shipping/overview');
+   state.overviewData=r;renderOverview();
+  }catch(e){
+   $('overviewHint').textContent='Không tải được dữ liệu: '+e.message;
+   throw e;
+  }finally{overviewLoading=null;}
+ })();
+ return overviewLoading;
 }
 async function loadOrders(){
  const q=$('search').value.trim(),status=state.tab==='pack'?'CHỜ ĐÓNG HÀNG':state.tab==='ship'?'CHỜ VẬN ĐƠN':'';
@@ -840,6 +899,26 @@ async function videoDuration(file){
   node.src=url;
  });
 }
+function uploadPhotoWithProgress(id,stage,file){
+ // XMLHttpRequest exposes real upload bytes; fetch() does not expose request upload progress.
+ return new Promise((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();
+  xhr.open('PUT','/api/uploads/'+encodeURIComponent(id),true);
+  xhr.setRequestHeader('authorization','Bearer '+state.token);
+  xhr.timeout=150000;
+  xhr.upload.onprogress=event=>{
+   if(event.lengthComputable)progress(stage+' · '+file.name,event.loaded,event.total);
+  };
+  xhr.onerror=()=>reject(Error('Mất kết nối khi tải ảnh '+file.name+'. Có thể bấm Lưu để tiếp tục.'));
+  xhr.ontimeout=()=>reject(Error('Tải ảnh '+file.name+' quá lâu. Kiểm tra tốc độ mạng và thử lại.'));
+  xhr.onload=()=>{
+   const result=(()=>{try{return JSON.parse(xhr.responseText)}catch{return {};}})();
+   if(xhr.status<200||xhr.status>=300)return reject(Error(result.error||'Không lưu được ảnh: HTTP '+xhr.status));
+   resolve(result);
+  };
+  xhr.send(file);
+ });
+}
 async function uploadOne(orderId,stage,file){
  const video=stage==='VIDEO_DONG_HANG',max=video?2*1024*1024*1024:25*1024*1024;
  if(!file.size||file.size>max)throw Error('Tệp '+file.name+' vượt giới hạn '+(video?'2 GB':'25 MB'));
@@ -854,7 +933,7 @@ async function uploadOne(orderId,stage,file){
  }
  if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id}
  if(!video){
-  progress(file.name,0,file.size);await api('PUT','/api/uploads/'+id,file,true);
+  progress(stage+' · '+file.name,0,file.size);await uploadPhotoWithProgress(id,stage,file);
   progress(file.name,file.size,file.size);localStorage.removeItem(key);return id;
  }
  const chunk=info.chunkSize||CHUNK_BYTES;
@@ -877,12 +956,24 @@ async function uploadOne(orderId,stage,file){
  return id;
 }
 async function uploadSelection(orderId,items){
- let index=0,total=items.length;
- const uploaded=[];
- for(const [stage,file] of items){
-  $('uploadLabel').textContent='Tệp '+(++index)+'/'+total+': '+file.name;
-  const id=await uploadOne(orderId,stage,file);
-  uploaded.push({id,stage,filename:file.name});
+ // Photos use independent R2 objects. Allow up to 3 uploads concurrently instead
+ // of blocking on every image. Preserve video sequential upload to limit bandwidth.
+ const uploaded=new Array(items.length),photos=[],videos=[];
+ items.forEach(([stage],index)=>(stage==='VIDEO_DONG_HANG'?videos:photos).push(index));
+ let next=0,complete=0;
+ const runPhoto=async()=>{
+  while(next<photos.length){
+   const i=photos[next++],[stage,file]=items[i];
+   const id=await uploadOne(orderId,stage,file);
+   uploaded[i]={id,stage,filename:file.name};
+   $('uploadLabel').textContent='Đã lưu '+(++complete)+'/'+items.length+' tệp vào Qbooks';
+  }
+ };
+ await Promise.all(Array.from({length:Math.min(3,photos.length)},()=>runPhoto()));
+ for(const i of videos){
+  const [stage,file]=items[i],id=await uploadOne(orderId,stage,file);
+  uploaded[i]={id,stage,filename:file.name};
+  $('uploadLabel').textContent='Đã lưu '+(++complete)+'/'+items.length+' tệp vào Qbooks';
  }
  return uploaded;
 }
@@ -1317,7 +1408,6 @@ $('changePinForm').onsubmit=async event=>{
 };
 
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
-$('copyOrderInfo').onclick=copyOrderInformation;
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
 prefillRememberedAccount();
 initGoogleSignIn();
