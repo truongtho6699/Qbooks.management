@@ -899,6 +899,26 @@ async function videoDuration(file){
   node.src=url;
  });
 }
+function uploadPhotoWithProgress(id,stage,file){
+ // XMLHttpRequest exposes real upload bytes; fetch() does not expose request upload progress.
+ return new Promise((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();
+  xhr.open('PUT','/api/uploads/'+encodeURIComponent(id),true);
+  xhr.setRequestHeader('authorization','Bearer '+state.token);
+  xhr.timeout=150000;
+  xhr.upload.onprogress=event=>{
+   if(event.lengthComputable)progress(stage+' · '+file.name,event.loaded,event.total);
+  };
+  xhr.onerror=()=>reject(Error('Mất kết nối khi tải ảnh '+file.name+'. Có thể bấm Lưu để tiếp tục.'));
+  xhr.ontimeout=()=>reject(Error('Tải ảnh '+file.name+' quá lâu. Kiểm tra tốc độ mạng và thử lại.'));
+  xhr.onload=()=>{
+   const result=(()=>{try{return JSON.parse(xhr.responseText)}catch{return {};}})();
+   if(xhr.status<200||xhr.status>=300)return reject(Error(result.error||'Không lưu được ảnh: HTTP '+xhr.status));
+   resolve(result);
+  };
+  xhr.send(file);
+ });
+}
 async function uploadOne(orderId,stage,file){
  const video=stage==='VIDEO_DONG_HANG',max=video?2*1024*1024*1024:25*1024*1024;
  if(!file.size||file.size>max)throw Error('Tệp '+file.name+' vượt giới hạn '+(video?'2 GB':'25 MB'));
@@ -913,7 +933,7 @@ async function uploadOne(orderId,stage,file){
  }
  if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size);return id}
  if(!video){
-  progress(file.name,0,file.size);await api('PUT','/api/uploads/'+id,file,true);
+  progress(stage+' · '+file.name,0,file.size);await uploadPhotoWithProgress(id,stage,file);
   progress(file.name,file.size,file.size);localStorage.removeItem(key);return id;
  }
  const chunk=info.chunkSize||CHUNK_BYTES;
