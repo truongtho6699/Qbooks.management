@@ -2,7 +2,7 @@ import {trackDraft,markDraftSaved,confirmLeave,protectBeforeUnload,humanizeError
 
 const CHUNK_BYTES=8*1024*1024;
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null,adminPanel:'accounts'};
+const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null,adminPanel:'accounts',backgroundJob:null,editOrder:null};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
 const REMEMBER_EMAIL='qbooks_remember_email';
 const REMEMBER_TOKEN='qbooks_remember_token';
@@ -764,6 +764,39 @@ function overviewMediaLinks(container,order){
  if(folder){const link=el('a','Thư mục chứa','overview-link');link.href=folder;link.target='_blank';link.rel='noopener noreferrer';container.append(link);}
  if(!container.children.length)container.append(el('span','Chưa có hồ sơ','muted'));
 }
+function canEditOrder(order){
+ if(!state.user||state.user.role==='VIEW'||!order)return false;
+ if(capabilities().admin)return true;
+ return capabilities().sale&&order.status==='CHỜ ĐÓNG HÀNG'&&order.created_by===state.user.id;
+}
+function openEditOrder(order){
+ if(!canEditOrder(order))return notice('Bạn chưa có quyền sửa đơn này.');
+ if(state.backgroundJob?.orderId===order.id)return notice('Đơn đang tải video nền. Chỉ sửa sau khi tác vụ kết thúc.');
+ state.editOrder=order;
+ const form=$('editOrderForm');
+ for(const key of ['invoice_codes','transport','customer','address','carrier','quantity'])
+  form.elements[key].value=order[key]??'';
+ form.elements.delivery_mode.value=order.urgent?'GAP':'THOI_GIAN';
+ const time=String(order.delivery_time||'');
+ form.elements.delivery_time.value=time.slice(0,16).replace(' ','T');
+ $('editOrderDeliveryMode').onchange();
+ $('editOrderDialog').showModal();
+}
+async function saveOrderEdit(event){
+ event.preventDefault();
+ const order=state.editOrder;if(!order)return;
+ const form=$('editOrderForm'),button=$('submitEditOrder');button.disabled=true;
+ try{
+  const data=Object.fromEntries(new FormData(form));
+  data.expected_updated_at=order.updated_at;
+  await api('PATCH','/api/orders/'+order.id,data);
+  $('editOrderDialog').close();state.editOrder=null;
+  notice('Đã sửa đơn và ghi nhật ký.',true);
+  if(state.tab==='overview')await loadOverview();
+  else await loadOrders();
+ }catch(e){notice('Chưa sửa được đơn: '+e.message);showFormError(form,e.message);}
+ finally{button.disabled=false;}
+}
 function appendOverviewRow(order,table,cardHolder){
  const code=order.invoice_codes||order.id;
  const tr=document.createElement('tr');
@@ -776,6 +809,7 @@ function appendOverviewRow(order,table,cardHolder){
  const action=document.createElement('td');action.className='overview-copy-actions';
  const copy=button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary');copy.classList.add('copy-order-btn');
  action.append(copy);
+ if(canEditOrder(order))action.append(button('Sửa đơn',()=>openEditOrder(order),'secondary'));
  tr.append(orderTd,customer,status,links,detail,action);table.append(tr);
  const card=el('article',null,'overview-mobile-card');
  card.append(el('strong',code),el('small',(order.customer||'—')+' · '+(order.sale_name||'—')),statusBadge(order.status));
@@ -784,6 +818,7 @@ function appendOverviewRow(order,table,cardHolder){
  card.append(linksMobile);
  const controls=el('div',null,'overview-card-actions');
  controls.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'),button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary'));
+ if(canEditOrder(order))controls.append(button('Sửa đơn',()=>openEditOrder(order),'secondary'));
  card.append(controls);cardHolder.append(card);
 }
 function showOrderSummary(order){
@@ -1408,6 +1443,9 @@ $('changePinForm').onsubmit=async event=>{
  finally{save.disabled=false;}
 };
 
+$('editOrderDeliveryMode').onchange=()=>{const show=$('editOrderDeliveryMode').value==='THOI_GIAN';$('editOrderDeliveryTimeWrap').hidden=!show;$('editOrderForm').elements.delivery_time.required=show;};
+$('closeEditOrder').onclick=()=>$('editOrderDialog').close();
+$('editOrderForm').onsubmit=saveOrderEdit;
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
 prefillRememberedAccount();
