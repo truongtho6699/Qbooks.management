@@ -639,22 +639,54 @@ function addMediaLinks(container,order){
  }
  if(!container.children.length)container.append(el('span','Chưa có hồ sơ','muted'));
 }
+function orderContentSegments(order){
+ const when=order.urgent?'GẤP':String(order.delivery_time||'').trim().replace('T',' ');
+ const values=[when,order.invoice_codes,order.transport,order.customer,order.address,order.quantity,
+  order.carrier,order.shipping_person,order.shipping_phone];
+ return values.map(value=>value===null||value===undefined?'':String(value).trim()).filter(value=>value!==''&&value!=='—');
+}
+function orderContentLine(order){return orderContentSegments(order).join(' - ');}
 function orderContentLines(order){
- const when=order.urgent?'GẤP':String(order.delivery_time||'').replace('T',' ')||'Chưa xác định';
- return [
-  'Gấp/Thời gian giao: '+when,'Mã hóa đơn: '+(order.invoice_codes||'—'),
-  'Loại vận chuyển: '+(order.transport||'—'),'Tên khách: '+(order.customer||'—'),
-  'Địa chỉ: '+(order.address||'—'),'Số quyển: '+(order.quantity??'—'),
-  'Nhà xe (nếu có): '+(order.carrier||'—'),
-  'Tên ship: '+(order.shipping_person||'—'),'SĐT ship: '+(order.shipping_phone||'—')
- ];
+ const names=['Gấp/Thời gian giao','Mã hóa đơn','Loại vận chuyển','Tên khách','Địa chỉ',
+  'Số quyển','Nhà xe (nếu có)','Tên ship','SĐT ship'];
+ const when=order.urgent?'GẤP':String(order.delivery_time||'').trim().replace('T',' ');
+ const values=[when,order.invoice_codes,order.transport,order.customer,order.address,order.quantity,
+  order.carrier,order.shipping_person,order.shipping_phone];
+ return values.flatMap((value,i)=>value===null||value===undefined||String(value).trim()===''?[]:
+  [names[i]+': '+String(value).trim()]);
 }
 function goodsImageLinks(order){
- const files=(order.media||[]).filter(item=>item.stage==='HANG_HOA')
-  .map(item=>fileDriveUrl(item.drive_file_id)).filter(Boolean);
- if(files.length)return [...new Set(files)];
+ // Give a folder link first so recipients can access the full collection of merchandise photos.
  const folder=safeDriveUrl(order.goods_folder_url);
- return folder?[folder]:[];
+ if(folder)return [folder];
+ const fileLinks=(order.media||[]).filter(item=>item.stage==='HANG_HOA')
+  .map(item=>fileDriveUrl(item.drive_file_id)||safeDriveUrl(item.drive_folder_url)).filter(Boolean);
+ return [...new Set(fileLinks)];
+}
+function orderCopyText(order){
+ const content=orderContentLine(order),imageLinks=goodsImageLinks(order);
+ return 'Thông tin đơn hàng: '+content+'\nLink ảnh hàng hóa: '+
+  (imageLinks.length?imageLinks.join('\n'):'Chưa có link ảnh hàng hóa');
+}
+async function copyOrderToClipboard(order){
+ const content=orderCopyText(order);
+ try{
+  await navigator.clipboard.writeText(content);
+  notice('Đã sao chép thông tin đơn hàng và link ảnh hàng hóa.',true);
+ }catch{
+  window.prompt('Sao chép thông tin đơn hàng:',content);
+ }
+}
+function goodsImageCard(order){
+ const folder=safeDriveUrl(order.goods_folder_url);
+ const url=folder||(order.media||[]).filter(item=>item.stage==='HANG_HOA')
+  .map(item=>fileDriveUrl(item.drive_file_id)).find(Boolean);
+ if(!url)return null;
+ const link=el('a',null,'goods-image-card');
+ link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+ link.title='Xem ảnh hàng hóa trực tiếp trên Google Drive';
+ link.append(el('span','▣','goods-image-card-icon'),el('span','Ảnh hàng hóa'));
+ return link;
 }
 function overviewMediaLinks(container,order){
  const labels=[['HANG_HOA','Ảnh hàng hóa'],['GIAO_HANG','Ảnh giao hàng']];
@@ -687,12 +719,20 @@ function appendOverviewRow(order,table,cardHolder){
  const customer=document.createElement('td');customer.append(el('strong',order.customer||'—'),el('small','Sale: '+(order.sale_name||'—')));
  const status=document.createElement('td');status.append(statusBadge(order.status));
  const links=document.createElement('td');links.className='overview-media-links';overviewMediaLinks(links,order);
+ const goodsCard=goodsImageCard(order);if(goodsCard)links.prepend(goodsCard);
  const detail=document.createElement('td');detail.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'));
- tr.append(orderTd,customer,status,links,detail);table.append(tr);
+ const action=document.createElement('td');action.className='overview-copy-actions';
+ const copy=button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary');copy.classList.add('copy-order-btn');
+ action.append(copy);
+ tr.append(orderTd,customer,status,links,detail,action);table.append(tr);
  const card=el('article',null,'overview-mobile-card');
  card.append(el('strong',code),el('small',(order.customer||'—')+' · '+(order.sale_name||'—')),statusBadge(order.status));
- const linksMobile=el('div',null,'overview-media-links');overviewMediaLinks(linksMobile,order);card.append(linksMobile);
- card.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'));cardHolder.append(card);
+ const linksMobile=el('div',null,'overview-media-links');overviewMediaLinks(linksMobile,order);
+ const mobileGoods=goodsImageCard(order);if(mobileGoods)linksMobile.prepend(mobileGoods);
+ card.append(linksMobile);
+ const controls=el('div',null,'overview-card-actions');
+ controls.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'),button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary'));
+ card.append(controls);cardHolder.append(card);
 }
 function showOrderSummary(order){
  state.summaryOrder=order;
@@ -701,17 +741,13 @@ function showOrderSummary(order){
   const row=el('div',null,'summary-field');row.append(el('strong',label),el('span',String(val??'—')));info.append(row);
  }
  const content=el('div',null,'order-content');content.append(el('strong','Nội dung đơn hàng'));
- content.append(el('pre',orderContentLines(order).join('\n'),'order-content-text'));info.append(content);
+ content.append(el('pre',orderContentLine(order),'order-content-text'));info.append(content);
  const media=$('orderSummaryMedia');media.replaceChildren();overviewMediaLinks(media,order);
  if(typeof modal.showModal==='function')modal.showModal();else modal.hidden=false;
 }
 async function copyOrderInformation(){
  const order=state.summaryOrder;if(!order)return notice('Hãy chọn đơn trước khi sao chép.');
- const images=goodsImageLinks(order);
- const value='NỘI DUNG ĐƠN HÀNG\n'+orderContentLines(order).join('\n')+
-  '\n\nLink ảnh hàng hóa:\n'+(images.length?images.join('\n'):'Chưa có liên kết ảnh hàng hóa trên Google Drive');
- try{await navigator.clipboard.writeText(value);notice('Đã copy nội dung đơn và liên kết ảnh hàng hóa.',true);}
- catch{window.prompt('Sao chép nội dung đơn:',value);}
+ await copyOrderToClipboard(order);
 }
 function renderOverview(){
  const r=state.overviewData;if(!r)return;
@@ -724,7 +760,7 @@ function renderOverview(){
  const rows=r.orders.filter(o=>(!status||o.status===status)&&(!term||[o.id,o.invoice_codes,o.customer,o.sale_name].some(x=>String(x||'').toLocaleLowerCase('vi').includes(term))));
  const table=$('overviewRows'),cardsHolder=$('overviewCards');table.replaceChildren();cardsHolder.replaceChildren();
  if(rows.length){for(const o of rows)appendOverviewRow(o,table,cardsHolder);}
- else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=5;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
+ else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=6;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
  $('overviewHint').textContent='Đang hiển thị '+rows.length+'/'+r.orders.length+' đơn. Liên kết Drive mở trong tab mới; ảnh/video trên R2 được tải qua phiên đăng nhập.';
 }
 async function loadOverview(){
