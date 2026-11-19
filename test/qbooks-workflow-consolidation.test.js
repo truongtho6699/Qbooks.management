@@ -41,7 +41,8 @@ test('shipping overview contains all detail and copy fields',()=>{
  assert.equal(lines.length,9);
  assert.ok(lines.some(x=>x.includes('GẤP')));
  assert.ok(lines.some(x=>x.includes('0900000000')));
- assert.match(html,/id="copyOrderInfo"/);
+ assert.doesNotMatch(html,/id="copyOrderInfo"/);
+ assert.match(app,/button\('Copy đơn hàng',\(\)=>copyOrderToClipboard\(order\)/);
  assert.match(app,/function goodsImageLinks/);
  assert.match(app,/item\.stage==='HANG_HOA'/);
  assert.match(app,/Link ảnh hàng hóa/);
