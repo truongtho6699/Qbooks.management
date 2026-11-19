@@ -599,10 +599,10 @@ async function handle(req,env){
   const current=Object.fromEntries(Object.keys(changes).map(k=>[k,before[k]]));
   // Respect order locks held by a different operator; never edit a live packing job.
   const lock=await env.DB.prepare('SELECT user_id,expires_at FROM order_locks WHERE order_id=?').bind(id).first();
-  if(lock?.expires_at>now()&&lock.user_id!==user.id)
-   throw Object.assign(new Error('Đơn đang được nhân viên khác xử lý.'),{status:409});
-  const update=await env.DB.prepare("UPDATE orders SET invoice_codes=?,customer=?,quantity=?,address=?,carrier=?,transport=?,urgent=?,delivery_time=?,updated_at=CURRENT_TIMESTAMP,local_dirty=CASE WHEN source_system='GOOGLE_SHEETS' THEN 1 ELSE local_dirty END WHERE id=? AND updated_at=? AND status=?")
-   .bind(changes.invoice_codes,changes.customer,changes.quantity,changes.address,changes.carrier,changes.transport,changes.urgent,changes.delivery_time,id,before.updated_at,before.status).run();
+  if(lock?.expires_at>now())
+   throw Object.assign(new Error('Đơn đang được xử lý hoặc tải tệp. Chờ hoàn tất rồi sửa.'),{status:409});
+  const update=await env.DB.prepare("UPDATE orders SET invoice_codes=?,customer=?,quantity=?,address=?,carrier=?,transport=?,urgent=?,delivery_time=?,updated_at=CURRENT_TIMESTAMP,local_dirty=CASE WHEN source_system='GOOGLE_SHEETS' THEN 1 ELSE local_dirty END WHERE id=? AND updated_at=? AND status=? AND invoice_codes IS ? AND customer IS ? AND quantity IS ? AND address IS ? AND carrier IS ? AND transport IS ? AND urgent IS ? AND delivery_time IS ?")
+   .bind(changes.invoice_codes,changes.customer,changes.quantity,changes.address,changes.carrier,changes.transport,changes.urgent,changes.delivery_time,id,before.updated_at,before.status,before.invoice_codes,before.customer,before.quantity,before.address,before.carrier,before.transport,before.urgent,before.delivery_time).run();
   if(update.meta.changes!==1)throw Object.assign(new Error('Đơn đã thay đổi trong khi lưu, vui lòng tải lại.'),{status:409});
   await audit(env,user,'EDIT_ORDER',id,JSON.stringify({before:current,after:changes}));
   return json({ok:true,id,changed:true});
