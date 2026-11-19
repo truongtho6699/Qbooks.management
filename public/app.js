@@ -35,12 +35,28 @@ function notice(text='',ok=false){$('notice').textContent=ok?text:humanizeError(
 async function api(method,path,data,blob=false){
  const headers={};if(state.token)headers.authorization='Bearer '+state.token;
  if(!blob&&data!=null)headers['content-type']='application/json';
- let res;
- try{res=await fetch(path,{method,headers,body:data==null?undefined:blob?data:JSON.stringify(data)})}
- catch(e){throw Error('Lỗi kết nối. Kiểm tra Wi-Fi/3G rồi thử lại: '+e.message)}
- let result;try{result=await res.json()}catch{result={error:'Máy chủ không trả JSON.'}}
- if(!res.ok)throw Error(result.error||'Máy chủ trả lỗi '+res.status);
- return result;
+ // Read-only calls may retry after a transient network error; never retry writes.
+ const attempts=method==='GET'?2:1;
+ for(let attempt=0;attempt<attempts;attempt++){
+  const controller=new AbortController();
+  const wait=blob?150000:method==='GET'?20000:45000;
+  const timer=setTimeout(()=>controller.abort(),wait);
+  let res;
+  try{
+   res=await fetch(path,{method,headers,
+    body:data==null?undefined:blob?data:JSON.stringify(data),
+    signal:controller.signal,cache:method==='GET'?'no-store':'default'});
+  }catch(e){
+   clearTimeout(timer);
+   if(method==='GET'&&attempt<attempts-1)continue;
+   throw Error(e.name==='AbortError'?'Máy chủ phản hồi quá chậm, đã dừng yêu cầu. Vui lòng thử lại.':
+    'Lỗi kết nối. Kiểm tra Wi-Fi/3G rồi thử lại: '+e.message);
+  }
+  clearTimeout(timer);
+  let result;try{result=await res.json()}catch{result={error:'Máy chủ không trả JSON.'}}
+  if(!res.ok)throw Error(result.error||'Máy chủ trả lỗi '+res.status);
+  return result;
+ }
 }
 function show(id,yes){$(id).hidden=!yes;}
 function setBusy(value){state.saving=value;['savePacking','saveShipping','createGroup'].forEach(k=>$(k).disabled=value)}
@@ -795,10 +811,21 @@ function renderOverview(){
  else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=6;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
  $('overviewHint').textContent='Đang hiển thị '+rows.length+'/'+r.orders.length+' đơn. Liên kết Drive mở trong tab mới; ảnh/video trên R2 được tải qua phiên đăng nhập.';
 }
+let overviewLoading=null;
 async function loadOverview(){
+ // Prevent parallel refresh requests when opening a menu and pressing Refresh.
+ if(overviewLoading)return overviewLoading;
  $('overviewHint').textContent='Đang đọc dữ liệu đơn và hồ sơ…';
- const r=await api('GET','/api/shipping/overview');
- state.overviewData=r;renderOverview();
+ overviewLoading=(async()=>{
+  try{
+   const r=await api('GET','/api/shipping/overview');
+   state.overviewData=r;renderOverview();
+  }catch(e){
+   $('overviewHint').textContent='Không tải được dữ liệu: '+e.message;
+   throw e;
+  }finally{overviewLoading=null;}
+ })();
+ return overviewLoading;
 }
 async function loadOrders(){
  const q=$('search').value.trim(),status=state.tab==='pack'?'CHỜ ĐÓNG HÀNG':state.tab==='ship'?'CHỜ VẬN ĐƠN':'';
@@ -909,12 +936,24 @@ async function uploadOne(orderId,stage,file){
  return id;
 }
 async function uploadSelection(orderId,items){
- let index=0,total=items.length;
- const uploaded=[];
- for(const [stage,file] of items){
-  $('uploadLabel').textContent='Tệp '+(++index)+'/'+total+': '+file.name;
-  const id=await uploadOne(orderId,stage,file);
-  uploaded.push({id,stage,filename:file.name});
+ // Photos use independent R2 objects. Allow up to 3 uploads concurrently instead
+ // of blocking on every image. Preserve video sequential upload to limit bandwidth.
+ const uploaded=new Array(items.length),photos=[],videos=[];
+ items.forEach(([stage],index)=>(stage==='VIDEO_DONG_HANG'?videos:photos).push(index));
+ let next=0,complete=0;
+ const runPhoto=async()=>{
+  while(next<photos.length){
+   const i=photos[next++],[stage,file]=items[i];
+   const id=await uploadOne(orderId,stage,file);
+   uploaded[i]={id,stage,filename:file.name};
+   $('uploadLabel').textContent='Đã lưu '+(++complete)+'/'+items.length+' tệp vào Qbooks';
+  }
+ };
+ await Promise.all(Array.from({length:Math.min(3,photos.length)},()=>runPhoto()));
+ for(const i of videos){
+  const [stage,file]=items[i],id=await uploadOne(orderId,stage,file);
+  uploaded[i]={id,stage,filename:file.name};
+  $('uploadLabel').textContent='Đã lưu '+(++complete)+'/'+items.length+' tệp vào Qbooks';
  }
  return uploaded;
 }
