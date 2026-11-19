@@ -1375,7 +1375,7 @@ $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 $('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
 $('overviewSearch').oninput=renderOverview;
 $('overviewStatus').onchange=renderOverview;
-$('overviewPeriod').onchange=()=>loadOverview().catch(e=>notice(e.message));
+$('overviewPeriod').onchange=async()=>{if(overviewLoading)await overviewLoading.catch(()=>{});await loadOverview().catch(e=>notice(e.message));};
 
 function openAccountInfo(){
  if(!state.user)return notice('Cần đăng nhập để xem thông tin tài khoản.');
