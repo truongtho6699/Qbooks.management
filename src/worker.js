@@ -511,7 +511,7 @@ async function handle(req,env){
   }
   if(from){conditions.push('created_at>=? AND created_at<?');args.push(from,through);}
   const where=conditions.length?' WHERE '+conditions.join(' AND '):'';
-  const data=await env.DB.prepare('SELECT id,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').bind(...args).all();
+  const data=await env.DB.prepare('SELECT id,created_by,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').bind(...args).all();
   const orders=data.results||[];
   const byId=new Map(orders.map(o=>[o.id,{...o,media:[]}]));
   if(orders.length){
