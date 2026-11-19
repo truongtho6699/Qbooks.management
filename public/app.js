@@ -872,6 +872,16 @@ async function loadOrders(){
  const list=$('orderList');list.replaceChildren();
  if(!r.orders.length)list.append(el('p','Chưa có đơn phù hợp.'));
  for(const o of r.orders)list.append(makeCard(o,()=>openOrder(o)));
+ const saleList=$('saleOrdersList');if(saleList){
+  saleList.replaceChildren();
+  if(!r.orders.length)saleList.append(el('p','Chưa có đơn đã lên.','muted'));
+  for(const order of r.orders){
+   const row=el('article',null,'order');
+   row.append(el('strong',order.invoice_codes||order.id),el('small',(order.customer||'')+' · '+(order.status||'')));
+   if(canEditOrder(order))row.append(button('Sửa đơn',()=>openEditOrder(order),'secondary'));
+   saleList.append(row);
+  }
+ }
 }
 async function loadPackingHelpers(){
  const list=$('packingHelpers');list.replaceChildren();
