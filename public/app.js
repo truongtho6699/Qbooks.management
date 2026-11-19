@@ -688,6 +688,39 @@ function goodsImageCard(order){
  link.append(el('span','▣','goods-image-card-icon'),el('span','Ảnh hàng hóa'));
  return link;
 }
+async function openStoredImage(upload){
+ // Authenticated view of an image not yet synchronized to Drive. Open tab immediately
+ // inside the user click to avoid popup blockers; never expose a Bearer token in a URL.
+ const win=window.open('about:blank','_blank');
+ if(win){
+  try{win.opener=null;win.document.title='Đang mở ảnh Qbooks…';win.document.body.textContent='Đang tải ảnh đã lưu trên Qbooks…';}
+  catch{}
+ }
+ try{
+  const res=await fetch('/api/uploads/'+encodeURIComponent(upload.id)+'/file',{
+   headers:{authorization:'Bearer '+state.token},cache:'no-store',
+   signal:AbortSignal.timeout(60000)
+  });
+  if(!res.ok){
+   const data=await res.json().catch(()=>({}));
+   const drive=safeDriveUrl(data.driveUrl);
+   if(drive){if(win)win.location.replace(drive);else window.open(drive,'_blank','noopener');return;}
+   throw Error(data.error||'Tệp chưa sẵn sàng để xem.');
+  }
+  const blob=await res.blob();
+  if(!blob.type.startsWith('image/')&&blob.type!=='application/pdf')
+   throw Error('Chỉ xem trực tiếp ảnh/PDF; các tệp khác cần được đồng bộ lên Drive.');
+  const url=URL.createObjectURL(blob);
+  if(win)win.location.replace(url);
+  else{
+   const a=el('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.click();
+  }
+  setTimeout(()=>URL.revokeObjectURL(url),10*60*1000);
+ }catch(e){
+  try{if(win&&!win.closed)win.close();}catch{}
+  notice('Không mở được ảnh: '+e.message);
+ }
+}
 function overviewMediaLinks(container,order){
  const labels=[['HANG_HOA','Ảnh hàng hóa'],['GIAO_HANG','Ảnh giao hàng']];
  for(const [stage,label] of labels){
@@ -699,7 +732,10 @@ function overviewMediaLinks(container,order){
     const link=el('a',label+(items.length>1?' · '+item.filename:''),'overview-link');
     link.href=href;link.target='_blank';link.rel='noopener noreferrer';container.append(link);count++;
    }else{
-    const btn=button(label+' · Tải tệp',()=>downloadMedia(item.id,item.filename,btn),'overview-link');
+    // The file may be on R2 while the Drive synchronization is pending.
+    // Preview it after authentication instead of forcing an attachment download.
+    const btn=button(label+(items.length>1?' · '+item.filename:''),()=>openStoredImage(item),'overview-link');
+    btn.title='Xem ảnh đã lưu trên Qbooks; khi đồng bộ xong sẽ mở trực tiếp Google Drive';
     container.append(btn);count++;
    }
   }
@@ -744,10 +780,6 @@ function showOrderSummary(order){
  content.append(el('pre',orderContentLine(order),'order-content-text'));info.append(content);
  const media=$('orderSummaryMedia');media.replaceChildren();overviewMediaLinks(media,order);
  if(typeof modal.showModal==='function')modal.showModal();else modal.hidden=false;
-}
-async function copyOrderInformation(){
- const order=state.summaryOrder;if(!order)return notice('Hãy chọn đơn trước khi sao chép.');
- await copyOrderToClipboard(order);
 }
 function renderOverview(){
  const r=state.overviewData;if(!r)return;
@@ -1317,7 +1349,6 @@ $('changePinForm').onsubmit=async event=>{
 };
 
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
-$('copyOrderInfo').onclick=copyOrderInformation;
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
 prefillRememberedAccount();
 initGoogleSignIn();
