@@ -1125,7 +1125,7 @@ async function savePack(){
  if(!hasVideo){
   setBusy(true);
   try{
-   const saved=await uploadSelection(id,uploads,true);
+   const saved=await uploadSelection(id,uploads);
    await api('POST','/api/orders/'+id+'/pack',payload);
    state.lockedOrderIds.delete(id);markDraftSaved($('packControls'));
    notice('Đã hoàn thành đóng hàng, '+saved.length+' tệp đã lưu R2.',true);
@@ -1146,7 +1146,7 @@ async function savePack(){
  // Deliberately not awaited: render/navigation continue while upload runs.
  void (async()=>{
   try{
-   const saved=await uploadSelection(id,uploads);
+   const saved=await uploadSelection(id,uploads,true);
    await api('POST','/api/orders/'+id+'/pack',payload);
    state.lockedOrderIds.delete(id);
    $('backgroundUploadProgress').value=100;
