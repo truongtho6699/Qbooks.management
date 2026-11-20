@@ -39,3 +39,14 @@ test('background video maintains order lock, completes packing after bytes and s
  assert.match(html,/id="backgroundUploadBar"/);
  assert.match(css,/qbook-background-upload/);
 });
+
+test('Edit order is offered only inside detail dialog, never as a row action',()=>{
+ assert.match(html,/id="editFromOrderDetail"[^>]*hidden>Sửa đơn<\/button>/);
+ assert.match(app,/\$\('editFromOrderDetail'\)\.hidden=!canEditOrder\(order\)/);
+ assert.match(app,/\$\('editFromOrderDetail'\)\.onclick=/);
+ const begin=app.indexOf('function appendOverviewRow(order,table,cardHolder){');
+ const end=app.indexOf('function showOrderSummary(order){',begin);
+ const table=app.slice(begin,end);
+ assert.doesNotMatch(table,/button\('Sửa đơn'/);
+ assert.match(app,/row\.append\(button\('Chi tiết đơn'/);
+});
