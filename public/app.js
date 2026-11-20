@@ -934,7 +934,7 @@ function progress(file,done,total,background=false){
   $('backgroundUploadBar').hidden=false;
   $('backgroundUploadTitle').textContent='Đang tải nền: '+file;
   $('backgroundUploadProgress').value=total?Math.min(100,Math.round(done/total*100)):0;
-  $('backgroundUploadDetail').textContent=Math.round(done/1048576)+' / '+Math.round(total/1048576)+' MB. Có thể chuyển menu, nhưng phải giữ tab Qbooks mở.';
+  $('backgroundUploadDetail').textContent=Math.round(done/1048576)+' / '+Math.round(total/1048576)+' MB đã truyền. Chưa thể đóng trình duyệt khi video chưa gửi đủ.';
  }
  $('progressWrap').hidden=false;$('uploadLabel').textContent='Đang tải: '+file;
  $('uploadProgress').value=Math.min(100,Math.round(done/total*100));
@@ -1140,25 +1140,28 @@ async function savePack(){
  $('backgroundUploadBar').hidden=false;
  $('backgroundUploadProgress').value=0;
  $('backgroundUploadTitle').textContent='Đang tải nền video cho đơn '+(order.invoice_codes||id);
- $('backgroundUploadDetail').textContent='Đang khởi tạo. Có thể chuyển menu, không đóng tab.';
+ $('backgroundUploadDetail').textContent='Đang gửi video từ thiết bị lên R2. Có thể chuyển menu Qbooks, nhưng KHÔNG đóng tab/Safari trước khi thấy CÓ THỂ ĐÓNG TRÌNH DUYỆT.';
  markDraftSaved($('packControls'));
- notice('Đã chuyển tải video sang chế độ nền trong Qbooks. Có thể chuyển menu; giữ tab mở.',true);
+ notice('Đang tải video từ thiết bị lên R2: có thể dùng menu Qbooks khác nhưng chưa được đóng trình duyệt.',true);
  // Deliberately not awaited: render/navigation continue while upload runs.
  void (async()=>{
   try{
    const saved=await uploadSelection(id,uploads,true);
+   // All file bytes are on R2. Keep the warning until the packing record is committed.
+   $('backgroundUploadProgress').value=100;
+   $('backgroundUploadTitle').textContent='Video đã tải đủ lên R2 – đang lưu đóng hàng';
+   $('backgroundUploadDetail').textContent='Chưa đóng trình duyệt cho đến khi lưu đơn thành công.';
    await api('POST','/api/orders/'+id+'/pack',payload);
    state.lockedOrderIds.delete(id);
-   $('backgroundUploadProgress').value=100;
-   $('backgroundUploadTitle').textContent='Đã hoàn thành tải video và đóng đơn '+(order.invoice_codes||id);
-   $('backgroundUploadDetail').textContent='Đã lưu '+saved.length+' tệp. Có thể đóng tab.';
+   $('backgroundUploadTitle').textContent='Đã lưu đóng hàng '+(order.invoice_codes||id)+' – CÓ THỂ ĐÓNG TRÌNH DUYỆT';
+   $('backgroundUploadDetail').textContent='Đã lưu '+saved.length+' tệp trên R2. Đồng bộ Google Drive tiếp tục trên máy chủ nếu Worker đồng bộ đã bật.';
    if(state.area==='orders'&&state.tab==='pack'&&state.selected?.id===id){
     show('detailView',false);show('ordersView',true);
     await loadOrders().catch(()=>{});
    }
   }catch(e){
    $('backgroundUploadTitle').textContent='Tải nền chưa hoàn thành: '+(order.invoice_codes||id);
-   $('backgroundUploadDetail').textContent=e.message+' · Mở lại đơn và chọn lại tệp để tiếp tục.';
+   $('backgroundUploadDetail').textContent=e.message+' · Video chưa xác nhận hoàn tất: mở lại đơn và chọn lại tệp để tiếp tục.';
    notice('Tải video nền gặp lỗi: '+e.message);
    state.lockedOrderIds.delete(id);
    await api('DELETE','/api/orders/'+id+'/lock').catch(()=>{});
