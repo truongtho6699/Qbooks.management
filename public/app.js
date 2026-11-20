@@ -811,7 +811,6 @@ function appendOverviewRow(order,table,cardHolder){
  const action=document.createElement('td');action.className='overview-copy-actions';
  const copy=button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary');copy.classList.add('copy-order-btn');
  action.append(copy);
- if(canEditOrder(order))action.append(button('Sửa đơn',()=>openEditOrder(order),'secondary'));
  tr.append(orderTd,customer,status,links,detail,action);table.append(tr);
  const card=el('article',null,'overview-mobile-card');
  card.append(el('strong',code),el('small',(order.customer||'—')+' · '+(order.sale_name||'—')),statusBadge(order.status));
@@ -820,7 +819,6 @@ function appendOverviewRow(order,table,cardHolder){
  card.append(linksMobile);
  const controls=el('div',null,'overview-card-actions');
  controls.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'),button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary'));
- if(canEditOrder(order))controls.append(button('Sửa đơn',()=>openEditOrder(order),'secondary'));
  card.append(controls);cardHolder.append(card);
 }
 function showOrderSummary(order){
@@ -832,6 +830,7 @@ function showOrderSummary(order){
  const content=el('div',null,'order-content');content.append(el('strong','Nội dung đơn hàng'));
  content.append(el('pre',orderContentLine(order),'order-content-text'));info.append(content);
  const media=$('orderSummaryMedia');media.replaceChildren();overviewMediaLinks(media,order);
+ $('editFromOrderDetail').hidden=!canEditOrder(order);
  if(typeof modal.showModal==='function')modal.showModal();else modal.hidden=false;
 }
 function renderOverview(){
@@ -878,7 +877,7 @@ async function loadOrders(){
   for(const order of r.orders){
    const row=el('article',null,'order');
    row.append(el('strong',order.invoice_codes||order.id),el('small',(order.customer||'')+' · '+(order.status||'')));
-   if(canEditOrder(order))row.append(button('Sửa đơn',()=>openEditOrder(order),'secondary'));
+   row.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'));
    saleList.append(row);
   }
  }
@@ -1501,6 +1500,7 @@ $('changePinForm').onsubmit=async event=>{
 $('editOrderDeliveryMode').onchange=()=>{const show=$('editOrderDeliveryMode').value==='THOI_GIAN';$('editOrderDeliveryTimeWrap').hidden=!show;$('editOrderForm').elements.delivery_time.required=show;};
 $('closeEditOrder').onclick=()=>$('editOrderDialog').close();
 $('editOrderForm').onsubmit=saveOrderEdit;
+$('editFromOrderDetail').onclick=()=>{const order=state.summaryOrder;if(!order||!canEditOrder(order))return; $('orderSummaryDialog').close();openEditOrder(order);};
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
 window.addEventListener('beforeunload',e=>{if(state.backgroundJob){e.preventDefault();e.returnValue='';}});
