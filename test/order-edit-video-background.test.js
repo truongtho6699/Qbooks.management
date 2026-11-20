@@ -25,7 +25,7 @@ test('Sale and overview have edit actions with form and safe expected timestamp'
  assert.match(app,/function openEditOrder\(order\)/);
  assert.match(app,/data\.expected_updated_at=order\.updated_at/);
  assert.match(app,/api\('PATCH','\/api\/orders\/'\+order\.id,data\)/);
- assert.match(app,/if\(canEditOrder\(order\)\)/);
+ assert.match(app,/\$\('editFromOrderDetail'\)\.hidden=!canEditOrder\(order\)/);
 });
 test('background video maintains order lock, completes packing after bytes and survives internal menu switches',()=>{
  assert.match(app,/state\.backgroundJob=\{orderId:id/);
@@ -38,4 +38,15 @@ test('background video maintains order lock, completes packing after bytes and s
  assert.match(app,/window\.addEventListener\('beforeunload',e=>\{if\(state\.backgroundJob\)/);
  assert.match(html,/id="backgroundUploadBar"/);
  assert.match(css,/qbook-background-upload/);
+});
+
+test('Edit order is offered only inside detail dialog, never as a row action',()=>{
+ assert.match(html,/id="editFromOrderDetail"[^>]*hidden>Sửa đơn<\/button>/);
+ assert.match(app,/\$\('editFromOrderDetail'\)\.hidden=!canEditOrder\(order\)/);
+ assert.match(app,/\$\('editFromOrderDetail'\)\.onclick=/);
+ const begin=app.indexOf('function appendOverviewRow(order,table,cardHolder){');
+ const end=app.indexOf('function showOrderSummary(order){',begin);
+ const table=app.slice(begin,end);
+ assert.doesNotMatch(table,/button\('Sửa đơn'/);
+ assert.match(app,/row\.append\(button\('Chi tiết đơn'/);
 });
