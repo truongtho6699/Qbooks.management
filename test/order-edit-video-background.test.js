@@ -25,7 +25,7 @@ test('Sale and overview have edit actions with form and safe expected timestamp'
  assert.match(app,/function openEditOrder\(order\)/);
  assert.match(app,/data\.expected_updated_at=order\.updated_at/);
  assert.match(app,/api\('PATCH','\/api\/orders\/'\+order\.id,data\)/);
- assert.match(app,/if\(canEditOrder\(order\)\)/);
+ assert.match(app,/\$\('editFromOrderDetail'\)\.hidden=!canEditOrder\(order\)/);
 });
 test('background video maintains order lock, completes packing after bytes and survives internal menu switches',()=>{
  assert.match(app,/state\.backgroundJob=\{orderId:id/);
