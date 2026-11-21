@@ -54,7 +54,7 @@ test('Media menu removed duplicates and moved administration to System Admin',()
   assert.ok(!groups.includes(removed),'Media NAV still contains '+removed);
  for(const value of ['Tài khoản và nhân sự','Phân quyền tài khoản','Dữ liệu và nhật ký'])
   assert.ok(nav.includes(value));
- assert.match(nav,/makeBranch\(container,'Quản trị hệ thống',adminOpen,1/);
+ assert.match(nav,/makeBranch\(container,'QUẢN TRỊ HỆ THỐNG',adminOpen,1/);
  assert.match(app,/adminPanel:'accounts'/);
  assert.match(app,/data-admin-section/);
  assert.match(worker,/kind==='VIDEO_LOG'/);

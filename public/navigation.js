@@ -34,7 +34,7 @@ function render(config){
  function repaint(){render(config);}
  function setRoot(root){expandedRoot=expandedRoot===root?null:root;if(root!=='media')expandedGroup=null;repaint();}
  function makeBranch(parent,label,open,depth,action,iconName='overview',key='',scope='desktop'){
-  const button=make('button','qbn-branch qbn-depth-'+depth+(open?' qbn-open':''));button.type='button';
+  const button=make('button','qbn-branch qbn-depth-'+depth+(depth===1?' qbn-root':'')+(open?' qbn-open':''));button.type='button';
   const name=make('span','qbn-branch-label');name.append(icon(iconName),document.createTextNode(label));
   const arrow=make('span','qbn-chevron',open?'▾':'▸');arrow.setAttribute('aria-hidden','true');
   button.append(name,arrow);button.setAttribute('aria-expanded',String(open));
@@ -52,17 +52,19 @@ function render(config){
  for(const container of containers){
   const scope=container===mobileTree?'mobile':'desktop';
   container.replaceChildren();
-  const orderOpen=expandedRoot==='orders';
-  if(orders.length)makeBranch(container,'Quản lý giao hàng',orderOpen,1,()=>setRoot('orders'),'truck','orders',scope);
+  // Figma desktop uses two simultaneously visible functional groups;
+  // mobile retains the original accordion to save vertical space.
+  const orderOpen=scope==='desktop'||expandedRoot==='orders';
+  if(orders.length)makeBranch(container,'QUẢN LÝ GIAO HÀNG',orderOpen,1,()=>scope==='desktop'?onOrder(orders[0][0]):setRoot('orders'),'truck','orders',scope);
   if(orderOpen&&orders.length){
    const kids=make('div','qbn-children');kids.id='qbn-panel-orders-'+scope;
    const labels={overview:'Tổng hợp',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn'};
    for(const [key,label] of orders)makeLeaf(kids,label||labels[key]||key,area==='orders'&&activeView===key,2,()=>onOrder(key));
    container.append(kids);
   }
-  const mediaOpen=expandedRoot==='media';
+  const mediaOpen=scope==='desktop'||expandedRoot==='media';
   const visibleMedia=MEDIA_GROUPS.some(group=>group.items.some(([id])=>canMedia(id)));
-  if(visibleMedia)makeBranch(container,'Quản lý Media',mediaOpen,1,()=>setRoot('media'),'video','media',scope);
+  if(visibleMedia)makeBranch(container,'QUẢN LÝ MEDIA',mediaOpen,1,()=>scope==='desktop'?onMedia(canMedia('dashboard')?'dashboard':MEDIA_GROUPS.flatMap(x=>x.items).find(([id])=>canMedia(id))?.[0]):setRoot('media'),'video','media',scope);
   if(visibleMedia&&mediaOpen){
    const section=make('div','qbn-children');section.id='qbn-panel-media-'+scope;
    for(const group of MEDIA_GROUPS){
@@ -79,8 +81,8 @@ function render(config){
    container.append(section);
   }
   if(admin){
-   const adminOpen=expandedRoot==='admin';
-   makeBranch(container,'Quản trị hệ thống',adminOpen,1,()=>setRoot('admin'),'settings','admin',scope);
+   const adminOpen=scope==='desktop'||expandedRoot==='admin';
+   makeBranch(container,'QUẢN TRỊ HỆ THỐNG',adminOpen,1,()=>scope==='desktop'?onAdmin('accounts'):setRoot('admin'),'settings','admin',scope);
    if(adminOpen){
     const children=make('div','qbn-children qbn-admin-children');children.id='qbn-panel-admin-'+scope;
     const sections=[['accounts','Tài khoản và nhân sự'],['permissions','Phân quyền tài khoản'],['approvals','Duyệt tài khoản Google'],['sync','Đồng bộ dữ liệu'],['logs','Dữ liệu và nhật ký']];

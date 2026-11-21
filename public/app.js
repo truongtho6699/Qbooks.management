@@ -58,7 +58,7 @@ async function api(method,path,data,blob=false){
   return result;
  }
 }
-function show(id,yes){$(id).hidden=!yes;}
+function show(id,yes){$(id).hidden=!yes;if(id==='detailView')document.querySelector('.shipping-workspace')?.classList.toggle('qbook-detail-open',yes);}
 function setBusy(value){state.saving=value;['savePacking','saveShipping','createGroup'].forEach(k=>$(k).disabled=value)}
 function el(tag,text,cls){const n=document.createElement(tag);if(text!=null)n.textContent=text;if(cls)n.className=cls;return n}
 function meta(text){return el('small',text)}
@@ -401,7 +401,7 @@ function switchView(){
   renderTabs();return;
  }
  if(isOperationTab(key))state.lastOperationTab=key;
- const title={overview:'Tổng quan chuyển hàng',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn',staff:'Quản trị hệ thống'};
+ const title={overview:'Tổng hợp',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn',staff:'Quản trị hệ thống'};
  $('shippingHeading').textContent=title[key]||'Quản lý chuyển hàng';
  $('shippingSubheading').textContent=isView?'Chế độ chỉ xem – chỉ hiển thị dữ liệu trong phạm vi được cấp quyền, không thể thay đổi':
   key==='overview'?'Tiến độ, chứng từ, ảnh và video của từng đơn':'Theo dõi và thực hiện nghiệp vụ QBooks';
@@ -905,7 +905,8 @@ async function openOrder(order){
   state.lockedOrderIds.add(order.id);
  }catch(e){return notice('Không lấy được khóa đơn: '+e.message);}
  state.selected=order;
- show('ordersView',false);show('saleView',false);show('detailView',true);
+ // Desktop follows the Figma split view: keep the pending-order list visible next to the form.
+ show('ordersView',true);show('saleView',false);show('detailView',true);
  const n=$('selectedOrder');n.replaceChildren(el('h2',order.title),el('p','Khách: '+order.customer+' · Mã HĐ: '+order.invoice_codes),
   el('p','Vận chuyển: '+(order.transport||'')+' · Nhà xe: '+(order.carrier||'')+' · Nội dung: '+(order.original_content||'')));
  show('packControls',pack);show('shipControls',ship);show('progressWrap',false);
@@ -1464,7 +1465,26 @@ $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 $('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
 $('overviewSearch').oninput=renderOverview;
 $('overviewStatus').onchange=renderOverview;
-$('overviewPeriod').onchange=async()=>{if(overviewLoading)await overviewLoading.catch(()=>{});await loadOverview().catch(e=>notice(e.message));};
+function syncPeriodShortcuts(){
+ const selected=$('overviewPeriod').value;
+ document.querySelectorAll('[data-qbook-period]').forEach(btn=>{
+  btn.setAttribute('aria-pressed',String(btn.dataset.qbookPeriod===selected));
+ });
+}
+$('overviewPeriod').onchange=async()=>{
+ syncPeriodShortcuts();
+ if(overviewLoading)await overviewLoading.catch(()=>{});
+ await loadOverview().catch(e=>notice(e.message));
+};
+document.querySelectorAll('[data-qbook-period]').forEach(btn=>{
+ btn.onclick=()=>{
+  const period=btn.dataset.qbookPeriod;
+  if(!['today','7days','month','all'].includes(period))return;
+  $('overviewPeriod').value=period;
+  $('overviewPeriod').dispatchEvent(new Event('change'));
+ };
+});
+syncPeriodShortcuts();
 
 function openAccountInfo(){
  if(!state.user)return notice('Cần đăng nhập để xem thông tin tài khoản.');
