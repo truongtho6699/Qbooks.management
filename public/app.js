@@ -891,10 +891,42 @@ async function loadOverview(){
  })();
  return overviewLoading;
 }
+function saleRecentCustomers(orders){
+ const byName=new Map();
+ for(const o of orders||[]){
+  const name=String(o.customer||'').trim(),key=name.toLocaleLowerCase('vi');
+  if(!name||byName.has(key))continue;
+  byName.set(key,{name,address:String(o.address||''),carrier:String(o.carrier||'')});
+ }
+ return byName;
+}
+function refreshSaleSuggestions(){
+ const list=$('saleCustomerOptions');if(!list)return;
+ list.replaceChildren();
+ for(const item of state.saleCustomerCache?.values()||[]){
+  const option=document.createElement('option');option.value=item.name;list.append(option);
+ }
+}
+function updateSaleCustomerHint(){
+ const form=$('saleForm'),name=form?.elements.customer.value.trim().toLocaleLowerCase('vi');
+ const suggestion=state.saleCustomerCache?.get(name);
+ $('saleFillCustomer').disabled=!suggestion||(!suggestion.address&&!suggestion.carrier);
+ $('saleCustomerHint').textContent=suggestion?
+  'Đã tìm thấy khách hàng trong đơn được phép xem. Bấm nút để lấy lại địa chỉ/nhà xe.':
+  'Không tìm thấy khách hàng trong danh sách đơn hiện tại.';
+}
+function checkSaleDuplicatePreview(){
+ const invoice=String($('saleForm').elements.invoice_codes.value||'').replace(/\s/g,'').toLocaleUpperCase('vi');
+ const duplicate=(state.orders||[]).find(o=>String(o.invoice_codes||'').replace(/\s/g,'').toLocaleUpperCase('vi')===invoice&&invoice);
+ const warning=$('saleInvoiceWarning');
+ warning.hidden=!duplicate;
+ warning.textContent=duplicate?'Số hóa đơn này đã có trong danh sách: '+duplicate.invoice_codes+'. Kiểm tra trước khi lưu; hệ thống vẫn kiểm tra trùng trên máy chủ.':'';
+}
 async function loadOrders(){
  const q=$('search').value.trim(),status=state.tab==='pack'?'CHỜ ĐÓNG HÀNG':state.tab==='ship'?'CHỜ VẬN ĐƠN':'';
  const r=await api('GET','/api/orders?q='+encodeURIComponent(q)+'&status='+encodeURIComponent(status));
  state.orders=r.orders;
+ if(state.tab==='sale'){state.saleCustomerCache=saleRecentCustomers(r.orders);refreshSaleSuggestions();updateSaleCustomerHint();checkSaleDuplicatePreview();}
  $('listTitle').textContent=state.tab==='pack'?'Đơn chờ đóng hàng':state.tab==='ship'?'Đơn chờ vận đơn':statusTitle[state.user.role]||'Đơn hàng';
  const list=$('orderList');list.replaceChildren();
  if(!r.orders.length)list.append(el('p','Chưa có đơn phù hợp.'));
@@ -1359,6 +1391,16 @@ $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packContro
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
 $('saleDeliveryMode').onchange=()=>{const timed=$('saleDeliveryMode').value==='THOI_GIAN';$('saleDeliveryTimeBox').hidden=!timed;$('saleDeliveryTime').required=timed;if(!timed)$('saleDeliveryTime').value='';};
+$('saleForm').elements.customer.addEventListener('input',updateSaleCustomerHint);
+$('saleForm').elements.invoice_codes.addEventListener('input',checkSaleDuplicatePreview);
+$('saleFillCustomer').onclick=()=>{
+ const form=$('saleForm'),item=state.saleCustomerCache?.get(form.elements.customer.value.trim().toLocaleLowerCase('vi'));
+ if(!item)return;
+ // Never overwrite typed data without explicit operator action.
+ if(item.address)form.elements.address.value=item.address;
+ if(item.carrier)form.elements.carrier.value=item.carrier;
+ $('saleCustomerHint').textContent='Đã điền địa chỉ/nhà xe từ đơn gần đây. Kiểm tra lại trước khi lưu.';
+};
 $('saleForm').addEventListener('submit',async e=>{
  e.preventDefault();
  const form=e.target,submit=form.querySelector('button[type=submit],button:not([type])');
@@ -1374,7 +1416,7 @@ $('saleForm').addEventListener('submit',async e=>{
  if(submit){submit.disabled=true;submit.textContent='ĐANG LƯU ĐƠN…';}
  try{
   await api('POST','/api/orders',f);saved=true;
-  form.reset();$('saleDeliveryTimeBox').hidden=true;$('saleDeliveryTime').required=false;
+  form.reset();updateSaleCustomerHint();checkSaleDuplicatePreview();$('saleDeliveryTimeBox').hidden=true;$('saleDeliveryTime').required=false;
   markDraftSaved(form);
   notice('Đã tạo đơn Sale trên D1. Đơn sẵn sàng chuyển Đóng hàng; chưa tự ghi sang Google Sheets.',true);
   await loadGroupOptions();await loadOrders();
