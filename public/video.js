@@ -22,7 +22,15 @@ const date=s=>s?new Date(String(s).replace(' ','T')+'Z').toLocaleDateString('vi-
 const toast=(text)=>{const node=$('toast');node.textContent=humanizeError(text);node.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>node.hidden=true,5000)};
 async function api(method,path,data){
  const headers={'authorization':'Bearer '+state.token};if(data!==undefined)headers['content-type']='application/json';
- const r=await fetch(path,{method,headers,body:data===undefined?undefined:JSON.stringify(data)});
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),method==='GET'?12000:45000);
+ let r;
+ try{
+  r=await fetch(path,{method,headers,body:data===undefined?undefined:JSON.stringify(data),signal:controller.signal});
+ }catch(e){
+  if(e.name==='AbortError')throw Error('Máy chủ phản hồi quá chậm. Bấm Thử tải lại để kiểm tra kết nối.');
+  throw Error('Không kết nối được máy chủ: '+e.message);
+ }finally{clearTimeout(timer)}
  let j;try{j=await r.json()}catch{throw Error('Máy chủ không trả dữ liệu hợp lệ.');}
  if(!r.ok)throw Error(j.error||'Lỗi máy chủ '+r.status);return j;
 }
@@ -68,19 +76,67 @@ function renderNav(){
  const drawer=$('qbnDrawer');if(drawer)drawer.onclick=e=>{if(e.target===drawer){window.QbookNavigation.closeDrawer();renderNav();}};
 }
 
-async function load(){
+let mediaLoadGeneration=0;
+function mediaLoadNotice(message,error=false){
+ const node=$('mediaLoadStatus');if(!node)return;
+ node.hidden=!message;
+ node.textContent=message||'';
+ node.classList.toggle('qbook-load-error',error);
+ const retry=$('mediaLoadRetry');
+ if(retry)retry.hidden=!error;
+}
+function safeMediaRefresh(){
+ // Never replace editable forms while a user is entering or reviewing data.
+ if(state.selected||['film','edit','books','catalog'].includes(state.view))return;
+ const active=document.activeElement;
+ if(active?.closest?.('#page form')||active?.matches?.('input,textarea,select'))return;
+ render();
+}
+async function load({initial=false}={}){
+ const version=++mediaLoadGeneration;
  const overviewMenus=['dashboard','filmOverview','postOverview','booksProgress','report','production'];
  const itemMenus=['dashboard','filmOverview','postOverview','film','edit','booksProgress','report'];
  const canOverview=overviewMenus.some(can),canItems=itemMenus.some(can);
- const [bs,vs,ov,ls]=await Promise.all([
-  api('GET','/api/video/books'),
-  canItems?api('GET','/api/video/items?page='+state.videoPage+'&pageSize=100'):Promise.resolve({items:[],pagination:{page:1,pages:0,total:0}}),
-  canOverview?api('GET','/api/video/overview'):Promise.resolve({totals:{},books:[],staff:[],statusCounts:[]}),
-  api('GET','/api/video/lessons')
- ]);
- state.books=bs.books||[];state.items=vs.items||[];state.overview=ov;state.lessons=ls.lessons||[];
- state.videoPagination=vs.pagination||{page:1,pages:1,total:state.items.length};
- if(can('staff')&&(state.rights.manage||state.rights.admin)){try{state.staff=(await api('GET','/api/video/staff')).staff}catch{state.staff=[]}}
+ const booksPromise=api('GET','/api/video/books');
+ const overviewPromise=canOverview?api('GET','/api/video/overview'):Promise.resolve({totals:{},books:[],staff:[],statusCounts:[]});
+ const itemsPromise=canItems?api('GET','/api/video/items?page='+state.videoPage+'&pageSize=100'):Promise.resolve({items:[],pagination:{page:1,pages:0,total:0}});
+ const lessonsPromise=api('GET','/api/video/lessons');
+ const optional=Promise.allSettled([itemsPromise,lessonsPromise]).then(([videos,lessons])=>{
+  if(version!==mediaLoadGeneration)return;
+  const errors=[];
+  if(videos.status==='fulfilled'){
+   state.items=videos.value.items||[];
+   state.videoPagination=videos.value.pagination||{page:1,pages:1,total:state.items.length};
+  }else errors.push('danh sách video');
+  if(lessons.status==='fulfilled')state.lessons=lessons.value.lessons||[];
+  else errors.push('danh sách bài học');
+  if(errors.length)mediaLoadNotice('Chưa tải được '+errors.join(' và ')+'. Có thể chọn Thử tải lại.',true);
+  else mediaLoadNotice('');
+  if(initial)safeMediaRefresh();
+ });
+ const [bs,ov]=await Promise.allSettled([booksPromise,overviewPromise]);
+ if(version!==mediaLoadGeneration)return;
+ const errors=[];
+ if(bs.status==='fulfilled')state.books=bs.value.books||[];
+ else errors.push('đầu sách');
+ if(ov.status==='fulfilled')state.overview=ov.value;
+ else errors.push('tổng quan');
+ if(errors.length)mediaLoadNotice('Chưa tải được '+errors.join(' và ')+'. Có thể chọn Thử tải lại.',true);
+ if(bs.status==='rejected'&&ov.status==='rejected'){
+  // All optional requests are already guarded by allSettled; no unhandled rejections.
+  void optional;
+  throw Error('Chưa tải được dữ liệu Media. Kiểm tra kết nối và chọn Thử tải lại.');
+ }
+ if(!initial){
+  await optional;
+  if(can('staff')&&(state.rights.manage||state.rights.admin)){
+   try{state.staff=(await api('GET','/api/video/staff')).staff}catch{state.staff=[]}
+  }
+ }else{
+  // Render initial dashboard as soon as books/overview arrive.
+  // Remaining lists and lessons are fetched independently without blocking navigation.
+  void optional;
+ }
 }
 
 async function refreshVideoList(restoreFocus=false){
@@ -565,19 +621,23 @@ function openVideo(id,action){
 async function boot(){
  if(!state.token){if(!document.getElementById('unifiedMediaView'))window.location.href='/';return false;}
  try{
+  mediaLoadNotice('Đang mở Media và kiểm tra quyền truy cập…');
   const b=await api('GET','/api/video/bootstrap');state.user=b.user;state.rights=b.rights;
   const access=await api('GET','/api/menu-access');state.menuKeys=access.menus||[];
   $('currentUser').textContent=b.user.name;
   const embedded=!!document.getElementById('unifiedMediaView');
   const googleCfg=await fetch('/api/google/config').then(r=>r.json()).catch(()=>({}));state.googleClientId=googleCfg.clientId||'';
-  await load();const queryView=new URLSearchParams(window.location.search).get('view');const requested=queryView==='adminOverview'?'dashboard':queryView;const target=requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:NAV.find(n=>can(n.id))?.id;if(target)navigate(target);else {document.getElementById('page').textContent='Tài khoản chưa được cấp quyền menu Media. Liên hệ Quản trị hệ thống.';renderNav();}
+  mediaLoadNotice('Đang đọc đầu sách và tổng quan; danh sách video sẽ tải riêng…');
+  await load({initial:true});const queryView=new URLSearchParams(window.location.search).get('view');const requested=queryView==='adminOverview'?'dashboard':queryView;const target=requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:NAV.find(n=>can(n.id))?.id;if(target)navigate(target);else {document.getElementById('page').textContent='Tài khoản chưa được cấp quyền menu Media. Liên hệ Quản trị hệ thống.';renderNav();}
   return true;
  }catch(err){
   if(err.message.includes('đăng nhập')||err.message.includes('401')){
    if(!document.getElementById('unifiedMediaView')){sessionStorage.removeItem('qbooks_token');window.location.href='/';}
    throw err;
   }
-  $('page').innerHTML='<div class="panel"><h2>Không mở được Quản lý Media</h2><p>'+E(err.message)+'</p></div>';
+  mediaLoadNotice('Media chưa mở được: '+err.message,true);
+  $('page').innerHTML='<div class="panel"><h2>Không mở được Quản lý Media</h2><p>'+E(err.message)+'</p><button type="button" id="mediaRetryInline" class="btn primary">Thử tải lại</button></div>';
+  const retry=$('mediaRetryInline');if(retry)retry.onclick=()=>window.QbookMedia?.retry?.();
   throw err;
  }
 }
@@ -585,7 +645,8 @@ if(document.getElementById('unifiedMediaView')){
  let started=null;
  window.QbookMedia={
   reset(){
-   started=null;
+   started=null;mediaLoadGeneration++;
+   mediaLoadNotice('');
    state.token='';
    state.user=null;state.rights={};state.menuKeys=[];
    state.books=[];state.lessons=[];state.items=[];state.staff=[];
@@ -602,6 +663,12 @@ if(document.getElementById('unifiedMediaView')){
    await started;
    if(view&&NAV.some(item=>item.id===view)&&can(view)&&state.view!==view)navigate(view);
    return {view:state.view,rights:state.rights};
+  },
+  async retry(){
+   // Retry only Media loading; no form submissions or state mutations.
+   started=null;
+   mediaLoadNotice('Đang thử tải lại Media…');
+   return this.start(state.view);
   },
   navigate(view){if(!can(view))return false;navigate(view);return true;},
   allowed(view){return can(view);},
