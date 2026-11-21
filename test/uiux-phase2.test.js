@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const load=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
-const html=load('public/index.html'),app=load('public/app.js'),media=load('public/video.js'),styles=load('public/uiux-phase2.css');
+const html=load('public/index.html'),app=load('public/app.js'),media=load('public/video.js'),styles=load('public/design-system.css');
 test('overview sorts and paginates only authorized fetched orders without changing API default',()=>{
  for(const id of ['overviewSort','overviewPageSize','overviewPagination','overviewPrevPage','overviewNextPage','overviewPageInfo'])assert.ok(html.includes('id="'+id+'"'),id);
  assert.match(app,/rows\.sort\(\(a,b\)=>/);
@@ -41,7 +41,7 @@ test('Media dashboards keep global KPI semantics when filtering by book',()=>{
  assert.match(media,/state\.books\.filter\(b=>!state\.managementBook\|\|b\.id===state\.managementBook\)/);
 });
 test('phase two remains mobile responsive',()=>{
- assert.match(html,/href="\/uiux-phase2\.css"/);
+ assert.match(html,/href="\/design-system\.css"/);
  assert.match(styles,/@media\(max-width:800px\)/);
  assert.match(styles,/qbook-media-report-filter/);
  assert.match(styles,/qbook-overview-pagination/);
