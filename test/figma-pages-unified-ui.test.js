@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-const html=read('public/index.html'),app=read('public/app.js'),nav=read('public/navigation.js'),style=read('public/figma-pages.css');
+const html=read('public/index.html'),app=read('public/app.js'),nav=read('public/navigation.js'),style=read('public/design-system.css');
 test('Figma Page 1 & Page 2 share Qbooks shell, CSS and navigation without changing backend',()=>{
- assert.match(html,/href="\/figma-pages\.css"/);
+ assert.match(html,/href="\/design-system\.css"/);
  assert.match(html,/id="unifiedMediaView"/);
  assert.match(html,/id="overviewView"/);
  assert.match(html,/id="saleView"/);
