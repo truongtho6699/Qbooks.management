@@ -1,0 +1,100 @@
+/* QBOOK UI/UX Phase 1: observable loading, upload states, comfortable touch targets.
+   Override layer only. Server data and permission behavior are unchanged. */
+.qbook-media-load{
+ display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+ margin:12px 0;padding:0 4px;font-size:13px;line-height:1.5;color:#446080;
+}
+.qbook-media-load:has(>span[hidden]){display:none}
+.qbook-media-load #mediaLoadStatus:not([hidden]){
+ display:inline-flex;flex:1;min-width:180px;
+ padding:12px 14px;background:#eaf2ff;border:1px solid #cbdcf8;
+ border-radius:9px;color:#224f88;
+}
+.qbook-media-load #mediaLoadStatus.qbook-load-error{
+ color:#9b3b32;background:#fff3ed;border-color:#f0cab8;
+}
+.qbook-media-load button{
+ min-height:44px;background:#2563eb;color:white;border:0;border-radius:8px;
+ font-weight:700;padding:9px 16px;cursor:pointer;
+}
+.qbook-media-load button[hidden]{display:none}
+.qbook-upload-activity{
+ position:fixed;left:18px;bottom:calc(18px + env(safe-area-inset-bottom));
+ z-index:9998;width:min(405px,calc(100vw - 36px));
+ border:1px solid #bfd3ee;border-radius:12px;background:#fff;
+ padding:13px 15px;box-shadow:0 12px 28px #0b2b4d30;color:#19375d;
+ max-height:min(65dvh,540px);overflow:auto;
+}
+.qbook-upload-activity[hidden]{display:none!important}
+.qbook-upload-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.qbook-upload-head strong{font-size:14px}
+.qbook-upload-head button{background:#eaf2ff;border:1px solid #cbdcf8;color:#1756a0;padding:8px 12px;min-height:44px;border-radius:8px}
+.qbook-upload-activity .hint{font-size:12px;margin:8px 0;color:#5a6d85;line-height:1.55}
+.qbook-upload-items{display:grid;gap:7px}
+.qbook-upload-items[hidden]{display:none!important}
+.qbook-upload-item{padding:9px 10px;border:1px solid #e2e9f4;border-radius:8px;display:grid;gap:4px}
+.qbook-upload-filename{font-size:12px;font-weight:700;overflow-wrap:anywhere;color:#19375d}
+.qbook-upload-state{font-size:12px;line-height:1.5}
+.qbook-upload-stored{color:#08724d}
+.qbook-upload-error{color:#b43d31}
+.qbook-upload-sending{color:#195ebd}
+.qbook-upload-queued{color:#62728b}
+.qbook-sync-detail{margin:13px 0 0;padding:12px;border:1px solid #dbe7f4;border-radius:10px;background:#f8fbff;display:grid;gap:8px}
+.qbook-sync-detail:empty{display:none}
+.qbook-sync-detail>strong{font-size:13px}
+.qbook-sync-detail .hint{font-size:12px;margin:0}
+.qbook-sync-item{display:flex;justify-content:space-between;align-items:center;gap:9px;border-bottom:1px solid #e6edf7;padding:6px 0;font-size:12px}
+.qbook-sync-item:last-child{border:0}
+.qbook-sync-filename{min-width:0;overflow-wrap:anywhere;flex:1}
+.qbook-sync-pill{flex:none;max-width:50%;text-align:right;border-radius:8px;padding:5px 8px;font-weight:650;font-size:11px}
+.qbook-sync-ok{background:#e2f8ef;color:#0b8059}
+.qbook-sync-wait{background:#fff0d9;color:#905a0c}
+.qbook-sync-error{background:#fde8e8;color:#a32f2f}
+@media(max-width:800px){
+ /* All tappable elements have at least the 44px target expected on touch devices. */
+ #appPage .qbn-mobile-pane .qbn-branch,
+ #appPage .qbn-mobile-pane .qbn-leaf,
+ #appPage .qbn-mobile-pane .qbn-close,
+ #appPage .shipping-mobile-nav button,
+ #appPage .qbook-period-shortcuts button,
+ #appPage .overview-link,
+ #appPage .goods-image-card,
+ #appPage #overviewRefresh,
+ #appPage #reloadBtn,
+ #appPage .shipping-operation-tab,
+ #appPage .overview-card-actions button,
+ #appPage .overview-card-actions a,
+ #appPage #backBtn,
+ #appPage .textbtn,
+ #appPage input[type=file]{
+  min-height:44px!important;
+ }
+ #appPage .qbn-mobile-pane .qbn-depth-3{font-size:12px!important;padding-block:12px!important}
+ #appPage .qbn-mobile-pane .qbn-depth-2{font-size:13px!important;padding-block:12px!important}
+ #appPage .shipping-mobile-nav{gap:3px}
+ #appPage .shipping-mobile-item{min-height:58px!important}
+ #appPage .qbook-period-shortcuts{gap:8px}
+ #appPage #saleView input,#appPage #saleView select,
+ #appPage #packControls input,#appPage #shipControls input,
+ #appPage #packControls select,#appPage #shipControls select{
+  font-size:16px; /* Prevent automatic zoom when focusing iOS inputs. */
+ }
+ #appPage #packControls label,#appPage #shipControls label,
+ #appPage #saleView label{font-size:13px}
+ .qbook-upload-activity{
+  position:fixed;bottom:calc(85px + env(safe-area-inset-bottom));
+  left:10px;right:10px;width:auto;max-height:35dvh;
+ }
+ .qbook-background-upload{
+  bottom:calc(90px + env(safe-area-inset-bottom));right:10px;left:10px;
+  width:auto;max-height:35dvh;overflow:auto;
+ }
+ .qbook-background-upload:not([hidden])~.qbook-upload-activity:not([hidden]){
+  bottom:calc(235px + env(safe-area-inset-bottom));max-height:20dvh;
+ }
+ .qbook-sync-item{align-items:flex-start;flex-direction:column;gap:5px}
+ .qbook-sync-pill{max-width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+ .qbook-media-load,.qbook-upload-activity{animation:none;transition:none}
+}
