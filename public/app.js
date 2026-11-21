@@ -930,7 +930,7 @@ async function openOrder(order){
  trackDraft(pack?$('packControls'):$('shipControls'));
  notice('');
 }
-function progress(file,done,total,background=false){
+function progress(file,done,total,background=false,dest='R2'){
  if(background&&state.backgroundJob){
   $('backgroundUploadBar').hidden=false;
   $('backgroundUploadTitle').textContent='Đang tải nền: '+file;
@@ -939,7 +939,7 @@ function progress(file,done,total,background=false){
  }
  $('progressWrap').hidden=false;$('uploadLabel').textContent='Đang tải: '+file;
  $('uploadProgress').value=Math.min(100,Math.round(done/total*100));
- $('uploadDetail').textContent=Math.round(done/1048576)+' / '+Math.round(total/1048576)+' MB đã ghi nhận tại R2';
+ $('uploadDetail').textContent=Math.round(done/1048576)+' / '+Math.round(total/1048576)+' MB đã ghi nhận tại '+dest;
 }
 function fingerprint(orderId,stage,file){return 'qbooks_upload_v1|'+orderId+'|'+stage+'|'+file.name+'|'+file.size+'|'+file.lastModified}
 async function videoDuration(file){
@@ -974,6 +974,53 @@ function uploadPhotoWithProgress(id,stage,file,background=false){
   xhr.send(file);
  });
 }
+// ---- Packing video: browser → Google Drive resumable session (opened by the server) ----
+// Drive accepts a session's bytes strictly in order, so parts are sequential but large
+// (32 MB) and go straight to Google without passing through the Worker.
+function driveSessionPut(sessionUrl,headers,body,onProgress){
+ return new Promise((resolve,reject)=>{
+  const xhr=new XMLHttpRequest();
+  xhr.open('PUT',sessionUrl,true);
+  for(const [k,v] of Object.entries(headers))xhr.setRequestHeader(k,v);
+  xhr.timeout=600000;
+  if(onProgress)xhr.upload.onprogress=e=>{if(e.lengthComputable)onProgress(e.loaded)};
+  xhr.onerror=()=>reject(Object.assign(Error('Mất kết nối tới Google Drive.'),{retry:true}));
+  xhr.ontimeout=()=>reject(Object.assign(Error('Google Drive phản hồi quá chậm.'),{retry:true}));
+  xhr.onload=()=>resolve({status:xhr.status,range:xhr.getResponseHeader('Range'),text:xhr.responseText});
+  xhr.send(body);
+ });
+}
+function driveOffset(res,total){
+ if(res.status===200||res.status===201){let d={};try{d=JSON.parse(res.text)}catch{}return {done:true,offset:total,fileId:d.id||null};}
+ if(res.status===308){const m=/^bytes=0-(\d+)$/.exec(res.range||'');return {done:false,offset:m?Number(m[1])+1:0};}
+ if(res.status===404||res.status===410)throw Object.assign(Error('Phiên tải Google Drive đã hết hạn. Bấm Lưu lại để tải video từ đầu.'),{expired:true});
+ throw Object.assign(Error('Google Drive lỗi HTTP '+res.status),{retry:res.status>=500||res.status===429});
+}
+async function uploadVideoToDrive(file,info,background){
+ const url=info.sessionUrl,total=file.size,chunk=info.chunkSize||32*1024*1024,dest='Google Drive';
+ if(!/^https:\/\/(www\.googleapis\.com|content-googleapis\.com)\/upload\/drive\//.test(String(url||'')))throw Error('Phiên tải Google Drive không hợp lệ.');
+ const probe=async()=>driveOffset(await driveSessionPut(url,{'Content-Range':'bytes */'+total},null),total);
+ let state_=await probe(),failures=0;
+ progress(file.name,state_.offset,total,background,dest);
+ while(!state_.done){
+  const start=state_.offset,end=Math.min(start+chunk,total);
+  try{
+   const res=await driveSessionPut(url,{'Content-Range':'bytes '+start+'-'+(end-1)+'/'+total},file.slice(start,end),
+    loaded=>progress(file.name,start+loaded,total,background,dest));
+   const next=driveOffset(res,total);
+   if(!next.done&&next.offset<=start&&++failures>4)throw Error('Google Drive không nhận thêm dữ liệu ở '+Math.round(start/1048576)+' MB.');
+   state_=next;if(next.offset>start)failures=0;
+  }catch(e){
+   if(e.expired)throw e;
+   if(!e.retry||++failures>4)throw Error('Tải video lên Google Drive gián đoạn: '+e.message);
+   await new Promise(r=>setTimeout(r,1500*failures));
+   // Ask Drive how much it really stored before resending.
+   state_=await probe().catch(err=>{if(err.expired)throw err;return state_;});
+  }
+  progress(file.name,state_.offset,total,background,dest);
+ }
+ return state_.fileId;
+}
 async function uploadOne(orderId,stage,file,background=false){
  const video=stage==='VIDEO_DONG_HANG',max=video?2*1024*1024*1024:25*1024*1024;
  if(!file.size||file.size>max)throw Error('Tệp '+file.name+' vượt giới hạn '+(video?'2 GB':'25 MB'));
@@ -984,12 +1031,20 @@ async function uploadOne(orderId,stage,file,background=false){
  catch(e){if(/Không tìm thấy phiên tải/.test(e.message))id=null;else throw e}}
  if(!id){
   const result=await api('POST','/api/uploads',{orderId,stage,filename:file.name,contentType:file.type|| (video?'video/mp4':'image/jpeg'),size:file.size});
-  id=result.id;localStorage.setItem(key,id);info={status:'UPLOADING',chunkSize:result.chunkSize,parts:[]};
+  id=result.id;localStorage.setItem(key,id);info={status:'UPLOADING',chunkSize:result.chunkSize,transport:result.transport,sessionUrl:result.sessionUrl,parts:[]};
  }
  if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size,background);return id}
  if(!video){
   progress(stage+' · '+file.name,0,file.size,background);await uploadPhotoWithProgress(id,stage,file,background);
   progress(file.name,file.size,file.size,background);localStorage.removeItem(key);return id;
+ }
+ if(info.transport==='drive'){
+  let fileId=null;
+  try{fileId=await uploadVideoToDrive(file,info,background);}
+  catch(e){if(e.expired)localStorage.removeItem(key);throw e;}
+  await api('POST','/api/uploads/'+id+'/complete',{fileId});
+  localStorage.removeItem(key);progress(file.name,file.size,file.size,background,'Google Drive');
+  return id;
  }
  const chunk=info.chunkSize||CHUNK_BYTES;
  const count=Math.ceil(file.size/chunk),parts=new Set((info.parts||[]).map(p=>p.part_number));
