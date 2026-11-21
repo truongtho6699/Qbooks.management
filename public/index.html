@@ -23,6 +23,7 @@
     <p id="viewSubtitle"></p>
     <span id="currentUser"></span>
   </div>
+  <div id="mediaLoadBanner" class="qbook-media-load" role="status" aria-live="polite"><span id="mediaLoadStatus" hidden></span><button type="button" id="mediaLoadRetry" hidden>Thử tải lại</button></div>
   <div id="page" class="page qbook-media-page" role="region" aria-label="Nội dung Quản lý Media" tabindex="-1"></div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </section>
@@ -143,6 +144,7 @@
 <progress id="backgroundUploadProgress" max="100" value="0"></progress>
 <small id="backgroundUploadDetail">Vẫn tiếp tục khi chuyển menu trong Qbooks. Không đóng tab.</small>
 </div>
+<section id="qbookUploadActivity" class="qbook-upload-activity" aria-label="Tình trạng tệp đang tải" hidden><div class="qbook-upload-head"><strong>Hàng đợi tải tệp</strong><button type="button" id="qbookUploadCollapse" aria-expanded="true">Thu gọn</button></div><p id="qbookUploadSummary" class="hint">Chưa có tệp được tải trong phiên này.</p><div id="qbookUploadItems" class="qbook-upload-items"></div><p class="hint">Đã lưu trên máy chủ chưa đồng nghĩa đã có trên Google Drive. Kiểm tra trạng thái Drive trong Tổng hợp.</p></section>
 <dialog id="orderSummaryDialog" class="order-summary-dialog">
  <div class="summary-header"><h2>Chi tiết đơn</h2><div class="overview-card-actions"><button type="button" id="editFromOrderDetail" class="primary" hidden>Sửa đơn</button><button type="button" id="closeOrderSummary" class="secondary" aria-label="Đóng">Đóng ✕</button></div></div>
  <div id="orderSummaryInfo"></div>
