@@ -37,7 +37,7 @@ test('Media dashboards keep global KPI semantics when filtering by book',()=>{
  assert.match(media,/KPI tổng quan và sản lượng nhân sự luôn tính toàn hệ thống/);
  assert.match(media,/state\.books\.filter\(b=>!bookId\|\|b\.id===bookId\)/);
  assert.match(media,/booksTable\(state\.managementBook\)/);
- assert.match(media,/managementFilter\.onchange=e=>\{state\.managementBook=e\.target\.value;render\(\)\}/);
+ assert.match(media,/managementFilter\.onchange=e=>\{state\.managementBook=e\.target\.value;render\(\);\}/);
  assert.match(media,/state\.books\.filter\(b=>!state\.managementBook\|\|b\.id===state\.managementBook\)/);
 });
 test('phase two remains mobile responsive',()=>{
