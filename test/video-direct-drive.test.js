@@ -96,3 +96,8 @@ test('browser rejects a session URL that is not Google Drive',async()=>{
  const {upload}=loadClient(()=>({status:500}));
  await assert.rejects(upload({size:10,slice:()=>({size:10})},{sessionUrl:'https://evil.example/x'},false),/không hợp lệ/);
 });
+
+test('Google failures fall back to R2 instead of blocking the upload',()=>{
+ assert.match(worker,/VIDEO_DIRECT_DRIVE fallback to R2/);
+ assert.match(worker,/if\(session\)\{/);
+});
