@@ -856,12 +856,26 @@ function renderOverview(){
  }
  const term=$('overviewSearch').value.trim().toLocaleLowerCase('vi'),status=$('overviewStatus').value;
  const rows=r.orders.filter(o=>(!status||o.status===status)&&(!term||[o.id,o.invoice_codes,o.customer,o.sale_name].some(x=>String(x||'').toLocaleLowerCase('vi').includes(term))));
+ const sort=$('overviewSort').value;
+ const timestamp=o=>Date.parse(String(o.created_at||'').replace(' ','T')+'Z')||0;
+ rows.sort((a,b)=>sort==='oldest'?timestamp(a)-timestamp(b):
+  sort==='urgent'?Number(Boolean(b.urgent))-Number(Boolean(a.urgent))||timestamp(b)-timestamp(a):
+  sort==='invoice'?String(a.invoice_codes||'').localeCompare(String(b.invoice_codes||''),'vi'):
+  timestamp(b)-timestamp(a));
+ const size=Number($('overviewPageSize').value)||20;
+ const pages=Math.max(1,Math.ceil(rows.length/size));
+ state.overviewPage=Math.max(1,Math.min(pages,state.overviewPage||1));
+ const start=(state.overviewPage-1)*size,visible=rows.slice(start,start+size);
  const table=$('overviewRows'),cardsHolder=$('overviewCards');table.replaceChildren();cardsHolder.replaceChildren();
- if(rows.length){for(const o of rows)appendOverviewRow(o,table,cardsHolder);}
+ if(visible.length){for(const o of visible)appendOverviewRow(o,table,cardsHolder);}
  else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=6;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
- $('overviewHint').textContent='Đang hiển thị '+rows.length+'/'+r.orders.length+' đơn trong kỳ '+$('overviewPeriod').selectedOptions[0].textContent+'. Lọc theo ngày tạo đơn (giờ Việt Nam). Liên kết Drive mở trong tab mới.';
+ $('overviewPageInfo').textContent='Trang '+state.overviewPage+'/'+pages+' · '+rows.length+' đơn phù hợp';
+ $('overviewPrevPage').disabled=state.overviewPage<=1;
+ $('overviewNextPage').disabled=state.overviewPage>=pages;
+ $('overviewHint').textContent='Đang hiển thị '+visible.length+'/'+rows.length+' đơn phù hợp trong kỳ '+$('overviewPeriod').selectedOptions[0].textContent+'. Tổng dữ liệu API tối đa 300 đơn mới nhất; trang và sắp xếp áp dụng trên kết quả đã tải.';
 }
 let overviewLoading=null;
+state.overviewPage=1;
 async function loadOverview(){
  // Prevent parallel refresh requests when opening a menu and pressing Refresh.
  if(overviewLoading)return overviewLoading;
@@ -869,7 +883,7 @@ async function loadOverview(){
  overviewLoading=(async()=>{
   try{
    const r=await api('GET','/api/shipping/overview?period='+encodeURIComponent($('overviewPeriod').value));
-   state.overviewData=r;renderOverview();
+   state.overviewData=r;state.overviewPage=1;renderOverview();
   }catch(e){
    $('overviewHint').textContent='Không tải được dữ liệu: '+e.message;
    throw e;
@@ -1583,8 +1597,18 @@ $('cancelStaffEdit').onclick=resetStaffEdit;
 $all('.admin-report').forEach(btn=>btn.onclick=()=>loadAdminReport(btn.dataset.kind));
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 $('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
-$('overviewSearch').oninput=renderOverview;
-$('overviewStatus').onchange=renderOverview;
+const refreshOverviewFilters=()=>{state.overviewPage=1;renderOverview()};
+$('overviewSearch').oninput=refreshOverviewFilters;
+$('overviewStatus').onchange=refreshOverviewFilters;
+$('overviewSort').onchange=refreshOverviewFilters;
+$('overviewPageSize').onchange=refreshOverviewFilters;
+$('overviewPrevPage').onclick=()=>{state.overviewPage=Math.max(1,state.overviewPage-1);renderOverview()};
+$('overviewNextPage').onclick=()=>{state.overviewPage++;renderOverview()};
+$('overviewResetFilters').onclick=()=>{
+ $('overviewPeriod').value='7days';$('overviewSearch').value='';$('overviewStatus').value='';
+ $('overviewSort').value='newest';$('overviewPageSize').value='20';state.overviewPage=1;
+ $('overviewPeriod').dispatchEvent(new Event('change'));
+};
 function syncPeriodShortcuts(){
  const selected=$('overviewPeriod').value;
  document.querySelectorAll('[data-qbook-period]').forEach(btn=>{
