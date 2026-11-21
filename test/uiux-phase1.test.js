@@ -5,7 +5,7 @@ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const media=read('public/video.js');
 const app=read('public/app.js');
 const html=read('public/index.html');
-const style=read('public/uiux-phase1.css');
+const style=read('public/design-system.css');
 const worker=read('src/worker.js');
 
 test('Media has bounded GET timeout, a visible retry control and progressively loads supplements',()=>{
@@ -48,7 +48,7 @@ test('Upload status is user-specific, distinguishes saved tệp from Drive sync 
  assert.doesNotMatch(worker,/AS sync_error,auto_error FROM uploads/);
 });
 test('Touch targets include navigation, time chips, file and media actions',()=>{
- assert.match(html,/href="\/uiux-phase1\.css"/);
+ assert.match(html,/href="\/design-system\.css"/);
  assert.match(style,/@media\(max-width:800px\)/);
  assert.match(style,/\.qbn-mobile-pane \.qbn-leaf/);
  assert.match(style,/\.overview-card-actions button/);
