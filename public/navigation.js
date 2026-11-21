@@ -38,7 +38,7 @@ function render(config){
   const name=make('span','qbn-branch-label');name.append(icon(iconName),document.createTextNode(label));
   const arrow=make('span','qbn-chevron',open?'▾':'▸');arrow.setAttribute('aria-hidden','true');
   button.append(name,arrow);button.setAttribute('aria-expanded',String(open));
-  if(key){button.dataset.navKey=key;button.setAttribute('aria-controls','qbn-panel-'+key+'-'+scope);}
+  if(key){button.dataset.navKey=key;if(open)button.setAttribute('aria-controls','qbn-panel-'+key+'-'+scope);}
   button.onclick=()=>{const isMobile=scope==='mobile';action();
    const target=(isMobile?mobileTree:desktop)?.querySelector?.('[data-nav-key="'+key+'"]');target?.focus?.();
   };
@@ -47,7 +47,12 @@ function render(config){
  function makeLeaf(parent,label,active,depth,action){
   const button=make('button','qbn-leaf qbn-depth-'+depth+(active?' qbn-active':''),label);
   button.type='button';if(active)button.setAttribute('aria-current','page');
-  button.onclick=()=>{drawerOpen=false;render(config);action();};parent.append(button);return button;
+  button.onclick=()=>{
+  const fromDrawer=drawerOpen;
+  drawerOpen=false;render(config);action();
+  // Restore keyboard focus into the newly selected main view after closing mobile menu.
+  if(fromDrawer)document.getElementById('shippingHeading')?.focus?.();
+ };parent.append(button);return button;
  }
  for(const container of containers){
   const scope=container===mobileTree?'mobile':'desktop';
@@ -94,7 +99,13 @@ function render(config){
  if(drawer){drawer.hidden=!drawerOpen;drawer.setAttribute('aria-hidden',String(!drawerOpen));drawer.setAttribute('role','dialog');drawer.setAttribute('aria-modal',String(drawerOpen));drawer.setAttribute('aria-label','Menu điều hướng QBOOK');}
  if(toggle){toggle.setAttribute('aria-expanded',String(drawerOpen));toggle.setAttribute('aria-controls','qbnDrawer');toggle.onclick=()=>{drawerOpen=!drawerOpen;repaint();if(drawerOpen){drawer?.querySelector?.('#qbnClose')?.focus?.();}else toggle.focus?.();};}
 }
-function closeDrawer(){drawerOpen=false;const toggle=document.getElementById('qbnToggle');toggle?.focus?.();}
+function closeDrawer(){
+ drawerOpen=false;
+ const drawer=document.getElementById('qbnDrawer');
+ if(drawer){drawer.hidden=true;drawer.setAttribute('aria-hidden','true');drawer.setAttribute('aria-modal','false');}
+ const toggle=document.getElementById('qbnToggle');
+ toggle?.setAttribute('aria-expanded','false');toggle?.focus?.();
+}
 function focusMedia(view){expandedRoot='media';expandedGroup=groupFor(view);hasInitialState=true;}
 function focusOrders(){expandedRoot='orders';expandedGroup=null;hasInitialState=true;}
 function focusAdmin(){expandedRoot='admin';expandedGroup=null;hasInitialState=true;}
