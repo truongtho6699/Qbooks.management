@@ -525,7 +525,7 @@ async function handle(req,env){
    const ids=orders.map(o=>o.id);
    for(let i=0;i<ids.length;i+=70){
     const part=ids.slice(i,i+70);
-    const files=await env.DB.prepare('SELECT id,order_id,stage,filename,bytes,drive_file_id,drive_folder_url FROM uploads WHERE status=\'COMPLETE\' AND order_id IN ('+part.map(()=>'?').join(',')+') ORDER BY created_at DESC').bind(...part).all();
+    const files=await env.DB.prepare('SELECT id,order_id,stage,filename,bytes,drive_file_id,drive_folder_url,auto_attempts,CASE WHEN auto_error IS NOT NULL AND length(auto_error)>0 THEN 1 ELSE 0 END AS sync_error,drive_offset FROM uploads WHERE status=\'COMPLETE\' AND order_id IN ('+part.map(()=>'?').join(',')+') ORDER BY created_at DESC').bind(...part).all();
     for(const media of files.results||[])byId.get(media.order_id)?.media.push(media);
    }
   }

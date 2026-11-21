@@ -267,7 +267,7 @@ async function bootstrap(){
   $('accountMenuRole').textContent=r.user.role;
   show('loginPage',false);show('appPage',true);$('logoutBtn').hidden=false;const skip=$('qbSkipLink');if(skip)skip.href='#appPage';
   // Always drop operational data kept by a previous session before showing the new identity.
-  state.orders=[];state.overviewData=null;state.selected=null;state.lockedOrderIds.clear();
+  state.orders=[];state.overviewData=null;state.selected=null;state.lockedOrderIds.clear();clearUploadTasks();
   const rights=capabilities(),keys=state.menuKeys;
   const permitted=key=>keys.includes('orders.'+key),hasOrders=['overview','sale','pack','ship'].some(permitted),hasMedia=keys.some(k=>k.startsWith('media.'));
   state.tab=rights.admin?'overview':['overview','sale','pack','ship'].find(permitted)||'overview';
@@ -831,6 +831,19 @@ function showOrderSummary(order){
  const content=el('div',null,'order-content');content.append(el('strong','Nội dung đơn hàng'));
  content.append(el('pre',orderContentLine(order),'order-content-text'));info.append(content);
  const media=$('orderSummaryMedia');media.replaceChildren();overviewMediaLinks(media,order);
+ const sync=$('orderSyncStatus');sync.replaceChildren();
+ const files=order.media||[];
+ if(files.length){
+  sync.append(el('strong','Trạng thái lưu trữ và đồng bộ'));
+  const drive=files.filter(f=>!!f.drive_file_id).length;
+  sync.append(el('p',drive+'/'+files.length+' tệp có mã Google Drive. Các tệp còn lại vẫn được quản lý trên Qbooks.','hint'));
+  for(const file of files){
+   const state=file.drive_file_id?'Đã có trên Drive':file.sync_error?'Lỗi đồng bộ · hệ thống sẽ thử lại':Number(file.drive_offset)>0?'Đang chuyển Drive':'Đã lưu Qbooks · chờ Drive';
+   const item=el('div',null,'qbook-sync-item');
+   item.append(el('span',(uploadTaskLabels[file.stage]||file.stage)+' · '+(file.filename||'Tệp'),'qbook-sync-filename'),el('span',state,'qbook-sync-pill '+(file.drive_file_id?'qbook-sync-ok':file.sync_error?'qbook-sync-error':'qbook-sync-wait')));
+   sync.append(item);
+  }
+ }
  $('editFromOrderDetail').hidden=!canEditOrder(order);
  if(typeof modal.showModal==='function')modal.showModal();else modal.hidden=false;
 }
@@ -1073,23 +1086,66 @@ async function uploadOne(orderId,stage,file,background=false){
  progress(file.name,file.size,file.size,background);
  return id;
 }
+const uploadTaskRecords=new Map();
+function clearUploadTasks(){uploadTaskRecords.clear();const panel=$('qbookUploadActivity');if(panel)panel.hidden=true;const list=$('qbookUploadItems');if(list)list.replaceChildren();}
+const uploadTaskLabels={ANH_HOA_DON:'Ảnh hóa đơn',HANG_HOA:'Ảnh hàng hóa',GIAO_HANG:'Ảnh bàn giao',VIDEO_DONG_HANG:'Video đóng hàng'};
+function updateUploadTask(orderId,stage,file,status,detail=''){
+ const id=fingerprint(orderId,stage,file);
+ const previous=uploadTaskRecords.get(id)||{};
+ uploadTaskRecords.set(id,{name:file.name,stage,orderId,status,detail,updated:Date.now(),...previous,status,detail});
+ // Bound this in-memory UI to avoid unlimited growth on long-running operator sessions.
+ if(uploadTaskRecords.size>30)uploadTaskRecords.delete(uploadTaskRecords.keys().next().value);
+ const panel=$('qbookUploadActivity'),list=$('qbookUploadItems'),summary=$('qbookUploadSummary');
+ if(!panel||!list||!summary)return;
+ panel.hidden=false;list.replaceChildren();
+ const records=[...uploadTaskRecords.values()].reverse();
+ const done=records.filter(x=>x.status==='STORED').length,errors=records.filter(x=>x.status==='ERROR').length;
+ summary.textContent='Đã lưu '+done+'/'+records.length+' tệp vào Qbooks'+(errors?' · '+errors+' tệp cần thử lại':'')+'.';
+ for(const rec of records){
+  const row=el('div',null,'qbook-upload-item');
+  const caption=el('span',(uploadTaskLabels[rec.stage]||rec.stage)+' · '+rec.name,'qbook-upload-filename');
+  const message=rec.status==='STORED'?'Đã lưu tệp · đối chiếu Drive tại Tổng hợp':rec.status==='ERROR'?'Tải lỗi · chọn lại tệp, bấm Lưu để thử lại':rec.status==='SENDING'?'Đang gửi dữ liệu lên máy chủ':'Đang chờ tải';
+  const stateLabel=el('span',message,'qbook-upload-state qbook-upload-'+rec.status.toLowerCase());
+  if(rec.detail)stateLabel.title=rec.detail;
+  row.append(caption,stateLabel);list.append(row);
+ }
+}
+$('qbookUploadCollapse').onclick=()=>{
+ const list=$('qbookUploadItems'),open=!list.hidden;
+ list.hidden=open;$('qbookUploadCollapse').textContent=open?'Mở danh sách':'Thu gọn';
+ $('qbookUploadCollapse').setAttribute('aria-expanded',String(!open));
+};
 async function uploadSelection(orderId,items,background=false){
  // Photos use independent R2 objects. Allow up to 3 uploads concurrently instead
  // of blocking on every image. Preserve video sequential upload to limit bandwidth.
  const uploaded=new Array(items.length),photos=[],videos=[];
- items.forEach(([stage],index)=>(stage==='VIDEO_DONG_HANG'?videos:photos).push(index));
+ items.forEach(([stage,file],index)=>{
+  (stage==='VIDEO_DONG_HANG'?videos:photos).push(index);
+  updateUploadTask(orderId,stage,file,'QUEUED');
+ });
+ const tracked=async(stage,file)=>{
+  updateUploadTask(orderId,stage,file,'SENDING');
+  try{
+   const id=await uploadOne(orderId,stage,file,background);
+   updateUploadTask(orderId,stage,file,'STORED');
+   return id;
+  }catch(e){
+   updateUploadTask(orderId,stage,file,'ERROR',e.message);
+   throw e;
+  }
+ };
  let next=0,complete=0;
  const runPhoto=async()=>{
   while(next<photos.length){
    const i=photos[next++],[stage,file]=items[i];
-   const id=await uploadOne(orderId,stage,file,background);
+   const id=await tracked(stage,file);
    uploaded[i]={id,stage,filename:file.name};
    $('uploadLabel').textContent='Đã lưu '+(++complete)+'/'+items.length+' tệp vào Qbooks';
   }
  };
  await Promise.all(Array.from({length:Math.min(3,photos.length)},()=>runPhoto()));
  for(const i of videos){
-  const [stage,file]=items[i],id=await uploadOne(orderId,stage,file,background);
+  const [stage,file]=items[i],id=await tracked(stage,file);
   uploaded[i]={id,stage,filename:file.name};
   $('uploadLabel').textContent='Đã lưu '+(++complete)+'/'+items.length+' tệp vào Qbooks';
  }
@@ -1282,7 +1338,7 @@ async function loadGroupOptions(){
  }catch(e){notice(e.message)}
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin,!!$('rememberLogin')?.checked)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{if(state.backgroundJob)return notice('Video đang tải nền. Chờ hoàn thành trước khi đăng xuất.');if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{if(state.backgroundJob)return notice('Video đang tải nền. Chờ hoàn thành trước khi đăng xuất.');if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearUploadTasks();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packControls'));markDraftSaved($('shipControls'));tab(state.tab);};

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><title>QBOOK · Hệ thống quản trị</title><link rel="stylesheet" href="/video.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/navigation.css"><link rel="stylesheet" href="/ui-v3.css"><link rel="stylesheet" href="/unified.css"><link rel="stylesheet" href="/figma-pages.css"></head>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><title>QBOOK · Hệ thống quản trị</title><link rel="stylesheet" href="/video.css"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/navigation.css"><link rel="stylesheet" href="/ui-v3.css"><link rel="stylesheet" href="/unified.css"><link rel="stylesheet" href="/figma-pages.css"><link rel="stylesheet" href="/uiux-phase1.css"></head>
 <body>
 <a class="qb-skip" id="qbSkipLink" href="#loginPage">Bỏ qua menu, đến nội dung chính</a>
 <header class="top"><div class="brand"><span class="symbol">Q</span><div><strong>QBOOK · QUẢN TRỊ</strong><small>Giao hàng · Media · Hệ thống</small></div></div><div class="profile"><button type="button" id="accountTopBtn" class="ghost" aria-label="Quản lý tài khoản"><span id="userInfo"></span></button></div></header>
@@ -23,6 +23,7 @@
     <p id="viewSubtitle"></p>
     <span id="currentUser"></span>
   </div>
+  <div id="mediaLoadBanner" class="qbook-media-load" role="status" aria-live="polite"><span id="mediaLoadStatus" hidden></span><button type="button" id="mediaLoadRetry" hidden>Thử tải lại</button></div>
   <div id="page" class="page qbook-media-page" role="region" aria-label="Nội dung Quản lý Media" tabindex="-1"></div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 </section>
@@ -143,11 +144,12 @@
 <progress id="backgroundUploadProgress" max="100" value="0"></progress>
 <small id="backgroundUploadDetail">Vẫn tiếp tục khi chuyển menu trong Qbooks. Không đóng tab.</small>
 </div>
+<section id="qbookUploadActivity" class="qbook-upload-activity" aria-label="Tình trạng tệp đang tải" hidden><div class="qbook-upload-head"><strong>Hàng đợi tải tệp</strong><button type="button" id="qbookUploadCollapse" aria-expanded="true">Thu gọn</button></div><p id="qbookUploadSummary" class="hint">Chưa có tệp được tải trong phiên này.</p><div id="qbookUploadItems" class="qbook-upload-items"></div><p class="hint">Đã lưu trên máy chủ chưa đồng nghĩa đã có trên Google Drive. Kiểm tra trạng thái Drive trong Tổng hợp.</p></section>
 <dialog id="orderSummaryDialog" class="order-summary-dialog">
  <div class="summary-header"><h2>Chi tiết đơn</h2><div class="overview-card-actions"><button type="button" id="editFromOrderDetail" class="primary" hidden>Sửa đơn</button><button type="button" id="closeOrderSummary" class="secondary" aria-label="Đóng">Đóng ✕</button></div></div>
  <div id="orderSummaryInfo"></div>
  <h3>Hồ sơ chi tiết</h3>
- <div id="orderSummaryMedia" class="overview-media-links" aria-live="polite"></div><p class="hint" id="orderSummaryMediaHelp">Nhấp vào thẻ để xem tệp. Tệp chưa đồng bộ Drive sẽ được xem từ hồ sơ Qbooks (R2).</p>
+ <div id="orderSummaryMedia" class="overview-media-links" aria-live="polite"></div><div id="orderSyncStatus" class="qbook-sync-detail" aria-live="polite"></div><p class="hint" id="orderSummaryMediaHelp">Nhấp vào thẻ để xem tệp. Tệp chưa đồng bộ Drive sẽ được xem từ hồ sơ Qbooks (R2).</p>
 </dialog>
 <dialog id="accountInfoDialog" class="order-summary-dialog"><div class="summary-header"><h2>Thông tin tài khoản</h2><button type="button" id="closeAccountInfo" class="secondary">Đóng ✕</button></div><div id="accountInfoContent"></div></dialog>
 <dialog id="changePinDialog" class="order-summary-dialog"><div class="summary-header"><h2>Đổi mật khẩu / mã PIN Qbooks</h2><button type="button" id="closeChangePin" class="secondary">Đóng ✕</button></div><form id="changePinForm" class="fields"><p class="hint span-all">Mã PIN Qbooks khác mật khẩu Google. Người đăng nhập chỉ bằng Google và chưa có PIN hãy liên hệ quản trị viên để đặt PIN lần đầu.</p><label>PIN hiện tại<input name="oldPin" type="password" inputmode="numeric" autocomplete="current-password" required></label><label>PIN mới (6–8 chữ số)<input name="newPin" type="password" inputmode="numeric" minlength="6" maxlength="8" pattern="[0-9]{6,8}" autocomplete="new-password" required></label><label>Xác nhận PIN mới<input name="confirmPin" type="password" inputmode="numeric" minlength="6" maxlength="8" pattern="[0-9]{6,8}" autocomplete="new-password" required></label><button type="submit" class="primary">Cập nhật PIN</button><p id="changePinStatus" class="hint span-all" role="status"></p></form></dialog>
