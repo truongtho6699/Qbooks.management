@@ -494,7 +494,7 @@ async function handle(req,env){
   const isManager=hasRole(user,'ADMIN');
   // Filter by the order creation date in Asia/Ho_Chi_Minh (+07:00, no DST),
   // not by delivery time. Inclusive today, exclusive next-day boundary.
-  const period=clean(url.searchParams.get('period')||'today');
+  const period=clean(url.searchParams.get('period')||'7days');
   if(!['today','7days','month','all'].includes(period))throw Error('Khoảng thời gian không hợp lệ.');
   const vietnamNow=new Date(Date.now()+7*3600000);
   const year=vietnamNow.getUTCFullYear(),month=vietnamNow.getUTCMonth(),day=vietnamNow.getUTCDate();
