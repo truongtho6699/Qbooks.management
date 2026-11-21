@@ -94,6 +94,15 @@ function safeMediaRefresh(){
 }
 async function load({initial=false}={}){
  const version=++mediaLoadGeneration;
+ const failures=new Set();
+ let coreReady=false,optionalReady=false;
+ function refreshStatus(){
+  if(version!==mediaLoadGeneration)return;
+  if(failures.size)mediaLoadNotice('Chưa tải được '+[...failures].join(', ')+'. Chọn Thử tải lại.',true);
+  else if(!coreReady)mediaLoadNotice('Đang tải đầu sách và tổng quan…');
+  else if(!optionalReady)mediaLoadNotice('Đã mở dữ liệu chính · đang tải bài học và danh sách video…');
+  else mediaLoadNotice('');
+ }
  const overviewMenus=['dashboard','filmOverview','postOverview','booksProgress','report','production'];
  const itemMenus=['dashboard','filmOverview','postOverview','film','edit','booksProgress','report'];
  const canOverview=overviewMenus.some(can),canItems=itemMenus.some(can);
@@ -110,8 +119,8 @@ async function load({initial=false}={}){
   }else errors.push('danh sách video');
   if(lessons.status==='fulfilled')state.lessons=lessons.value.lessons||[];
   else errors.push('danh sách bài học');
-  if(errors.length)mediaLoadNotice('Chưa tải được '+errors.join(' và ')+'. Có thể chọn Thử tải lại.',true);
-  else mediaLoadNotice('');
+  for(const err of errors)failures.add(err);
+  optionalReady=true;refreshStatus();
   if(initial)safeMediaRefresh();
  });
  const [bs,ov]=await Promise.allSettled([booksPromise,overviewPromise]);
@@ -121,7 +130,8 @@ async function load({initial=false}={}){
  else errors.push('đầu sách');
  if(ov.status==='fulfilled')state.overview=ov.value;
  else errors.push('tổng quan');
- if(errors.length)mediaLoadNotice('Chưa tải được '+errors.join(' và ')+'. Có thể chọn Thử tải lại.',true);
+ for(const err of errors)failures.add(err);
+ coreReady=true;refreshStatus();
  if(bs.status==='rejected'&&ov.status==='rejected'){
   // All optional requests are already guarded by allSettled; no unhandled rejections.
   void optional;
@@ -643,6 +653,8 @@ async function boot(){
 }
 if(document.getElementById('unifiedMediaView')){
  let started=null;
+ const retryButton=$('mediaLoadRetry');
+ if(retryButton)retryButton.onclick=()=>window.QbookMedia?.retry?.().catch(e=>mediaLoadNotice('Thử tải lại thất bại: '+e.message,true));
  window.QbookMedia={
   reset(){
    started=null;mediaLoadGeneration++;
