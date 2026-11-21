@@ -257,3 +257,38 @@ export async function sheetCommit(env,data){
  await env.DB.prepare("UPDATE orders SET local_dirty=0,synced_at=CURRENT_TIMESTAMP WHERE id=? AND local_dirty=1").bind(orderId).run();
  return {ok:true,updated:true,cells:updates.length,orderId};
 }
+
+// ---- Direct browser → Google Drive upload for packing videos ----------------------
+// The Worker opens a resumable session with the server-held Google credential and
+// hands ONLY the session URI to the browser. The URI can write this one file only;
+// no Google access token ever leaves the server.
+export const DIRECT_DRIVE_CHUNK=32*1024*1024; // Drive requires multiples of 256 KiB.
+const SESSION_HOST=/^https:\/\/(www\.googleapis\.com|content-googleapis\.com)\/upload\/drive\//;
+export async function createDirectVideoSession(token,{uploadId,orderId,filename,contentType,bytes,origin}){
+ const folder=await targetFolder(token,null,'VIDEO_DONG_HANG');
+ const name=safeName('QBOOKS_'+uploadId+'_'+filename);
+ const url=GOOGLE_BASE+'/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,size,mimeType,parents';
+ // Origin makes Google answer the browser's cross-origin PUTs on this session (CORS).
+ const res=await google(url,token,{method:'POST',headers:{
+  'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':contentType,
+  'X-Upload-Content-Length':String(bytes),...(origin?{Origin:origin}:{})
+ },body:JSON.stringify({name,mimeType:contentType,parents:[folder.id],appProperties:{qbooksUploadId:uploadId,qbooksOrderId:orderId}})});
+ const session=res.headers.get('location');
+ if(!session||!SESSION_HOST.test(session))throw Error('Drive không trả phiên tải tệp hợp lệ.');
+ return {sessionUrl:session,folderUrl:folder.url};
+}
+export async function probeDriveSession(sessionUrl,bytes,{fetchImpl=fetch}={}){
+ if(!SESSION_HOST.test(String(sessionUrl||'')))throw Error('Phiên tải Drive không hợp lệ.');
+ const probe=await fetchImpl(sessionUrl,{method:'PUT',headers:{'Content-Length':'0','Content-Range':'bytes */'+bytes},redirect:'manual'});
+ if(probe.status===308){
+  const range=probe.headers.get('range');
+  const offset=range?Number(range.split('-').pop())+1:0;
+  if(!Number.isSafeInteger(offset)||offset<0||offset>bytes)throw Error('Drive trả tiến độ không hợp lệ.');
+  return {done:false,offset};
+ }
+ if(probe.ok){
+  const detail=await probe.json().catch(()=>({}));
+  return {done:true,offset:bytes,fileId:detail.id||null,size:Number(detail.size)};
+ }
+ return {done:false,offset:0,expired:probe.status===404||probe.status===410,status:probe.status};
+}

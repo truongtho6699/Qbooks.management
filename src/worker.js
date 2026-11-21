@@ -2,7 +2,9 @@
 import {STATUS,CHUNK_BYTES,STAGES,MAX_VIDEO,MAX_IMAGE,canUploadStage,validateUpload,partBounds,partsCount,orderTitle} from './domain.js';
 import {verifyGoogleCredential} from './google-auth.js';
 import {normalizeV35Row,validateShippingForm,canGroup,parseVNDate} from './legacy-v35.js';
-import {syncStatus,driveInit,driveChunk,sheetCommit} from './sync-google.js';
+import {syncStatus,driveInit,driveChunk,sheetCommit,DIRECT_DRIVE_CHUNK,createDirectVideoSession,probeDriveSession} from './sync-google.js';
+import {googleAccessToken} from './drive-auto-worker.js';
+import {checkDriveCopy} from './r2-drive-move.js';
 import {videoApi} from './video-manager.js';
 import {MENU_KEYS,MENU_LABELS,resolveMenuPermissions,allowedMenu} from './menu-permissions.js';
 
@@ -57,6 +59,11 @@ async function checkUploads(env,orderId,stages){
 function mustStageAccess(user,u,o){
  if(o.status!==(u.stage==='GIAO_HANG'?STATUS.SHIP:STATUS.PACK)||!hasRole(user,u.stage==='GIAO_HANG'?'SHIPPER':'PACKER'))throw Object.assign(new Error('Không được tải tệp vào đơn hoặc giai đoạn này.'),{status:403});
 }
+// Packing videos go browser → Google Drive directly when the server holds an offline
+// Google credential and VIDEO_DIRECT_DRIVE=true. Otherwise they fall back to R2 multipart.
+const directDriveEnabled=env=>env.VIDEO_DIRECT_DRIVE==='true'&&!!env.GOOGLE_CLIENT_ID&&!!env.GOOGLE_OAUTH_CLIENT_SECRET&&!!env.GOOGLE_REFRESH_TOKEN;
+const isDirectDrive=u=>u.stage==='VIDEO_DONG_HANG'&&!u.upload_id&&String(u.object_key||'').startsWith('drive:');
+function sessionOrigin(req,url){const o=req.headers.get('origin');return o===url.origin?o:url.origin;}
 function filePath(orderId,stage,name){return 'orders/'+encodeURIComponent(orderId)+'/'+stage+'/'+uid()+'-'+name.replace(/[^\w.\-]/g,'_');}
 async function handle(req,env){
  const url=new URL(req.url),path=url.pathname,method=req.method;
@@ -650,6 +657,13 @@ async function handle(req,env){
   const size=Number(b.size),name=clean(b.filename),type=clean(b.contentType);
   validateUpload({stage:b.stage,filename:name,contentType:type,size});
   const id=uid(),key=filePath(order.id,b.stage,name),multipart=b.stage==='VIDEO_DONG_HANG';
+  if(multipart&&directDriveEnabled(env)){
+   const token=await googleAccessToken(env);
+   const session=await createDirectVideoSession(token,{uploadId:id,orderId:order.id,filename:name,contentType:type,bytes:size,origin:sessionOrigin(req,url)});
+   await env.DB.prepare('INSERT INTO uploads(id,order_id,user_id,stage,object_key,filename,content_type,bytes,upload_id,chunk_size,drive_session_url,drive_folder_url) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(id,order.id,user.id,b.stage,'drive:'+key,name,type,size,null,DIRECT_DRIVE_CHUNK,session.sessionUrl,session.folderUrl).run();
+   return json({id,transport:'drive',sessionUrl:session.sessionUrl,chunkSize:DIRECT_DRIVE_CHUNK},201);
+  }
   const upload=multipart?await env.MEDIA.createMultipartUpload(key,{httpMetadata:{contentType:type}}):null;
   try{
    await env.DB.prepare('INSERT INTO uploads(id,order_id,user_id,stage,object_key,filename,content_type,bytes,upload_id,chunk_size) VALUES(?,?,?,?,?,?,?,?,?,?)')
@@ -678,6 +692,7 @@ async function handle(req,env){
   await assertOrderLock(env,user,o.id,u.stage==='GIAO_HANG'?'VAN_DON':'DONG_HANG');
   if(method==='GET'&&!action){
    const rows=await env.DB.prepare('SELECT part_number,etag,bytes FROM upload_parts WHERE upload_id=? ORDER BY part_number').bind(id).all();
+   if(isDirectDrive(u))return json({id,status:u.status,bytes:u.bytes,chunkSize:u.chunk_size,transport:'drive',sessionUrl:u.status==='UPLOADING'?u.drive_session_url:null,parts:[]});
    return json({id,status:u.status,bytes:u.bytes,chunkSize:u.chunk_size,parts:rows.results||[]});
   }
   if(u.status!=='UPLOADING')throw Error('Phiên tải đã được hoàn tất hoặc hủy.');
@@ -698,6 +713,23 @@ async function handle(req,env){
    await env.DB.prepare('INSERT INTO upload_parts(upload_id,part_number,etag,bytes) VALUES(?,?,?,?) ON CONFLICT(upload_id,part_number) DO UPDATE SET etag=excluded.etag,bytes=excluded.bytes')
     .bind(id,number,part.etag,bounds.size).run();
    return json({partNumber:number,etag:part.etag});
+  }
+  if(method==='POST'&&action==='complete'&&isDirectDrive(u)){
+   const b=await requestJSON(req).catch(()=>({}));
+   const probe=await probeDriveSession(u.drive_session_url,u.bytes);
+   if(probe.expired)throw Object.assign(new Error('Phiên tải Drive đã hết hạn. Vui lòng chọn lại video để tải lại.'),{status:410});
+   if(!probe.done)throw Error('Google Drive mới nhận '+Math.floor(100*probe.offset/u.bytes)+'% video. Vui lòng tiếp tục tải.');
+   const fileId=probe.fileId||clean(b.fileId);
+   if(!/^[A-Za-z0-9_-]{10,}$/.test(fileId))throw Error('Google Drive chưa trả mã tệp.');
+   // Independently re-read the Drive file: size, folder, mime type and QBOOK upload ID.
+   const token=await googleAccessToken(env);
+   await checkDriveCopy({...u,status:'COMPLETE',drive_file_id:fileId},token);
+   // No R2 object exists for direct uploads: mark R2 as cleared so the cron sync skips it
+   // and file downloads point to Drive.
+   await env.DB.prepare("UPDATE uploads SET status='COMPLETE',completed_at=CURRENT_TIMESTAMP,drive_file_id=?,drive_offset=bytes,drive_session_url=NULL,drive_completed_at=CURRENT_TIMESTAMP,drive_verified_at=CURRENT_TIMESTAMP,r2_deleted_at=CURRENT_TIMESTAMP WHERE id=? AND status='UPLOADING'")
+    .bind(fileId,id).run();
+   if(u.drive_folder_url)await env.DB.prepare('UPDATE orders SET video_folder_url=? WHERE id=?').bind(u.drive_folder_url,u.order_id).run();
+   await audit(env,user,'UPLOAD_VIDEO_DRIVE',u.order_id,fileId);return json({ok:true,fileId,size:u.bytes});
   }
   if(method==='POST'&&action==='complete'){
    if(!u.upload_id)throw Error('Ảnh đã được xác nhận ngay khi tải.');
