@@ -110,7 +110,8 @@ async function load({initial=false}={}){
  const overviewPromise=canOverview?api('GET','/api/video/overview'):Promise.resolve({totals:{},books:[],staff:[],statusCounts:[]});
  const itemsPromise=canItems?api('GET','/api/video/items?page='+state.videoPage+'&pageSize=100'):Promise.resolve({items:[],pagination:{page:1,pages:0,total:0}});
  const lessonsPromise=api('GET','/api/video/lessons');
- const optional=Promise.allSettled([itemsPromise,lessonsPromise]).then(([videos,lessons])=>{
+ const staffPromise=can('staff')&&(state.rights.manage||state.rights.admin)?api('GET','/api/video/staff'):Promise.resolve({staff:[]});
+ const optional=Promise.allSettled([itemsPromise,lessonsPromise,staffPromise]).then(([videos,lessons,staff])=>{
   if(version!==mediaLoadGeneration)return;
   const errors=[];
   if(videos.status==='fulfilled'){
@@ -119,6 +120,8 @@ async function load({initial=false}={}){
   }else errors.push('danh sách video');
   if(lessons.status==='fulfilled')state.lessons=lessons.value.lessons||[];
   else errors.push('danh sách bài học');
+  if(staff.status==='fulfilled')state.staff=staff.value.staff||[];
+  else errors.push('danh sách nhân sự');
   for(const err of errors)failures.add(err);
   optionalReady=true;refreshStatus();
   if(initial)safeMediaRefresh();
@@ -139,9 +142,6 @@ async function load({initial=false}={}){
  }
  if(!initial){
   await optional;
-  if(can('staff')&&(state.rights.manage||state.rights.admin)){
-   try{state.staff=(await api('GET','/api/video/staff')).staff}catch{state.staff=[]}
-  }
  }else{
   // Render initial dashboard as soon as books/overview arrive.
   // Remaining lists and lessons are fetched independently without blocking navigation.
