@@ -965,6 +965,8 @@ async function openOrder(order){
   state.lockedOrderIds.add(order.id);
  }catch(e){return notice('Không lấy được khóa đơn: '+e.message);}
  state.selected=order;
+ for(const id of ['invoicePics','goodsPics','videos','shippingPics'])$(id).value='';
+ renderSelectedFiles();
  // Desktop follows the Figma split view: keep the pending-order list visible next to the form.
  show('ordersView',true);show('saleView',false);show('detailView',true);
  const n=$('selectedOrder');n.replaceChildren(el('h2',order.title),el('p','Khách: '+order.customer+' · Mã HĐ: '+order.invoice_codes),
@@ -1198,6 +1200,33 @@ async function uploadSelection(orderId,items,background=false){
  return uploaded;
 }
 function v(id){return $(id).value.trim()}
+const selectedPreviewUrls=[];
+function clearSelectedFilePreviews(){
+ for(const url of selectedPreviewUrls)URL.revokeObjectURL(url);
+ selectedPreviewUrls.length=0;
+}
+function renderSelectedFiles(){
+ clearSelectedFilePreviews();
+ const groups=[['invoicePics','Ảnh hóa đơn','packFilePreview'],['goodsPics','Ảnh hàng hóa','packFilePreview'],
+  ['videos','Video đóng hàng','packFilePreview'],['shippingPics','Ảnh bàn giao','shipFilePreview']];
+ const byTarget=new Map([['packFilePreview',[]],['shipFilePreview',[]]]);
+ for(const [inputId,stage,targetId] of groups)for(const file of $(inputId).files||[])byTarget.get(targetId).push({stage,file});
+ for(const [id,items] of byTarget){
+  const node=$(id);if(!node)continue;node.replaceChildren();
+  if(!items.length){node.textContent=id==='packFilePreview'?'Chưa chọn tệp đóng hàng.':'Chưa chọn ảnh bàn giao.';continue;}
+  const mb=items.reduce((n,x)=>n+x.file.size,0)/1048576;
+  node.append(el('strong','Đã chọn '+items.length+' tệp · '+mb.toFixed(1)+' MB'));
+  for(const {stage,file} of items.slice(0,12)){
+   const row=el('div',null,'qbook-selected-file');
+   if(file.type.startsWith('image/')){
+    const url=URL.createObjectURL(file);selectedPreviewUrls.push(url);
+    const image=document.createElement('img');image.src=url;image.alt='Xem trước '+file.name;image.loading='lazy';row.append(image);
+   }
+   row.append(el('span',stage+' · '+file.name+' · '+(file.size/1048576).toFixed(1)+' MB'));node.append(row);
+  }
+  if(items.length>12)node.append(el('small','Còn '+(items.length-12)+' tệp khác đã chọn.'));
+ }
+}
 function updateShippingTotal(){
  const fields=['shippingFee','heavyFee','terminalFee','extraFee'];
  const total=fields.reduce((sum,id)=>sum+(Number($(id).value)||0),0);
@@ -1384,11 +1413,12 @@ async function loadGroupOptions(){
  }catch(e){notice(e.message)}
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin,!!$('rememberLogin')?.checked)}catch(error){notice(error.message)}});
-$('logoutBtn').onclick=async()=>{if(state.backgroundJob)return notice('Video đang tải nền. Chờ hoàn thành trước khi đăng xuất.');if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearUploadTasks();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
+$('logoutBtn').onclick=async()=>{if(state.backgroundJob)return notice('Video đang tải nền. Chờ hoàn thành trước khi đăng xuất.');if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearSelectedFilePreviews();clearUploadTasks();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
 $('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packControls'));markDraftSaved($('shipControls'));tab(state.tab);};
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
+['invoicePics','goodsPics','videos','shippingPics'].forEach(id=>$(id).addEventListener('change',renderSelectedFiles));
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
 $('saleDeliveryMode').onchange=()=>{const timed=$('saleDeliveryMode').value==='THOI_GIAN';$('saleDeliveryTimeBox').hidden=!timed;$('saleDeliveryTime').required=timed;if(!timed)$('saleDeliveryTime').value='';};
 $('saleForm').elements.customer.addEventListener('input',updateSaleCustomerHint);
