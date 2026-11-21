@@ -657,9 +657,19 @@ async function handle(req,env){
   const size=Number(b.size),name=clean(b.filename),type=clean(b.contentType);
   validateUpload({stage:b.stage,filename:name,contentType:type,size});
   const id=uid(),key=filePath(order.id,b.stage,name),multipart=b.stage==='VIDEO_DONG_HANG';
+  let session=null;
   if(multipart&&directDriveEnabled(env)){
-   const token=await googleAccessToken(env);
-   const session=await createDirectVideoSession(token,{uploadId:id,orderId:order.id,filename:name,contentType:type,bytes:size,origin:sessionOrigin(req,url)});
+   // Google problems (expired token, missing folder access, quota) must never block packing:
+   // fall back to the R2 multipart path and leave a trace for the admin.
+   try{
+    const token=await googleAccessToken(env);
+    session=await createDirectVideoSession(token,{uploadId:id,orderId:order.id,filename:name,contentType:type,bytes:size,origin:sessionOrigin(req,url)});
+   }catch(e){
+    console.error('VIDEO_DIRECT_DRIVE fallback to R2:',String(e?.message||e).slice(0,300));
+    await audit(env,user,'VIDEO_DRIVE_FALLBACK',order.id,String(e?.message||e).replace(/ya29\.[\w.-]+/g,'[REDACTED]').slice(0,300)).catch(()=>{});
+   }
+  }
+  if(session){
    await env.DB.prepare('INSERT INTO uploads(id,order_id,user_id,stage,object_key,filename,content_type,bytes,upload_id,chunk_size,drive_session_url,drive_folder_url) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(id,order.id,user.id,b.stage,'drive:'+key,name,type,size,null,DIRECT_DRIVE_CHUNK,session.sessionUrl,session.folderUrl).run();
    return json({id,transport:'drive',sessionUrl:session.sessionUrl,chunkSize:DIRECT_DRIVE_CHUNK},201);
