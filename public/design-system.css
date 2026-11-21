@@ -1,0 +1,359 @@
+/* QBOOK Design System v1 — consolidated from the existing approved layers.
+ * Kept in its original cascade order to preserve Production behavior.
+ * Source layers remain in GitHub for traceability but are not loaded by the page.
+ * Base styles (style.css, video.css, navigation.css, ui-v3.css, unified.css)
+ * remain separate until their selectors are individually audited.
+ */
+/* ===== 1. Figma Pages — shared QBOOK layout and tokens ===== */
+/* QBOOK Figma pages 1 & 2 visual synchronization.
+   Page 1: Media / Page 2: Shipping. Presentation only: no business API changes.
+   Reference: https://www.figma.com/design/wYK9PUTcebtoSlyYMHK0ez */
+:root{
+ --qf-navy:#0b1f46;
+ --qf-active:#1b61c5;
+ --qf-blue:#2563eb;
+ --qf-surface:#ffffff;
+ --qf-canvas:#f5f8fd;
+ --qf-text:#162e52;
+ --qf-muted:#61728b;
+ --qf-border:#dfe8f4;
+ --qf-light:#eaf2ff;
+ --qf-radius:11px;
+}
+#appPage{background:var(--qf-canvas);color:var(--qf-text)}
+#appPage .shipping-shell{grid-template-columns:228px minmax(0,1fr);min-height:calc(100dvh - 75px)}
+#appPage .shipping-sidebar{background:var(--qf-navy);color:#fff;min-height:calc(100dvh - 75px)}
+#appPage .shipping-logo{padding:24px 22px 11px}
+#appPage .shipping-logo strong{font-size:27px;letter-spacing:-.02em;line-height:1.25}
+#appPage .shipping-logo small{font-size:10px;letter-spacing:.07em;color:#a7ccff;margin-top:3px}
+#appPage .shipping-nav-title{margin:4px 17px 6px;padding:12px 4px 0;border-top:1px solid #355274;font-size:9px;letter-spacing:.07em;color:#a7c9f4}
+#appPage .shipping-sidebar .tabs.qbn-tree{padding:0 11px;gap:2px;max-height:calc(100dvh - 190px)}
+#appPage .shipping-sidebar .tabs.qbn-tree .qbn-root{
+ padding:13px 8px 8px!important;margin-top:7px;min-height:31px;
+ background:transparent!important;color:#a7c9f4!important;
+ font-size:10px!important;line-height:1.1;font-weight:800;
+ letter-spacing:.05em;cursor:pointer;
+}
+#appPage .shipping-sidebar .tabs.qbn-tree .qbn-root .qbn-icon{display:none}
+#appPage .shipping-sidebar .tabs.qbn-tree .qbn-root .qbn-chevron{font-size:10px;color:#a7c9f4}
+#appPage .shipping-sidebar .tabs.qbn-tree .qbn-root:hover{color:white!important}
+#appPage .shipping-sidebar .tabs.qbn-tree .qbn-children{border:0;margin:0 0 5px 0;padding:0;gap:3px}
+#appPage .shipping-sidebar .tabs.qbn-tree .qbn-depth-2.qbn-leaf{min-height:35px;padding:9px 12px;font-size:12px}
+#appPage .shipping-sidebar .tabs.qbn-tree .qbn-depth-2.qbn-branch{font-size:12px;min-height:37px;padding:9px 11px;color:#d8e7fc}
+#appPage .shipping-sidebar .tabs.qbn-tree .qbn-depth-3{padding:8px 12px 8px 22px;min-height:32px}
+#appPage .shipping-sidebar .tabs.qbn-tree button.qbn-active{background:var(--qf-active)!important;color:#fff!important;font-weight:700}
+#appPage .shipping-workspace{padding:0 clamp(15px,2.2vw,28px) 52px;max-width:1650px}
+#appPage .shipping-heading{
+ min-height:83px;background:var(--qf-surface);
+ margin:0 calc(-1 * clamp(15px,2.2vw,28px)) 24px;
+ padding:16px clamp(15px,2.2vw,28px);
+ border-bottom:1px solid var(--qf-border);
+}
+#appPage .shipping-heading h1{font-size:23px;margin:3px 0 3px;color:var(--qf-text)}
+#appPage .shipping-heading small{font-size:10px;letter-spacing:.06em;color:#5574a2}
+#appPage .shipping-heading p{font-size:12px;color:var(--qf-muted)}
+#appPage #shippingUserBadge{background:var(--qf-light);color:var(--qf-blue);border-radius:8px;padding:10px 12px;font-size:11px;font-weight:700;white-space:nowrap}
+#appPage .panel{border:1px solid var(--qf-border);border-radius:12px;box-shadow:none;background:white;padding:19px 20px;margin:0 0 18px}
+#appPage .panel h2{margin:0 0 12px;font-size:17px;color:var(--qf-text)}
+#appPage .section-heading h1,#appPage .section-heading h2{font-size:18px;color:var(--qf-text)}
+#appPage .section-heading p{font-size:12px;color:var(--qf-muted);margin:3px 0 14px}
+#appPage input:not([type=checkbox]):not([type=radio]),#appPage select,#appPage textarea{
+ border:1px solid var(--qf-border);border-radius:8px;background:#fff;color:var(--qf-text);
+ box-shadow:none;min-height:43px;max-width:100%;
+}
+#appPage input:focus,#appPage select:focus,#appPage textarea:focus{border-color:#7eaff6;box-shadow:0 0 0 3px #2563eb15}
+#appPage label{color:#597292;font-size:12px;font-weight:650}
+#appPage .primary{background:var(--qf-blue);border-color:var(--qf-blue);border-radius:8px;font-weight:700}
+#appPage .secondary{border-radius:8px}
+#appPage .shipping-kpis{gap:13px;margin-bottom:19px}
+#appPage .shipping-kpi,
+#appPage .shipping-kpi.pack,
+#appPage .shipping-kpi.ship,
+#appPage .shipping-kpi.moving,
+#appPage .shipping-kpi.done{
+ background:var(--qf-light);border:0;border-radius:11px;box-shadow:none;
+ min-height:103px;padding:16px 17px;display:flex;flex-direction:column-reverse;
+ justify-content:space-between;gap:5px;
+}
+#appPage .shipping-kpi small{font-size:12px;color:var(--qf-muted);font-weight:500}
+#appPage .shipping-kpi strong{font-size:27px;color:var(--qf-blue);font-weight:800}
+#appPage .shipping-overview-filters{
+ display:grid;grid-template-columns:minmax(155px,.9fr) minmax(240px,2fr) minmax(155px,1.1fr);
+ gap:12px;margin:16px 0 10px;
+}
+#appPage .shipping-overview-filters input,#appPage .shipping-overview-filters select{width:100%;min-width:0}
+#appPage .qbook-period-shortcuts{display:flex;gap:9px;flex-wrap:wrap;margin:9px 0 19px}
+#appPage .qbook-period-shortcuts button{
+ border:0;background:var(--qf-light);border-radius:7px;color:var(--qf-blue);
+ padding:8px 12px;min-height:34px;font-size:12px;font-weight:700;cursor:pointer;
+}
+#appPage .qbook-period-shortcuts button[aria-pressed=true]{background:var(--qf-blue);color:#fff}
+#appPage .qbook-period-shortcuts button:focus-visible{outline:2px solid var(--qf-blue);outline-offset:2px}
+#appPage .shipping-table-scroll{border:1px solid var(--qf-border);border-radius:9px}
+#appPage .shipping-table{min-width:850px;line-height:1.45}
+#appPage .shipping-table th{background:#eef4fc;color:#506883;font-weight:750;font-size:12px}
+#appPage .shipping-table td,#appPage .shipping-table th{padding:14px 12px;border-bottom:1px solid var(--qf-border)}
+#appPage .shipping-table tbody tr:hover td{background:#f6f9ff}
+#appPage #saleView .fields{grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+#appPage #saleView .fields label{min-width:0;display:flex;flex-direction:column;gap:7px}
+#appPage #saleView .fields label.span-all{grid-column:auto}
+#appPage #saleDeliveryTimeBox:not([hidden]){grid-column:span 2!important}
+#appPage #saleView .panel{padding:20px}
+#appPage #saleOrdersPanel{margin-top:18px}
+#appPage #saleOrdersList{display:grid;gap:9px}
+#appPage #saleOrdersList .order{padding:12px 14px;background:#f7faff;border:1px solid var(--qf-border)}
+#appPage #ordersView .cards{display:grid;gap:9px}
+#appPage #ordersView .order{padding:12px;min-width:0;box-shadow:none;border:1px solid var(--qf-border)}
+#appPage .shipping-workspace.qbook-detail-open{
+ display:grid;grid-template-columns:minmax(265px,.72fr) minmax(0,1.28fr);
+ column-gap:16px;align-content:start;align-items:start;
+}
+#appPage .shipping-workspace.qbook-detail-open .shipping-heading{grid-column:1/-1}
+#appPage .shipping-workspace.qbook-detail-open #ordersView{grid-column:1;min-width:0}
+#appPage .shipping-workspace.qbook-detail-open #detailView{grid-column:2;min-width:0}
+#appPage .shipping-workspace.qbook-detail-open #ordersView .section-heading{display:block}
+#appPage .shipping-workspace.qbook-detail-open #ordersView .section-heading h1{font-size:16px;margin:0 0 8px}
+#appPage .shipping-workspace.qbook-detail-open #ordersView .cards .order{display:block;text-align:left}
+#appPage .shipping-workspace.qbook-detail-open #detailView .panel{padding:18px}
+#appPage .shipping-workspace.qbook-detail-open #detailView .fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+#appPage .shipping-workspace.qbook-detail-open #detailView .fields label{min-width:0;display:flex;flex-direction:column;gap:6px}
+#appPage .shipping-workspace.qbook-detail-open #detailView input[type=file]{width:100%;min-width:0}
+#appPage .order-summary-dialog{border-radius:14px;border:1px solid var(--qf-border);color:var(--qf-text)}
+#appPage .order-content{background:#f1f6ff;border-color:#d6e7ff}
+#appPage .overview-media-links a{overflow-wrap:anywhere}
+#appPage .qbook-media-page{padding:1px 0 54px;background:transparent}
+#appPage .qbook-media-page .panel{margin:0 0 18px}
+#appPage .qbook-media-page .kpis{gap:13px;margin-bottom:18px}
+#appPage .qbook-media-page .kpi{background:var(--qf-light)!important;border:0!important;border-radius:11px;box-shadow:none;min-height:103px}
+#appPage .qbook-media-page .kpi:before{display:none}
+#appPage .qbook-media-page .kpi-number{color:var(--qf-blue);font-weight:800}
+#appPage .qbook-media-page .kpi-label{color:var(--qf-muted)}
+#appPage .qbook-media-page .panelhead{margin-bottom:14px}
+#appPage .qbook-media-page .tablewrap{border-radius:8px}
+#appPage .qbook-media-page .filters{gap:10px}
+@media(max-width:1100px){
+ #appPage .shipping-workspace.qbook-detail-open{grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr)}
+ #appPage #saleView .fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #appPage .shipping-overview-filters{grid-template-columns:minmax(120px,.8fr) minmax(180px,1.6fr) minmax(150px,1fr)}
+}
+@media(max-width:800px){
+ #appPage .shipping-shell{display:block}
+ #appPage .shipping-sidebar{display:none}
+ #appPage .shipping-workspace{padding:0 12px calc(105px + env(safe-area-inset-bottom))}
+ #appPage .shipping-heading{margin:0 -12px 16px;padding:14px 12px;min-height:78px}
+ #appPage .shipping-heading h1{font-size:20px}
+ #appPage #shippingUserBadge{display:none}
+ #appPage .shipping-overview-filters{grid-template-columns:1fr}
+ #appPage .shipping-workspace.qbook-detail-open{display:block}
+ #appPage .shipping-workspace.qbook-detail-open #ordersView{display:none}
+ #appPage .shipping-workspace.qbook-detail-open #detailView .fields{grid-template-columns:1fr}
+ #appPage #saleView .fields{grid-template-columns:1fr}
+ #appPage #saleView .fields label.span-all{grid-column:1/-1}
+ #appPage #saleDeliveryTimeBox:not([hidden]){grid-column:1/-1!important}
+ #appPage .shipping-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #appPage .qbook-media-page{padding:0 0 calc(110px + env(safe-area-inset-bottom))}
+ #appPage .qbook-media-page .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #appPage .qbook-period-shortcuts{gap:7px}
+ #appPage .qbook-period-shortcuts button{padding:9px 10px}
+}
+@media(max-width:420px){
+ #appPage .shipping-heading h1{font-size:19px}
+ #appPage .shipping-kpi{min-height:92px}
+ #appPage .qbook-period-shortcuts button{font-size:11px}
+}
+
+
+/* ===== 2. UI/UX Phase 1 — loading, sync, mobile usability ===== */
+/* QBOOK UI/UX Phase 1: observable loading, upload states, comfortable touch targets.
+   Override layer only. Server data and permission behavior are unchanged. */
+.qbook-media-load{
+ display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+ margin:12px 0;padding:0 4px;font-size:13px;line-height:1.5;color:#446080;
+}
+.qbook-media-load:has(>span[hidden]){display:none}
+.qbook-media-load #mediaLoadStatus:not([hidden]){
+ display:inline-flex;flex:1;min-width:180px;
+ padding:12px 14px;background:#eaf2ff;border:1px solid #cbdcf8;
+ border-radius:9px;color:#224f88;
+}
+.qbook-media-load #mediaLoadStatus.qbook-load-error{
+ color:#9b3b32;background:#fff3ed;border-color:#f0cab8;
+}
+.qbook-media-load button{
+ min-height:44px;background:#2563eb;color:white;border:0;border-radius:8px;
+ font-weight:700;padding:9px 16px;cursor:pointer;
+}
+.qbook-media-load button[hidden]{display:none}
+.qbook-upload-activity{
+ position:fixed;left:18px;bottom:calc(18px + env(safe-area-inset-bottom));
+ z-index:9998;width:min(405px,calc(100vw - 36px));
+ border:1px solid #bfd3ee;border-radius:12px;background:#fff;
+ padding:13px 15px;box-shadow:0 12px 28px #0b2b4d30;color:#19375d;
+ max-height:min(65dvh,540px);overflow:auto;
+}
+.qbook-upload-activity[hidden]{display:none!important}
+.qbook-upload-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.qbook-upload-head strong{font-size:14px}
+.qbook-upload-head button{background:#eaf2ff;border:1px solid #cbdcf8;color:#1756a0;padding:8px 12px;min-height:44px;border-radius:8px}
+.qbook-upload-activity .hint{font-size:12px;margin:8px 0;color:#5a6d85;line-height:1.55}
+.qbook-upload-items{display:grid;gap:7px}
+.qbook-upload-items[hidden]{display:none!important}
+.qbook-upload-item{padding:9px 10px;border:1px solid #e2e9f4;border-radius:8px;display:grid;gap:4px}
+.qbook-upload-filename{font-size:12px;font-weight:700;overflow-wrap:anywhere;color:#19375d}
+.qbook-upload-state{font-size:12px;line-height:1.5}
+.qbook-upload-stored{color:#08724d}
+.qbook-upload-error{color:#b43d31}
+.qbook-upload-sending{color:#195ebd}
+.qbook-upload-queued{color:#62728b}
+.qbook-sync-detail{margin:13px 0 0;padding:12px;border:1px solid #dbe7f4;border-radius:10px;background:#f8fbff;display:grid;gap:8px}
+.qbook-sync-detail:empty{display:none}
+.qbook-sync-detail>strong{font-size:13px}
+.qbook-sync-detail .hint{font-size:12px;margin:0}
+.qbook-sync-item{display:flex;justify-content:space-between;align-items:center;gap:9px;border-bottom:1px solid #e6edf7;padding:6px 0;font-size:12px}
+.qbook-sync-item:last-child{border:0}
+.qbook-sync-filename{min-width:0;overflow-wrap:anywhere;flex:1}
+.qbook-sync-pill{flex:none;max-width:50%;text-align:right;border-radius:8px;padding:5px 8px;font-weight:650;font-size:11px}
+.qbook-sync-ok{background:#e2f8ef;color:#0b8059}
+.qbook-sync-wait{background:#fff0d9;color:#905a0c}
+.qbook-sync-error{background:#fde8e8;color:#a32f2f}
+@media(max-width:800px){
+ /* All tappable elements have at least the 44px target expected on touch devices. */
+ #appPage .qbn-mobile-pane .qbn-branch,
+ #appPage .qbn-mobile-pane .qbn-leaf,
+ #appPage .qbn-mobile-pane .qbn-close,
+ #appPage .shipping-mobile-nav button,
+ #appPage .qbook-period-shortcuts button,
+ #appPage .overview-link,
+ #appPage .goods-image-card,
+ #appPage #overviewRefresh,
+ #appPage #reloadBtn,
+ #appPage .shipping-operation-tab,
+ #appPage .overview-card-actions button,
+ #appPage .overview-card-actions a,
+ #appPage #backBtn,
+ #appPage .textbtn,
+ #appPage input[type=file]{
+  min-height:44px!important;
+ }
+ #appPage .qbn-mobile-pane .qbn-depth-3{font-size:12px!important;padding-block:12px!important}
+ #appPage .qbn-mobile-pane .qbn-depth-2{font-size:13px!important;padding-block:12px!important}
+ #appPage .shipping-mobile-nav{gap:3px}
+ #appPage .shipping-mobile-item{min-height:58px!important}
+ #appPage .qbook-period-shortcuts{gap:8px}
+ #appPage #saleView input,#appPage #saleView select,
+ #appPage #packControls input,#appPage #shipControls input,
+ #appPage #packControls select,#appPage #shipControls select{
+  font-size:16px; /* Prevent automatic zoom when focusing iOS inputs. */
+ }
+ #appPage #packControls label,#appPage #shipControls label,
+ #appPage #saleView label{font-size:13px}
+ .qbook-upload-activity{
+  position:fixed;bottom:calc(85px + env(safe-area-inset-bottom));
+  left:10px;right:10px;width:auto;max-height:35dvh;
+ }
+ .qbook-background-upload{
+  bottom:calc(90px + env(safe-area-inset-bottom));right:10px;left:10px;
+  width:auto;max-height:35dvh;overflow:auto;
+ }
+ .qbook-background-upload:not([hidden])~.qbook-upload-activity:not([hidden]){
+  bottom:calc(235px + env(safe-area-inset-bottom));max-height:20dvh;
+ }
+ .qbook-sync-item{align-items:flex-start;flex-direction:column;gap:5px}
+ .qbook-sync-pill{max-width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+ .qbook-media-load,.qbook-upload-activity{animation:none;transition:none}
+}
+
+
+/* ===== 3. UI/UX Phase 2 — filters, order entry, Media ===== */
+/* QBOOK UI/UX Phase 2 — easier order lookup, entry and media reporting */
+#appPage .qbook-overview-controls{
+ display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin:12px 0 14px;
+}
+#appPage .qbook-overview-controls label{
+ display:flex;flex-direction:column;gap:5px;flex:1 1 180px;max-width:265px;font-size:12px;
+}
+#appPage .qbook-overview-controls select{width:100%;min-height:44px}
+#appPage .qbook-overview-controls button{min-height:44px;white-space:nowrap}
+#appPage .qbook-overview-pagination{
+ display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;margin:17px 0 6px;
+}
+#appPage .qbook-overview-pagination span{font-size:13px;color:#586e87;min-width:165px;text-align:center}
+#appPage .qbook-overview-pagination button{min-height:44px}
+#appPage .qbook-overview-pagination button:disabled{opacity:.5;cursor:not-allowed}
+#appPage .qbook-customer-helper{grid-column:1/-1;display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:-4px}
+#appPage .qbook-customer-helper button{min-height:44px}
+#appPage .qbook-customer-helper small{font-size:12px;color:#61728b;line-height:1.5;max-width:500px}
+#appPage .qbook-inline-warning{background:#fff3dd;color:#805316;border:1px solid #e5c992;padding:12px 14px;border-radius:9px;font-size:13px;line-height:1.5}
+#appPage .qbook-inline-warning[hidden]{display:none}
+#appPage .qbook-file-selection{display:grid;gap:8px;border:1px solid #dbe7f4;border-radius:9px;background:#f8fbff;padding:12px;margin:12px 0;color:#526781;font-size:12px}
+#appPage .qbook-file-selection>strong{font-size:13px;color:#162e52}
+#appPage .qbook-selected-file{display:flex;align-items:center;gap:10px;min-width:0;background:white;border:1px solid #e6edf5;padding:6px 9px;border-radius:8px}
+#appPage .qbook-selected-file img{width:46px;height:46px;object-fit:cover;border-radius:6px;background:#eaf2ff;flex:none}
+#appPage .qbook-selected-file span{min-width:0;overflow-wrap:anywhere;line-height:1.5}
+#appPage .qbook-media-report-filter{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#f5f8fd;border:1px solid #dfe8f4;border-radius:10px;padding:13px 16px;margin:12px 0 18px}
+#appPage .qbook-media-report-filter label{font-size:13px;font-weight:700;color:#162e52}
+#appPage .qbook-media-report-filter select{min-width:220px;max-width:390px;min-height:44px;flex:1}
+#appPage .qbook-media-report-filter small{width:100%;color:#61728b;line-height:1.5}
+@media(max-width:800px){
+ #appPage .qbook-overview-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ #appPage .qbook-overview-controls label{max-width:none;min-width:0;flex:none}
+ #appPage .qbook-overview-controls button{grid-column:1/-1}
+ #appPage .qbook-overview-pagination{justify-content:space-between;gap:7px}
+ #appPage .qbook-overview-pagination button{flex:1 1 125px}
+ #appPage .qbook-overview-pagination span{order:-1;width:100%;text-align:center}
+ #appPage .qbook-customer-helper{grid-column:1/-1;align-items:stretch}
+ #appPage .qbook-customer-helper button{flex:1 1 100%}
+ #appPage .qbook-media-report-filter{display:grid}
+ #appPage .qbook-media-report-filter select{min-width:0;max-width:none;width:100%;font-size:16px}
+}
+
+/* ===== 4. Unified interaction tokens and accessibility foundations ===== */
+:root{
+ --qbook-color-brand:var(--qf-blue,#2563eb);
+ --qbook-color-ink:var(--qf-text,#162e52);
+ --qbook-color-muted:var(--qf-muted,#61728b);
+ --qbook-color-border:var(--qf-border,#dfe8f4);
+ --qbook-color-canvas:var(--qf-canvas,#f5f8fd);
+ --qbook-color-surface:#fff;
+ --qbook-radius-control:8px;
+ --qbook-radius-card:12px;
+ --qbook-focus-ring:0 0 0 3px #2563eb55;
+ --qbook-hit-target:44px;
+}
+#appPage :is(button,a,input,select,textarea,summary):focus-visible,
+#loginPage :is(button,a,input,select,textarea):focus-visible,
+.qbn-drawer :is(button,a,input,select,textarea):focus-visible{
+ outline:3px solid var(--qbook-color-brand)!important;
+ outline-offset:3px;
+}
+#appPage :is(button,select,input,textarea):disabled{
+ opacity:.58;cursor:not-allowed;
+}
+#appPage .order-summary-dialog:focus-visible{outline:3px solid var(--qbook-color-brand)}
+#appPage .hint,#appPage .mini-note{line-height:1.55}
+.qbook-sr-only{
+ position:absolute!important;width:1px!important;height:1px!important;
+ padding:0!important;margin:-1px!important;overflow:hidden!important;
+ clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important;
+}
+@media(max-width:800px){
+ #appPage .qbook-overview-pagination button,
+ #appPage .qbook-overview-controls select,
+ #appPage .qbook-media-report-filter select{min-height:var(--qbook-hit-target)}
+}
+@media(prefers-reduced-motion:reduce){
+ #appPage *,#loginPage *,.qbn-drawer *,
+ #appPage *::before,#appPage *::after{
+  scroll-behavior:auto!important;
+  animation-duration:.01ms!important;
+  animation-iteration-count:1!important;
+  transition-duration:.01ms!important;
+ }
+}
+@media(forced-colors:active){
+ #appPage .qbook-sync-pill,#appPage .qbook-upload-state{
+  border:1px solid CanvasText;
+ }
+}
