@@ -34,3 +34,8 @@ test('overview GET loads are deduplicated, network calls have bounded waits',()=
  assert.match(app,/const attempts=method==='GET'\?2:1/);
  assert.match(app,/finally\{overviewLoading=null;\}/);
 });
+test('video parts upload in parallel with a bounded worker pool',()=>{
+ assert.match(app,/const VIDEO_PART_CONCURRENCY=3/);
+ assert.match(app,/Array\.from\(\{length:Math\.min\(VIDEO_PART_CONCURRENCY,queue\.length\)\},sendParts\)/);
+ assert.match(app,/const wait=blob\?300000:/);
+});

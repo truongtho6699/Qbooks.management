@@ -15,10 +15,11 @@ export async function checkDriveFolderAccess({token,folderId,fetchImpl=fetch}={}
  return {id:folder.id,name:folder.name||''};
 }
 
-export async function resumableDriveUpload(file,{token,folderId,fetchImpl=fetch,onProgress=()=>{},chunkBytes=8*1024*1024}={}){
+export async function resumableDriveUpload(file,{token,folderId,fetchImpl=fetch,onProgress=()=>{},chunkBytes=32*1024*1024}={}){
  if(!file||!Number.isSafeInteger(file.size)||file.size<1)throw Error('Tệp video rỗng hoặc không hợp lệ.');
  if(!/^[-A-Za-z0-9_]{10,}$/.test(String(folderId||'')))throw Error('Chưa cấu hình thư mục Drive của đầu sách. Không tải video vào thư mục Drive cá nhân.');
  if(typeof token!=='string'||!token.trim())throw Error('Chưa được cấp quyền Google Drive.');
+ // Drive requires a multiple of 256 KiB; bigger parts mean fewer sequential round-trips.
  if(!Number.isSafeInteger(chunkBytes)||chunkBytes<1)throw Error('Kích thước phần tải không hợp lệ.');
  await checkDriveFolderAccess({token,folderId,fetchImpl});
  const start=await fetchImpl('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,webViewLink',{

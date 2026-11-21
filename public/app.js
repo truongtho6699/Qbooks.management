@@ -1,6 +1,7 @@
 import {trackDraft,markDraftSaved,confirmLeave,protectBeforeUnload,humanizeError,showFormError,showFieldError} from './ux-guard.js';
 
 const CHUNK_BYTES=8*1024*1024;
+const VIDEO_PART_CONCURRENCY=3;
 const $=id=>document.getElementById(id);
 const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null,adminPanel:'accounts',backgroundJob:null,editOrder:null};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
@@ -39,7 +40,7 @@ async function api(method,path,data,blob=false){
  const attempts=method==='GET'?2:1;
  for(let attempt=0;attempt<attempts;attempt++){
   const controller=new AbortController();
-  const wait=blob?150000:method==='GET'?20000:45000;
+  const wait=blob?300000:method==='GET'?20000:45000;
   const timer=setTimeout(()=>controller.abort(),wait);
   let res;
   try{
@@ -994,16 +995,24 @@ async function uploadOne(orderId,stage,file,background=false){
  const count=Math.ceil(file.size/chunk),parts=new Set((info.parts||[]).map(p=>p.part_number));
  let done=Math.min(file.size,info.parts.reduce((sum,p)=>sum+p.bytes,0));
  progress(file.name,done,file.size,background);
- for(let n=1;n<=count;n++){
-  if(parts.has(n))continue;
-  const start=(n-1)*chunk,end=Math.min(start+chunk,file.size),piece=file.slice(start,end);
-  let retries=0;
-  while(true){
-   try{await api('PUT','/api/uploads/'+id+'/parts/'+n,piece,true);break;}
-   catch(e){if(++retries>=4)throw Error('Tải video gián đoạn ở phần '+n+'/'+count+': '+e.message);await new Promise(r=>setTimeout(r,900*retries));}
+ // R2 multipart accepts parts in any order: send several at once so one slow
+ // round-trip (browser → Worker → R2) no longer blocks the whole connection.
+ const queue=[];for(let n=1;n<=count;n++)if(!parts.has(n))queue.push(n);
+ let failed=null;
+ const sendParts=async()=>{
+  while(queue.length&&!failed){
+   const n=queue.shift(),start=(n-1)*chunk,end=Math.min(start+chunk,file.size),piece=file.slice(start,end);
+   let retries=0;
+   while(!failed){
+    try{await api('PUT','/api/uploads/'+id+'/parts/'+n,piece,true);break;}
+    catch(e){if(++retries>=4){failed=Error('Tải video gián đoạn ở phần '+n+'/'+count+': '+e.message);throw failed;}await new Promise(r=>setTimeout(r,900*retries));}
+   }
+   if(failed)return;
+   done+=piece.size;progress(file.name,done,file.size,background);
   }
-  done+=piece.size;progress(file.name,done,file.size,background);
- }
+ };
+ await Promise.all(Array.from({length:Math.min(VIDEO_PART_CONCURRENCY,queue.length)},sendParts));
+ if(failed)throw failed;
  await api('POST','/api/uploads/'+id+'/complete',{});
  localStorage.removeItem(key);
  progress(file.name,file.size,file.size,background);
