@@ -33,7 +33,7 @@ test('Media load errors are preserved while independent tasks settle',()=>{
 test('Upload status is user-specific, distinguishes saved tệp from Drive sync and is cleared at logout',()=>{
  assert.match(app,/const uploadTaskRecords=new Map\(\)/);
  assert.match(app,/function clearUploadTasks\(\)/);
- assert.match(app,/window\.QbookMedia\?\.reset\(\);clearUploadTasks\(\);clearLoginSession\(\)/);
+ assert.match(app,/window\.QbookMedia\?\.reset\(\);clearSelectedFilePreviews\(\);clearUploadTasks\(\);clearLoginSession\(\)/);
  assert.match(app,/updateUploadTask\(orderId,stage,file,'QUEUED'\)/);
  assert.match(app,/updateUploadTask\(orderId,stage,file,'SENDING'\)/);
  assert.match(app,/updateUploadTask\(orderId,stage,file,'STORED'\)/);
