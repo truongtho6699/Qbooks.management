@@ -2,7 +2,7 @@ import {checkDriveFolderAccess,resumableDriveUpload} from './video-drive.js';
 import {resolveMediaFolder,validateMediaPhotos,appendEvidenceLinks} from './media-upload.js';
 import {trackDraft,markDraftSaved,confirmLeave,humanizeError,showFormError,showFieldError} from './ux-guard.js';
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]},menuKeys:[],managementBook:''};
+const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]},menuKeys:[],managementBook:'',quickFilmBook:'',quickFilmLesson:'',quickFilmUploadedKey:'',quickFilmUploadedUrl:''};
 const NAV=[
  {id:'dashboard',text:'Bảng điều khiển',icon:'▦',group:'CHUNG'},
  {id:'filmOverview',text:'Tổng quan quay',icon:'▣',group:'QUAY VIDEO'},
@@ -88,7 +88,7 @@ function mediaLoadNotice(message,error=false){
 }
 function safeMediaRefresh(){
  // Never replace editable forms while a user is entering or reviewing data.
- if(state.selected||['film','edit','books','catalog'].includes(state.view))return;
+ if(state.selected||['edit','books','catalog'].includes(state.view)||$('quickFilmFile')?.files?.length)return;
  const active=document.activeElement;
  if(active?.closest?.('#page form')||active?.matches?.('input,textarea,select'))return;
  render();
@@ -307,7 +307,32 @@ function filmingOverview(){
 function makeVideoRows(items,action){
  return items.map(v=>[E(v.book_code),'<strong>'+E(v.title)+'</strong><div class="mini-note">'+E(v.lesson||'')+'</div>',E(v.teacher||'—'),E(v.camera_name||'—'),badge(v.status),'<button type="button" class="link-action" data-action="'+action+'" data-id="'+E(v.id)+'">'+(action==='film'?'Quay / Chi tiết':'Xử lý / Chi tiết')+'</button>']);
 }
-function filmList(){return panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học" value="'+E(state.videoFilter.q||'')+'"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),state.videoFilter.book||'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.videoListItems,'film'),'Chưa có video')+'</div>'+pager());}
+function quickFilmOptions(){
+ const selectedBook=state.quickFilmBook||'';
+ const selectedLesson=state.quickFilmLesson||'';
+ const lessons=state.lessons.filter(l=>l.book_code===state.books.find(b=>b.id===selectedBook)?.code);
+ const selectedBookData=state.books.find(b=>b.id===selectedBook);
+ const destination=selectedBook?resolveMediaFolder(state.books,selectedBook):null;
+ return '<form id="quickFilmForm" class="form-grid">'+
+  '<div class="field full"><label for="quickFilmBook">1. Chọn đầu sách *</label><select id="quickFilmBook" name="book_id" required><option value="">-- Chọn đầu sách --</option>'+
+  selected(booksList(),selectedBook)+'</select></div>'+
+  '<div class="field full"><label for="quickFilmLesson">2. Chọn bài / tiết quay *</label><select id="quickFilmLesson" name="lesson_id" required>'+
+  '<option value="">'+(selectedBook?(lessons.length?'-- Chọn bài/tiết --':'Chưa có bài/tiết cho đầu sách này'):'Chọn đầu sách trước')+'</option>'+
+  lessons.map(l=>'<option value="'+E(l.id)+'" '+(String(l.id)===String(selectedLesson)?'selected':'')+'>'+E([l.week&&'Tuần '+l.week,l.lesson_no&&'Bài '+l.lesson_no,l.period&&'Tiết '+l.period,l.title].filter(Boolean).join(' · '))+'</option>').join('')+'</select>'+
+  '<small class="mini-note" id="quickFilmLessonCount">'+(selectedBook?count(lessons.length)+' bài/tiết thuộc sách này':count(state.lessons.length)+' bài/tiết trong danh mục')+'</small></div>'+
+  '<div class="field full qbook-media-direct"><label for="quickFilmFile">3. Chọn video quay trên điện thoại *</label><input id="quickFilmFile" type="file" accept="video/*,.mov,.mp4,.m4v,.webm" required><small class="mini-note">Video MOV/MP4 tối đa 2 GB, tối đa 60 phút. Không phải dán link Drive.</small></div>'+
+  '<div class="field full"><label for="quickFilmImages">Ảnh minh chứng (không bắt buộc)</label><input id="quickFilmImages" type="file" accept="image/*,.heic,.heif" multiple><small class="mini-note">Tối đa 10 ảnh, 25 MB/ảnh.</small></div>'+
+  '<div class="field full"><label for="quickFilmNote">Ghi chú quay</label><textarea id="quickFilmNote" name="note" maxlength="2000"></textarea></div>'+
+  '<div class="field full"><p class="mini-note" id="quickFilmFolder">'+(destination?'📁 Nơi lưu: '+E(destination.label)+' ('+E(selectedBookData?.code||'')+')':'📁 Chọn sách để xác định thư mục lưu tự động')+'</p></div>'+
+  '<div class="field full"><p id="quickFilmStatus" role="status" aria-live="polite" class="mini-note">Chọn sách, chọn bài/tiết và video, sau đó bấm Lưu.</p></div>'+
+  '<div class="actions full"><button type="submit" class="btn primary" id="quickFilmSave">Lưu video quay lên Drive và Qbooks</button></div></form>';
+}
+function filmList(){
+ const quick=(state.rights.film||state.rights.admin)?
+  panel('Quay bài · chọn sách, bài/tiết và tải video',quickFilmOptions(),'Luồng nhanh cho nhân viên quay: một lần lưu, không cần lập kế hoạch video riêng.'):
+  panel('Chưa được cấp quyền Quay bài','<p class="mini-note">Tài khoản được xem menu Media nhưng chưa có quyền Quay video. Liên hệ Quản trị hệ thống trước khi tải tệp.</p>');
+ return quick+panel('Video đã có · chỉnh sửa hoặc xem lại','<div class="filters"><div class="field"><label for="filterVideo">Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học" value="'+E(state.videoFilter.q||'')+'"></div><div class="field"><label for="filterBook">Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),state.videoFilter.book||'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.videoListItems,'film'),'Chưa có video')+'</div>'+pager());
+}
 function mediaDestinationHtml(bookId){
  const destination=resolveMediaFolder(state.books,bookId);
  return '<p class="mini-note">📁 Nơi lưu mặc định: <a href="'+E(destination.url)+'" target="_blank" rel="noopener noreferrer">'+E(destination.label)+'</a>. Video và ảnh sẽ cùng lưu tại đây.</p>';
@@ -642,8 +667,102 @@ function saveMediaFilesWithOneClick(form,id,callback,button){
  }
  return true;
 }
+function saveQuickFilm(){
+ const form=$('quickFilmForm');if(!form)return;
+ const bookId=form.elements.book_id?.value||'',lessonId=form.elements.lesson_id?.value||'';
+ const video=$('quickFilmFile')?.files?.[0],photos=[...($('quickFilmImages')?.files||[])];
+ const status=$('quickFilmStatus'),button=$('quickFilmSave');
+ if(!state.rights.film&&!state.rights.admin){status.textContent='Tài khoản chưa được cấp quyền Quay video.';return;}
+ if(!bookId||!lessonId||!video){status.textContent='Chọn đủ đầu sách, bài/tiết và video trước khi lưu.';return;}
+ try{
+  validateMediaPhotos(photos);
+  appendEvidenceLinks(form.elements.note.value,photos.map(file=>({name:file.name,url:'https://drive.google.com/file/d/example-identifier/view'})));
+  if(!video.size||video.size>2*1024*1024*1024)throw Error('Video phải có dữ liệu và không vượt 2 GB.');
+  if(!state.googleClientId||!window.google?.accounts?.oauth2)throw Error('Chưa có cấu hình Google Drive hoặc thư viện Google chưa sẵn sàng.');
+ }catch(e){status.textContent=e.message;return;}
+ const destination=resolveMediaFolder(state.books,bookId);
+ const original=button.textContent;button.disabled=true;button.textContent='ĐANG TẢI TỆP…';
+ status.textContent='Đang xin quyền Google Drive. Đích lưu: '+destination.label+'. Không đóng tab khi đang tải.';
+ // Google prompt must be initiated by the operator's Submit interaction.
+ try{askGoogleDriveToken(async token=>{
+  try{
+   const videoKey=bookId+'|'+lessonId+'|'+video.name+'|'+video.size+'|'+video.lastModified;
+   const link=state.quickFilmUploadedKey===videoKey&&state.quickFilmUploadedUrl?
+    state.quickFilmUploadedUrl:await uploadToDriveFile(video,bookId,token,msg=>status.textContent=msg);
+   state.quickFilmUploadedKey=videoKey;state.quickFilmUploadedUrl=link;
+   // This Drive URL remains available for retry if recording metadata fails.
+   let note=form.elements.note.value||'';
+   for(let index=0;index<photos.length;index++){
+    const file=photos[index],key='quick|'+bookId+'|'+lessonId+'|'+file.name+'|'+file.size+'|'+file.lastModified;
+    status.textContent='Đang lưu ảnh '+(index+1)+'/'+photos.length+'…';
+    const url=mediaPhotoCache.get(key)||await uploadToDriveFile(file,bookId,token,msg=>status.textContent=msg);
+    mediaPhotoCache.set(key,url);
+    if(!note.includes(' — '+url))note=appendEvidenceLinks(note,[{name:file.name,url}]);
+   }
+   status.textContent='Đã tải xong lên Drive. Đang ghi nhận bài/tiết vào Qbooks…';
+   const response=await api('POST','/api/video/film-direct',{book_id:bookId,lesson_id:lessonId,raw_url:link,note});
+   if(!response?.ok)throw Error('Máy chủ chưa xác nhận hoàn thành quay.');
+   mediaPhotoCache.clear();state.quickFilmUploadedUrl='';state.quickFilmUploadedKey='';status.textContent='Đã lưu video và ảnh vào Drive; Qbooks đã ghi nhận bài/tiết thành công.';
+   toast('Đã lưu video quay: '+(response.created?'Tạo mới':'Cập nhật')+' thành công.');
+   state.quickFilmLesson='';state.videoPage=1;
+   await load({initial:true});
+   if(state.view==='film')await refreshVideoList();
+  }catch(e){status.textContent='Chưa hoàn tất: '+e.message+'. Tệp đã tải lên có thể còn trên Drive; kiểm tra trước khi thử lại.';toast(e.message);}
+  finally{button.disabled=false;button.textContent=original;}
+ },()=>{
+  button.disabled=false;button.textContent=original;
+  status.textContent='Bạn chưa cấp quyền Drive, chưa có tệp nào được gửi.';
+ });}catch(e){
+  button.disabled=false;button.textContent=original;status.textContent=e.message;
+ }
+}
+function wireQuickFilm(){
+ const form=$('quickFilmForm');if(!form)return;
+ const book=$('quickFilmBook'),lesson=$('quickFilmLesson');
+ if(!book||!lesson)return;
+ const fillLessons=items=>{
+  lesson.replaceChildren();
+  const empty=document.createElement('option');empty.value='';
+  empty.textContent=items.length?'-- Chọn bài/tiết --':'Chưa có bài/tiết cho đầu sách này';lesson.append(empty);
+  for(const l of items){
+   const option=document.createElement('option');option.value=l.id;
+   option.textContent=[l.week&&'Tuần '+l.week,l.lesson_no&&'Bài '+l.lesson_no,l.period&&'Tiết '+l.period,l.title].filter(Boolean).join(' · ');
+   lesson.append(option);
+  }
+  $('quickFilmLessonCount').textContent=items.length+' bài/tiết thuộc sách này';
+ };
+ book.onchange=async()=>{
+  state.quickFilmBook=book.value;state.quickFilmLesson='';
+  state.quickFilmUploadedUrl='';state.quickFilmUploadedKey='';mediaPhotoCache.clear();
+  const selectedBook=state.books.find(b=>b.id===book.value);
+  const code=selectedBook?.code;
+  if(!code){fillLessons([]);$('quickFilmFolder').textContent='📁 Chọn sách để xác định thư mục lưu.';return;}
+  $('quickFilmFolder').textContent='📁 Nơi lưu: '+resolveMediaFolder(state.books,book.value).label;
+  const existing=state.lessons.filter(l=>l.book_code===code);
+  fillLessons(existing);
+  $('quickFilmLessonCount').textContent='Đang cập nhật đầy đủ bài/tiết của đầu sách…';
+  try{
+   const result=await api('GET','/api/video/lessons?book='+encodeURIComponent(code));
+   if(book.value!==selectedBook.id)return;
+   const incoming=result.lessons||[];
+   const map=new Map(state.lessons.map(l=>[String(l.id),l]));
+   for(const item of incoming)map.set(String(item.id),item);
+   state.lessons=[...map.values()];
+   const picked=state.quickFilmLesson;fillLessons(incoming);
+   if(picked&&incoming.some(l=>String(l.id)===String(picked)))lesson.value=picked;
+  }catch(e){
+   if(book.value===selectedBook.id){
+    fillLessons(existing);
+    $('quickFilmLessonCount').textContent='Chưa tải được danh mục mới: '+e.message+'. Đang dùng dữ liệu sẵn có.';
+   }
+  }
+ };
+ lesson.onchange=()=>{state.quickFilmLesson=lesson.value;state.quickFilmUploadedUrl='';state.quickFilmUploadedKey='';};
+ form.onsubmit=e=>{e.preventDefault();if(form.reportValidity())saveQuickFilm();};
+}
 function wire(){
  initializeLessonSelection();
+ wireQuickFilm();
  const managementFilter=$('managementBookFilter');
  if(managementFilter)managementFilter.onchange=e=>{state.managementBook=e.target.value;render();};
  if($('catalogBook'))$('catalogBook').onchange=e=>{state.catalogBook=e.target.value;state.catalogWeek='';render();};
@@ -721,11 +840,17 @@ async function boot(){
  if(!state.token){if(!document.getElementById('unifiedMediaView'))window.location.href='/';return false;}
  try{
   mediaLoadNotice('Đang mở Media và kiểm tra quyền truy cập…');
-  const b=await api('GET','/api/video/bootstrap');state.user=b.user;state.rights=b.rights;
-  const access=await api('GET','/api/menu-access');state.menuKeys=access.menus||[];
+  // The config endpoint is optional, and can never hold the whole Media screen indefinitely.
+  const configController=new AbortController();
+  const configTimeout=setTimeout(()=>configController.abort(),8000);
+  const configPromise=fetch('/api/google/config',{signal:configController.signal})
+   .then(r=>r.ok?r.json():{}).catch(()=>({})).finally(()=>clearTimeout(configTimeout));
+  const [b,access,googleCfg]=await Promise.all([
+   api('GET','/api/video/bootstrap'),api('GET','/api/menu-access'),configPromise
+  ]);
+  state.user=b.user;state.rights=b.rights;state.menuKeys=access.menus||[];
   $('currentUser').textContent=b.user.name;
-  const embedded=!!document.getElementById('unifiedMediaView');
-  const googleCfg=await fetch('/api/google/config').then(r=>r.json()).catch(()=>({}));state.googleClientId=googleCfg.clientId||'';
+  state.googleClientId=googleCfg.clientId||'';
   mediaLoadNotice('Đang đọc đầu sách và tổng quan; danh sách video sẽ tải riêng…');
   await load({initial:true});const queryView=new URLSearchParams(window.location.search).get('view');const requested=queryView==='adminOverview'?'dashboard':queryView;const target=requested&&NAV.some(n=>n.id===requested)&&can(requested)?requested:NAV.find(n=>can(n.id))?.id;if(target)navigate(target);else {document.getElementById('page').textContent='Tài khoản chưa được cấp quyền menu Media. Liên hệ Quản trị hệ thống.';renderNav();}
   return true;
@@ -754,12 +879,14 @@ if(document.getElementById('unifiedMediaView')){
    state.overview=null;state.selected=null;state.videoListItems=[];
    state.videoListPagination={page:1,pages:1,total:0};state.dailyStats={day:'',people:[]};
    state.googleClientId='';state.view='dashboard';state.managementBook='';
+   state.quickFilmBook='';state.quickFilmLesson='';state.quickFilmUploadedUrl='';state.quickFilmUploadedKey='';mediaPhotoCache.clear();
    const page=$('page');if(page)page.replaceChildren();
   },
-  async start(view){
-   const token=sessionStorage.getItem('qbooks_token')||'';
+  async start(view,activeToken){
+   const token=activeToken||sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'';
    if(state.token&&state.token!==token)this.reset();
    state.token=token;
+   if(!token)throw Error('Phiên đăng nhập đã hết hạn. Đăng nhập lại Qbooks.');
    if(!started)started=boot().catch(err=>{started=null;throw err;});
    await started;
    if(view&&NAV.some(item=>item.id===view)&&can(view)&&state.view!==view)navigate(view);
@@ -769,7 +896,7 @@ if(document.getElementById('unifiedMediaView')){
    // Retry only Media loading; no form submissions or state mutations.
    started=null;
    mediaLoadNotice('Đang thử tải lại Media…');
-   return this.start(state.view);
+   return this.start(state.view,state.token);
   },
   navigate(view){if(!can(view))return false;navigate(view);return true;},
   allowed(view){return can(view);},

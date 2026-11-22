@@ -316,9 +316,17 @@ async function openMedia(view){
   await state.mediaPromise;
   const media=window.QbookMedia;
   if(!media)throw Error('Không khởi tạo được mô-đun Media.');
-  await media.start(target);
+  await media.start(target,state.token);
  }catch(err){
-  $('page').textContent='Không mở được Quản lý Media: '+err.message;
+  $('page').innerHTML='';
+  const panel=document.createElement('div');panel.className='panel';
+  const heading=document.createElement('h2');heading.textContent='Không mở được Quản lý Media';
+  const msg=document.createElement('p');msg.textContent=err.message;
+  const retry=document.createElement('button');retry.type='button';retry.className='btn primary';retry.textContent='Thử tải lại';
+  retry.onclick=()=>{state.mediaPromise=null;openMedia(target);};
+  panel.append(heading,msg,retry);$('page').append(panel);
+  $('shippingHeading').textContent='Media chưa tải được';
+  $('shippingSubheading').textContent='Kiểm tra kết nối và chọn Thử tải lại';
   notice('Quản lý Media: '+err.message);
  }
 }

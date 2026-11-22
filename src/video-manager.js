@@ -86,6 +86,39 @@ export async function videoApi(req,env,u){
   const total=countRow?.total||0;
   return j({items:r.results||[],pagination:{page,pageSize,total,pages:Math.ceil(total/pageSize)}});
  }
+ // One-step filming by book and lesson: create or update the matching plan only after Drive upload.
+ // Requires the existing filming permission; never grants planning/admin privileges.
+ if(method==='POST'&&path==='/api/video/film-direct'){
+  requireMenu('film');requireRight('film');
+  const b=await body(),bookId=str(b.book_id,100),lessonId=str(b.lesson_id,100),
+   link=safeUrl(b.raw_url),note=str(b.note,2000);
+  if(!bookId||!lessonId)throw err('Cần chọn đầu sách và bài/tiết trước khi quay.');
+  if(!link)throw err('Chưa có video trên Google Drive.');
+  const book=await db.prepare('SELECT id,code,teacher FROM video_books WHERE id=?').bind(bookId).first();
+  if(!book)throw err('Đầu sách không tồn tại.',404);
+  const lesson=await db.prepare('SELECT id,book_code,week,lesson_no,period,title FROM video_lessons WHERE id=? AND book_code=?').bind(lessonId,book.code).first();
+  if(!lesson)throw err('Bài/tiết không thuộc đầu sách đã chọn.',409);
+  const records=await db.prepare('SELECT id,status,raw_url,note,filmed_at FROM video_items WHERE book_id=? AND lesson_id=? LIMIT 2').bind(bookId,lessonId).all();
+  const matched=records.results||[];
+  if(matched.length>1)throw err('Bài/tiết có nhiều kế hoạch video. Mở danh sách Quay bài để chọn bản ghi chính xác.',409);
+  if(matched.length){
+   const v=matched[0];
+   if(!['CHỜ QUAY','ĐÃ QUAY'].includes(v.status))throw err('Bài/tiết đã chuyển sang hậu kỳ. Chọn video khác trong danh sách.',409);
+   if(v.raw_url===link&&v.status==='ĐÃ QUAY'&&String(v.note||'')===note)return j({ok:true,id:v.id,unchanged:true});
+   const result=await db.prepare("UPDATE video_items SET raw_url=?,camera_id=COALESCE(camera_id,?),filmed_at=COALESCE(filmed_at,CURRENT_TIMESTAMP),status='ĐÃ QUAY',note=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('CHỜ QUAY','ĐÃ QUAY')").bind(link,u.id,note,v.id).run();
+   if(!result.meta?.changes)throw err('Video đã đổi trạng thái. Vui lòng tải lại danh sách.',409);
+   if(!v.filmed_at)await db.prepare('INSERT OR IGNORE INTO video_events(video_id,actor_id,event_type,details) VALUES(?,?,?,?)').bind(v.id,u.id,'FILM_COMPLETED','Hoàn thành quay trực tiếp từ đầu sách/bài/tiết').run();
+   await log(db,u,'FILM_VIDEO',v.id,'Quay trực tiếp từ danh mục bài/tiết');
+   return j({ok:true,id:v.id,updated:true});
+  }
+  const id=crypto.randomUUID(),title=str(lesson.title||['Bài '+lesson.lesson_no,'Tiết '+lesson.period].join(' · '),300);
+  const lessonText=str([lesson.lesson_no,lesson.period].filter(Boolean).join(' · '),150);
+  const inserted=await db.prepare("INSERT INTO video_items(id,book_id,title,lesson,lesson_group,teacher,note,lesson_id,raw_url,camera_id,filmed_at,status) SELECT ?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,'ĐÃ QUAY' WHERE NOT EXISTS(SELECT 1 FROM video_items WHERE book_id=? AND lesson_id=?)").bind(id,bookId,title,lessonText,str(lesson.week,150),str(book.teacher,200),note,lessonId,link,u.id,bookId,lessonId).run();
+  if(inserted.meta?.changes!==1)throw err('Bài/tiết vừa được người khác tạo. Tải lại và kiểm tra để tránh trùng video.',409);
+  await db.prepare('INSERT OR IGNORE INTO video_events(video_id,actor_id,event_type,details) VALUES(?,?,?,?)').bind(id,u.id,'FILM_COMPLETED','Hoàn thành quay trực tiếp từ đầu sách/bài/tiết').run();
+  await log(db,u,'FILM_VIDEO',id,'Tạo video và quay từ danh mục bài/tiết');
+  return j({ok:true,id,created:true},201);
+ }
  if(method==='POST'&&path==='/api/video/items'){
   requireMenu('createVideo');requireRight('manage');const b=await body(),book=str(b.book_id,100),title=str(b.title,300);
   if(!book||!title)throw err('Chọn đầu sách và nhập tên video.');
