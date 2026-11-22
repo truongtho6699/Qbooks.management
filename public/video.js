@@ -310,11 +310,12 @@ function filmList(){return panel('Danh sách video quay','<div class="filters"><
 function filmDetail(v){
  return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+'</div>')+
  panel('Quay bài · cập nhật tiến độ','<form id="filmForm" class="form-grid">'+
- '<div class="field full"><label for="rawFile">Chọn video quay để tải trực tiếp lên Google Drive</label><input id="rawFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadRawVideo" style="margin-top:10px">↑ Tải video lên Drive</button><span class="mini-note" id="rawUploadStatus">Tệp tối đa 2 GB. Có thể dùng liên kết Drive bên dưới thay cho tải tệp.</span></div>'+
- '<div class="field full"><label for="filmRawUrl">Liên kết video gốc trên Google Drive *</label><input id="filmRawUrl" name="raw_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.raw_url||'')+'" required></div>'+
+ '<div class="field full qbook-media-direct"><label for="rawFile">Video quay (tải tự động khi bấm Lưu)</label><input id="rawFile" type="file" accept="video/*,.mov,.mp4,.m4v"><span class="mini-note" id="rawUploadStatus" role="status" aria-live="polite">Chọn video tối đa 2 GB, sau đó bấm Lưu. Hệ thống tải lên thư mục Drive mặc định của đầu sách và tự ghi liên kết.</span></div>'+
+ '<div class="field full"><label for="filmImages">Ảnh minh chứng / hậu trường (nếu có)</label><input id="filmImages" type="file" accept="image/*,.heic,.heif" multiple><span class="mini-note">Tối đa 10 ảnh, mỗi ảnh 25 MB. Ảnh cùng lưu vào thư mục Drive của video.</span></div>'+
+ '<details class="qbook-link-fallback"><summary>Đã có video trên Drive? Dán liên kết thay vì tải lại</summary><div class="field"><label for="filmRawUrl">Liên kết video gốc (chỉ cần khi không chọn tệp)</label><input id="filmRawUrl" name="raw_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.raw_url||'')+'"></div></details>'+
  '<div class="field full"><label for="filmNote">Ghi chú quay</label><textarea id="filmNote" name="note">'+E(v.note||'')+'</textarea></div>'+
- '<div class="actions full">'+btn('Quay lại danh sách','','backList')+btn('Lưu video đã quay','primary','','submit')+'</div></form>'+
- '<p class="mini-note">Video tải trực tiếp từ trình duyệt lên Google Drive, không đi qua máy chủ QBooks. Có thể nhập liên kết Drive nếu đã tải sẵn.</p>');
+ '<div class="actions full">'+btn('Quay lại danh sách','','backList')+btn('Lưu video đã quay và tệp','primary','','submit')+'</div></form>'+
+ '<p class="mini-note">Tệp tải trực tiếp từ thiết bị lên Google Drive. Trên iPhone/Android, giữ trang đang mở trong khi tải; không đóng Safari/Chrome trước khi có thông báo lưu thành công.</p>');
 }
 function postOverview(){
  const t=state.overview?.totals||{},counts=state.overview?.statusCounts||[];
@@ -332,8 +333,9 @@ function editDetail(v){
  let html=panel('Chi tiết xử lý','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong>'+badge(v.status)+'<p class="mini-note">Phê duyệt: '+E(v.review_status==='APPROVED'?'Đã được duyệt':pending?'Đang chờ duyệt':v.review_status==='CHANGES_REQUESTED'?'Cần sửa lại':'Chưa gửi duyệt')+'</p>'+(v.review_note?'<p>'+E(v.review_note)+'</p>':'')+'<span class="mini-note">Video gốc: '+(v.raw_url?'<a href="'+E(v.raw_url)+'" target="_blank" rel="noopener noreferrer">Mở video gốc</a>':'Chưa có liên kết')+'</span></div>');
  if(canEdit&&['ĐÃ QUAY','ĐANG HẬU KỲ'].includes(v.status)){
   html+=panel('Biên tập và gửi duyệt','<form id="editForm" class="form-grid">'+
-  '<div class="field full"><label for="editedFile">Tải video đã biên tập lên Drive</label><input id="editedFile" type="file" accept="video/*"><button type="button" class="btn" id="uploadEditedVideo">↑ Tải lên Drive</button><span class="mini-note" id="editedUploadStatus">Có thể nhập liên kết đã có.</span></div>'+
-  '<div class="field full"><label for="editOutputUrl">Link bản hậu kỳ</label><input id="editOutputUrl" name="output_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.output_url||'')+'"></div>'+
+  '<div class="field full qbook-media-direct"><label for="editedFile">Video bản hậu kỳ (tự tải khi bấm Lưu / gửi duyệt)</label><input id="editedFile" type="file" accept="video/*,.mov,.mp4,.m4v"><span class="mini-note" id="editedUploadStatus" role="status" aria-live="polite">Tệp tối đa 2 GB. Video được lưu vào thư mục Drive mặc định của đầu sách.</span></div>'+
+  '<div class="field full"><label for="editImages">Ảnh hậu kỳ / minh chứng (nếu có)</label><input id="editImages" type="file" accept="image/*,.heic,.heif" multiple><span class="mini-note">Tối đa 10 ảnh, mỗi ảnh 25 MB; cùng thư mục Drive với video.</span></div>'+
+  '<details class="qbook-link-fallback"><summary>Đã có video hậu kỳ trên Drive? Dùng liên kết</summary><div class="field"><label for="editOutputUrl">Liên kết video hậu kỳ (khi không chọn tệp)</label><input id="editOutputUrl" name="output_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.output_url||'')+'"></div></details>'+
   '<div class="field"><label for="editStatus">Trạng thái</label><select id="editStatus" name="status"><option value="ĐANG HẬU KỲ">Đang hậu kỳ</option><option value="CHỜ DUYỆT">Gửi trưởng nhóm duyệt</option></select></div>'+
   '<div class="field full"><label for="editNote">Ghi chú</label><textarea id="editNote" name="note">'+E(v.note||'')+'</textarea></div>'+
   '<div class="actions full">'+btn('Quay lại','','backList')+btn('Lưu / gửi duyệt','primary','','submit')+'</div></form>');
