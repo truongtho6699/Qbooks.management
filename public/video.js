@@ -533,7 +533,7 @@ async function validateVideoFile(file){
  if(file.size>2*1024*1024*1024||!file.size)throw Error('Mỗi video phải có dữ liệu và không vượt 2 GB.');
  const video=document.createElement('video'),url=URL.createObjectURL(file);
  try{
-  await new Promise((resolve,reject)=>{video.preload='metadata';video.onloadedmetadata=resolve;video.onerror=()=>reject(Error('Không đọc được thông tin video.'));video.src=url});
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Không đọc được thời lượng video sau 15 giây. Hãy kiểm tra định dạng MOV/MP4.')),15000);video.preload='metadata';video.onloadedmetadata=()=>{clearTimeout(timer);resolve()};video.onerror=()=>{clearTimeout(timer);reject(Error('Không đọc được thông tin video.'))};video.src=url});
   if(Number.isFinite(video.duration)&&video.duration>3600)throw Error('Video tối đa 60 phút.');
  }finally{URL.revokeObjectURL(url);video.removeAttribute('src');video.load();}
 }
