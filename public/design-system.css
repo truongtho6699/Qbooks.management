@@ -393,3 +393,28 @@
  #appPage .qbook-media-page .qbook-link-fallback{min-width:0;overflow-wrap:anywhere}
  #appPage .qbook-media-page .actions .btn{min-height:48px}
 }
+
+/* Quick filming: book -> lesson/period -> media file -> one-click save. */
+#appPage .qbook-media-page #quickFilmForm{min-width:0}
+#appPage .qbook-media-page #quickFilmForm .field{min-width:0}
+#appPage .qbook-media-page #quickFilmForm select,
+#appPage .qbook-media-page #quickFilmForm textarea{
+ width:100%;max-width:100%;font-size:16px;min-height:48px;
+}
+#appPage .qbook-media-page #quickFilmForm label{
+ font-size:14px;line-height:1.5;color:#234978;font-weight:700;
+}
+#appPage .qbook-media-page #quickFilmForm #quickFilmStatus{
+ display:block;border:1px solid #cbdcf8;border-radius:9px;
+ background:#f5f9ff;color:#275480;padding:12px;font-size:13px;line-height:1.6;
+}
+#appPage .qbook-media-page #quickFilmSave{
+ min-height:50px;width:100%;font-size:15px;font-weight:750;
+}
+#appPage .qbook-media-page #quickFilmSave:disabled{opacity:.6}
+@media(max-width:800px){
+ #appPage .qbook-media-page #quickFilmForm{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+ #appPage .qbook-media-page #quickFilmForm .field.full{grid-column:1/-1}
+ #appPage .qbook-media-page #quickFilmSave{min-height:54px}
+ #appPage .qbook-media-page #quickFilmForm input[type=file]{width:100%;font-size:16px}
+}
