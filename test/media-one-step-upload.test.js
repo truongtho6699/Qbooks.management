@@ -46,3 +46,11 @@ test('Media upload preserves required backend validation and mobile iOS usabilit
  assert.match(css,/font-size:16px/);
  assert.match(src,/Giữ trình duyệt đang mở cho đến khi lưu thành công/);
 });
+
+test('Photo-only evidence updates filmed note and records stay viewable',()=>{
+ const manager=readFileSync(new URL('../src/video-manager.js',import.meta.url),'utf8');
+ assert.match(manager,/current\.raw_url===link&&current\.status==='ĐÃ QUAY'&&String\(current\.note\|\|''\)===note/);
+ assert.match(src,/evidenceLinksHtml\(v\.note\)/);
+ assert.match(src,/new URL\(m\[2\]\)/);
+ assert.match(src,/url\.hostname==='drive\.google\.com'/);
+});
