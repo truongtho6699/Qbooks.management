@@ -102,7 +102,7 @@ export async function videoApi(req,env,u){
     requireMenu('film');requireRight('film');
     if(!['CHỜ QUAY','ĐÃ QUAY'].includes(current.status))throw err('Video đã chuyển sang hậu kỳ.',409);
     const link=safeUrl(input.raw_url);if(!link)throw err('Cần link Drive của video gốc.');
-    if(current.raw_url===link&&current.status==='ĐÃ QUAY')return j({ok:true,unchanged:true});
+    if(current.raw_url===link&&current.status==='ĐÃ QUAY'&&String(current.note||'')===note)return j({ok:true,unchanged:true});
     const r=await db.prepare("UPDATE video_items SET raw_url=?,camera_id=COALESCE(camera_id,?),filmed_at=COALESCE(filmed_at,CURRENT_TIMESTAMP),status='ĐÃ QUAY',note=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('CHỜ QUAY','ĐÃ QUAY')").bind(link,u.id,note,current.id).run();
     if(!r.meta?.changes)throw err('Video đã được người khác cập nhật.',409);
     if(!current.filmed_at)await event('FILM_COMPLETED','Lần quay hoàn tất đầu tiên');
