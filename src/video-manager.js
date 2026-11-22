@@ -113,7 +113,8 @@ export async function videoApi(req,env,u){
   }
   const id=crypto.randomUUID(),title=str(lesson.title||['Bài '+lesson.lesson_no,'Tiết '+lesson.period].join(' · '),300);
   const lessonText=str([lesson.lesson_no,lesson.period].filter(Boolean).join(' · '),150);
-  await db.prepare("INSERT INTO video_items(id,book_id,title,lesson,lesson_group,teacher,note,lesson_id,raw_url,camera_id,filmed_at,status) VALUES(?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,'ĐÃ QUAY')").bind(id,bookId,title,lessonText,str(lesson.week,150),str(book.teacher,200),note,lessonId,link,u.id).run();
+  const inserted=await db.prepare("INSERT INTO video_items(id,book_id,title,lesson,lesson_group,teacher,note,lesson_id,raw_url,camera_id,filmed_at,status) SELECT ?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,'ĐÃ QUAY' WHERE NOT EXISTS(SELECT 1 FROM video_items WHERE book_id=? AND lesson_id=?)").bind(id,bookId,title,lessonText,str(lesson.week,150),str(book.teacher,200),note,lessonId,link,u.id,bookId,lessonId).run();
+  if(inserted.meta?.changes!==1)throw err('Bài/tiết vừa được người khác tạo. Tải lại và kiểm tra để tránh trùng video.',409);
   await db.prepare('INSERT OR IGNORE INTO video_events(video_id,actor_id,event_type,details) VALUES(?,?,?,?)').bind(id,u.id,'FILM_COMPLETED','Hoàn thành quay trực tiếp từ đầu sách/bài/tiết').run();
   await log(db,u,'FILM_VIDEO',id,'Tạo video và quay từ danh mục bài/tiết');
   return j({ok:true,id,created:true},201);
