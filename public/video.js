@@ -177,7 +177,7 @@ function navigate(view){
   $('viewTitle').textContent='Danh mục chức năng';$('viewSubtitle').textContent='Các phân hệ quản lý và báo cáo';renderNav();return;
  }
  if(!can(view))return toast('Tài khoản chưa được cấp quyền chức năng này.');
- state.view=view;state.selected=null;window.QbookNavigation?.focusMedia(view);
+ state.view=view;state.selected=null;mediaPhotoCache.clear();window.QbookNavigation?.focusMedia(view);
  const title=NAV.find(x=>x.id===view)?.text||'Quản lý video';
  $('viewTitle').textContent=title;
  const groupName=({'CHUNG':'Tổng quan','QUAY VIDEO':'Quay video','HẬU KỲ':'Hậu kỳ','QUẢN LÝ':'Quản lý','QUẢN TRỊ':'Danh mục Media'})[NAV.find(x=>x.id===view)?.group]||'Tổng quan';
@@ -308,10 +308,25 @@ function makeVideoRows(items,action){
  return items.map(v=>[E(v.book_code),'<strong>'+E(v.title)+'</strong><div class="mini-note">'+E(v.lesson||'')+'</div>',E(v.teacher||'—'),E(v.camera_name||'—'),badge(v.status),'<button type="button" class="link-action" data-action="'+action+'" data-id="'+E(v.id)+'">'+(action==='film'?'Quay / Chi tiết':'Xử lý / Chi tiết')+'</button>']);
 }
 function filmList(){return panel('Danh sách video quay','<div class="filters"><div class="field"><label>Tìm video</label><input id="filterVideo" placeholder="Tên video, đầu sách, bài học" value="'+E(state.videoFilter.q||'')+'"></div><div class="field"><label>Đầu sách</label><select id="filterBook"><option value="">Tất cả đầu sách</option>'+selected(booksList(),state.videoFilter.book||'')+'</select></div></div><div id="filteredRows">'+table(['Đầu sách','Video','Giảng viên','Người quay','Tình trạng','Thao tác'],makeVideoRows(state.videoListItems,'film'),'Chưa có video')+'</div>'+pager());}
+function mediaDestinationHtml(bookId){
+ const destination=resolveMediaFolder(state.books,bookId);
+ return '<p class="mini-note">📁 Nơi lưu mặc định: <a href="'+E(destination.url)+'" target="_blank" rel="noopener noreferrer">'+E(destination.label)+'</a>. Video và ảnh sẽ cùng lưu tại đây.</p>';
+}
+function evidenceLinksHtml(note){
+ const lines=String(note||'').split('\n').filter(x=>x.startsWith('Ảnh minh chứng: '));
+ if(!lines.length)return '';
+ const links=[];
+ for(const line of lines){
+  const m=/^Ảnh minh chứng: (.+?) — (https:\/\/drive\.google\.com\/file\/d\/[-A-Za-z0-9_]+\/view)$/.exec(line.trim());
+  if(m)links.push('<a target="_blank" rel="noopener noreferrer" href="'+E(m[2])+'">📷 '+E(m[1])+'</a>');
+ }
+ return links.length?'<div class="qbook-evidence-links" aria-label="Ảnh minh chứng đã lưu">'+links.join('')+'</div>':'';
+}
+const mediaPhotoCache=new Map();
 function filmDetail(v){
- return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+'</div>')+
+ return panel('Thông tin video','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong><span class="mini-note">Bài học: '+E(v.lesson||'—')+' · Giáo viên: '+E(v.teacher||'—')+'</span>'+badge(v.status)+evidenceLinksHtml(v.note)+'</div>')+
  panel('Quay bài · cập nhật tiến độ','<form id="filmForm" class="form-grid">'+
- '<div class="field full qbook-media-direct"><label for="rawFile">Video quay (tải tự động khi bấm Lưu)</label><input id="rawFile" type="file" accept="video/*,.mov,.mp4,.m4v"><span class="mini-note" id="rawUploadStatus" role="status" aria-live="polite">Chọn video tối đa 2 GB, sau đó bấm Lưu. Hệ thống tải lên thư mục Drive mặc định của đầu sách và tự ghi liên kết.</span></div>'+
+ mediaDestinationHtml(v.book_id)+'<div class="field full qbook-media-direct"><label for="rawFile">Video quay (tải tự động khi bấm Lưu)</label><input id="rawFile" type="file" accept="video/*,.mov,.mp4,.m4v"><span class="mini-note" id="rawUploadStatus" role="status" aria-live="polite">Chọn video tối đa 2 GB, sau đó bấm Lưu. Hệ thống tải lên thư mục Drive mặc định của đầu sách và tự ghi liên kết.</span></div>'+
  '<div class="field full"><label for="filmImages">Ảnh minh chứng / hậu trường (nếu có)</label><input id="filmImages" type="file" accept="image/*,.heic,.heif" multiple><span class="mini-note">Tối đa 10 ảnh, mỗi ảnh 25 MB. Ảnh cùng lưu vào thư mục Drive của video.</span></div>'+
  '<details class="qbook-link-fallback"><summary>Đã có video trên Drive? Dán liên kết thay vì tải lại</summary><div class="field"><label for="filmRawUrl">Liên kết video gốc (chỉ cần khi không chọn tệp)</label><input id="filmRawUrl" name="raw_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.raw_url||'')+'"></div></details>'+
  '<div class="field full"><label for="filmNote">Ghi chú quay</label><textarea id="filmNote" name="note">'+E(v.note||'')+'</textarea></div>'+
@@ -331,10 +346,10 @@ function editDetail(v){
  const canEdit=state.rights.edit||state.rights.admin;
  const pending=v.status==='CHỜ DUYỆT'&&v.review_status==='PENDING';
  const approved=v.status==='CHỜ DUYỆT'&&v.review_status==='APPROVED';
- let html=panel('Chi tiết xử lý','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong>'+badge(v.status)+'<p class="mini-note">Phê duyệt: '+E(v.review_status==='APPROVED'?'Đã được duyệt':pending?'Đang chờ duyệt':v.review_status==='CHANGES_REQUESTED'?'Cần sửa lại':'Chưa gửi duyệt')+'</p>'+(v.review_note?'<p>'+E(v.review_note)+'</p>':'')+'<span class="mini-note">Video gốc: '+(v.raw_url?'<a href="'+E(v.raw_url)+'" target="_blank" rel="noopener noreferrer">Mở video gốc</a>':'Chưa có liên kết')+'</span></div>');
+ let html=panel('Chi tiết xử lý','<div class="record-card"><strong>'+E(v.book_code)+' · '+E(v.title)+'</strong>'+badge(v.status)+'<p class="mini-note">Phê duyệt: '+E(v.review_status==='APPROVED'?'Đã được duyệt':pending?'Đang chờ duyệt':v.review_status==='CHANGES_REQUESTED'?'Cần sửa lại':'Chưa gửi duyệt')+'</p>'+(v.review_note?'<p>'+E(v.review_note)+'</p>':'')+'<span class="mini-note">Video gốc: '+(v.raw_url?'<a href="'+E(v.raw_url)+'" target="_blank" rel="noopener noreferrer">Mở video gốc</a>':'Chưa có liên kết')+'</span>'+evidenceLinksHtml(v.note)+'</div>');
  if(canEdit&&['ĐÃ QUAY','ĐANG HẬU KỲ'].includes(v.status)){
   html+=panel('Biên tập và gửi duyệt','<form id="editForm" class="form-grid">'+
-  '<div class="field full qbook-media-direct"><label for="editedFile">Video bản hậu kỳ (tự tải khi bấm Lưu / gửi duyệt)</label><input id="editedFile" type="file" accept="video/*,.mov,.mp4,.m4v"><span class="mini-note" id="editedUploadStatus" role="status" aria-live="polite">Tệp tối đa 2 GB. Video được lưu vào thư mục Drive mặc định của đầu sách.</span></div>'+
+  mediaDestinationHtml(v.book_id)+'<div class="field full qbook-media-direct"><label for="editedFile">Video bản hậu kỳ (tự tải khi bấm Lưu / gửi duyệt)</label><input id="editedFile" type="file" accept="video/*,.mov,.mp4,.m4v"><span class="mini-note" id="editedUploadStatus" role="status" aria-live="polite">Tệp tối đa 2 GB. Video được lưu vào thư mục Drive mặc định của đầu sách.</span></div>'+
   '<div class="field full"><label for="editImages">Ảnh hậu kỳ / minh chứng (nếu có)</label><input id="editImages" type="file" accept="image/*,.heic,.heif" multiple><span class="mini-note">Tối đa 10 ảnh, mỗi ảnh 25 MB; cùng thư mục Drive với video.</span></div>'+
   '<details class="qbook-link-fallback"><summary>Đã có video hậu kỳ trên Drive? Dùng liên kết</summary><div class="field"><label for="editOutputUrl">Liên kết video hậu kỳ (khi không chọn tệp)</label><input id="editOutputUrl" name="output_url" type="url" placeholder="https://drive.google.com/..." value="'+E(v.output_url||'')+'"></div></details>'+
   '<div class="field"><label for="editStatus">Trạng thái</label><select id="editStatus" name="status"><option value="ĐANG HẬU KỲ">Đang hậu kỳ</option><option value="CHỜ DUYỆT">Gửi trưởng nhóm duyệt</option></select></div>'+
@@ -564,6 +579,8 @@ function saveMediaFilesWithOneClick(form,id,callback,button){
  if(!current||!bookId){showFormError(form,'Không xác định được đầu sách. Mở lại video và thử lại.');return true;}
  try{
   validateMediaPhotos(images);
+  if(filming&&!video&&!form.elements.raw_url.value.trim())throw Error('Chọn video quay hoặc nhập liên kết Google Drive trước khi lưu ảnh.');
+  if(!filming&&!video&&form.elements.status.value==='CHỜ DUYỆT'&&!form.elements.output_url.value.trim())throw Error('Cần chọn video hậu kỳ hoặc nhập liên kết trước khi gửi duyệt.');
   if(video&&(!video.size||video.size>2*1024*1024*1024))throw Error('Video phải có dữ liệu và không vượt quá 2 GB.');
   const provisional=appendEvidenceLinks(form.elements.note?.value||'',images.map(f=>({name:f.name,url:'https://drive.google.com/file/d/placeholder/view'})));
   if(provisional.length>2000)throw Error('Ghi chú và danh sách ảnh quá dài.');
@@ -588,16 +605,19 @@ function saveMediaFilesWithOneClick(form,id,callback,button){
     for(let i=0;i<images.length;i++){
      const file=images[i];
      status.textContent='Đang tải ảnh '+(i+1)+'/'+images.length+' vào '+destination.label+'…';
-     const link=await uploadToDriveFile(file,bookId,token,text=>status.textContent=text);
+     const key=id+'|'+current.id+'|'+file.name+'|'+file.size+'|'+file.lastModified;
+     const link=mediaPhotoCache.get(key)||await uploadToDriveFile(file,bookId,token,text=>status.textContent=text);
+     mediaPhotoCache.set(key,link);
      uploaded.push({name:file.name,url:link});
      // Immediately preserve each successful photo link across partial failures.
-     form.elements.note.value=appendEvidenceLinks(form.elements.note.value,[{name:file.name,url:link}]);
+     if(!form.elements.note.value.includes(' — '+link))
+      form.elements.note.value=appendEvidenceLinks(form.elements.note.value,[{name:file.name,url:link}]);
     }
     if(uploaded.length){payload.note=form.elements.note.value;imageInput.value='';}
     if(filming&&!payload.raw_url)throw Error('Chưa có video gốc. Chọn video hoặc nhập liên kết Drive.');
     if(!filming&&payload.status==='CHỜ DUYỆT'&&!payload.output_url)throw Error('Cần video hậu kỳ để gửi duyệt.');
     status.textContent='Tệp đã lên Drive. Đang ghi nhận vào Qbooks…';
-    await callback(payload);recordSaved=true;
+    await callback(payload);recordSaved=true;mediaPhotoCache.clear();
     markDraftSaved(form);
     status.textContent='Đã lưu tệp và trạng thái video vào Qbooks.';
     await load();state.selected=null;render();
@@ -690,7 +710,7 @@ function openVideo(id,action){
  if(action==='film'&&!state.rights.film&&!state.rights.admin)return toast('Chưa có quyền quay video.');
  if(action==='edit'&&!state.rights.edit&&!state.rights.manage&&!state.rights.admin)return toast('Chưa có quyền hậu kỳ hoặc quản lý.');
  if(!confirmLeave())return;
- state.selected=v;state.view=action;renderNav();render();$('page').focus();
+ state.selected=v;mediaPhotoCache.clear();state.view=action;renderNav();render();$('page').focus();
 }
 async function boot(){
  if(!state.token){if(!document.getElementById('unifiedMediaView'))window.location.href='/';return false;}
