@@ -357,3 +357,39 @@
   border:1px solid CanvasText;
  }
 }
+
+/* Media upload – mobile-first single action and optional Drive link fallback */
+#appPage .qbook-media-page .qbook-media-direct{
+ display:grid;gap:9px;padding:14px;border:1px solid #cbdcf8;
+ border-radius:10px;background:#f6faff;
+}
+#appPage .qbook-media-page .qbook-media-direct label{color:#174478;font-size:14px;font-weight:750}
+#appPage .qbook-media-page .qbook-media-direct input[type=file]{
+ display:block;width:100%;max-width:100%;min-height:48px;
+ padding:11px;border:1px dashed #8bafe7;border-radius:8px;background:#fff;
+ font-size:16px;
+}
+#appPage .qbook-media-page .qbook-link-fallback{
+ border:1px solid #dfe8f4;border-radius:10px;padding:12px 14px;
+ background:#fff;
+}
+#appPage .qbook-media-page .qbook-link-fallback summary{
+ cursor:pointer;font-size:13px;font-weight:700;color:#2563eb;
+ padding:4px 0;min-height:44px;display:list-item;
+}
+#appPage .qbook-media-page .qbook-link-fallback .field{margin-top:10px}
+#appPage .qbook-media-page .qbook-link-fallback input[type=url]{
+ width:100%;max-width:100%;min-height:48px;font-size:16px;
+}
+#appPage .qbook-media-page .qbook-evidence-links{display:grid;gap:7px;margin:10px 0}
+#appPage .qbook-media-page .qbook-evidence-links a{overflow-wrap:anywhere;font-size:13px;min-height:30px}
+#appPage .qbook-media-page #rawUploadStatus,
+#appPage .qbook-media-page #editedUploadStatus{line-height:1.6;color:#3e6088}
+@media(max-width:800px){
+ #appPage .qbook-media-page .form-grid{grid-template-columns:minmax(0,1fr)}
+ #appPage .qbook-media-page .qbook-media-direct input[type=file]{min-height:52px}
+ #appPage .qbook-media-page .qbook-link-fallback summary{padding-block:12px}
+ #appPage .qbook-media-page .qbook-media-direct,
+ #appPage .qbook-media-page .qbook-link-fallback{min-width:0;overflow-wrap:anywhere}
+ #appPage .qbook-media-page .actions .btn{min-height:48px}
+}
