@@ -1,4 +1,5 @@
 import {checkDriveFolderAccess,resumableDriveUpload} from './video-drive.js';
+import {resolveMediaFolder,validateMediaPhotos,appendEvidenceLinks} from './media-upload.js';
 import {trackDraft,markDraftSaved,confirmLeave,humanizeError,showFormError,showFieldError} from './ux-guard.js';
 const $=id=>document.getElementById(id);
 const state={token:sessionStorage.getItem('qbooks_token')||'',view:'dashboard',books:[],lessons:[],items:[],staff:[],catalogBook:'',catalogWeek:'',catalogQuery:'',overview:null,rights:{},user:null,selected:null,filter:{},videoPage:1,videoPagination:{page:1,pages:1,total:0},videoFilter:{q:'',book:'',review:''},videoListItems:[],videoListPagination:{page:1,pages:1,total:0},videoListScope:'',videoSearchToken:0,dailyStats:{day:'',people:[]},menuKeys:[],managementBook:''};
@@ -480,6 +481,8 @@ function bindForm(id,callback){
   e.preventDefault();const button=form.querySelector('button[type=submit]');
   if(button?.disabled)return;
   if(!form.reportValidity())return;
+  if((id==='filmForm'||id==='editForm')&&saveMediaFilesWithOneClick(form,id,callback,button))return;
+  if(id==='filmForm'&&!form.elements.raw_url.value.trim())return showFieldError(form,'raw_url','Chọn video quay hoặc nhập liên kết Google Drive trước khi lưu.');
   if(button)button.disabled=true;
   let saved=false;
   try{
@@ -506,7 +509,7 @@ function csvExport(){
  const a=document.createElement('a');a.href=url;a.download='QBOOK_BAO_CAO_VIDEO.csv';a.click();URL.revokeObjectURL(url);
 }
 async function validateVideoFile(file){
- if(!file||!file.type.startsWith('video/'))throw Error('Vui lòng chọn tệp video hợp lệ.');
+ if(!file||(!file.type.startsWith('video/')&&!/\.(mov|mp4|m4v|webm|mkv)$/i.test(file.name)))throw Error('Vui lòng chọn tệp video hợp lệ.');
  if(file.size>2*1024*1024*1024||!file.size)throw Error('Mỗi video phải có dữ liệu và không vượt 2 GB.');
  const video=document.createElement('video'),url=URL.createObjectURL(file);
  try{
@@ -535,32 +538,84 @@ function googleFolderId(bookId){
  }catch{return null;}
 }
 async function uploadToDriveFile(file,bookId,token,updateStatus){
- await validateVideoFile(file);
- const folder=googleFolderId(bookId);
- if(!folder)throw Error('Đầu sách chưa cấu hình thư mục Google Drive. Yêu cầu Quản lý thiết lập trước khi tải.');
+ if(file.type.startsWith('video/')||/\.(mov|mp4|m4v|webm|mkv)$/i.test(file.name))await validateVideoFile(file);
+ else validateMediaPhotos([file]);
+ const destination=resolveMediaFolder(state.books,bookId);
  const result=await resumableDriveUpload(file,{
-  token,folderId:folder,
-  onProgress:p=>updateStatus(p.percent===100?'Tải thành công. Bấm Lưu để ghi nhận trạng thái video.':'Đã tải '+p.percent+'% · '+Math.round(p.offset/1048576)+' MB / '+Math.round(p.total/1048576)+' MB')
+  token,folderId:destination.id,
+  onProgress:p=>updateStatus(p.percent===100?
+   'Đã tải '+file.name+' lên '+destination.label+'. Đang lưu thông tin video…':
+   'Đang tải '+file.name+': '+p.percent+'% · '+Math.round(p.offset/1048576)+' / '+Math.round(p.total/1048576)+' MB')
  });
  return result;
 }
 
-function startUpload(sourceId,statusId,inputName){
- const file=$(sourceId)?.files?.[0];
- if(!file)return toast('Chọn tệp video trước khi tải.');
- if(!state.selected||!googleFolderId(state.selected.book_id))return toast('Đầu sách chưa cấu hình thư mục Drive. Liên hệ quản lý để thiết lập trước khi tải.');
- const status=$(statusId),form=state.selected&&$(sourceId==='rawFile'?'filmForm':'editForm');
- if(!form)return;
- status.textContent='Đang yêu cầu quyền Google Drive...';
- // OAuth popup is requested from a user click, while transfer itself runs in its callback.
- askGoogleDriveToken(async token=>{
-  const btn=$(sourceId==='rawFile'?'uploadRawVideo':'uploadEditedVideo');btn.disabled=true;
-  try{
-   const link=await uploadToDriveFile(file,state.selected.book_id,token,text=>status.textContent=text);
-   form.elements[inputName].value=link;
-  }catch(e){status.textContent=e.message;throw e;}
-  finally{btn.disabled=false;}
- });
+// Upload from the same user-initiated Save click. The Google OAuth prompt is opened
+// synchronously, then Drive URLs and evidence links are saved in the D1 video record.
+function saveMediaFilesWithOneClick(form,id,callback,button){
+ const filming=id==='filmForm';
+ const fileInput=$(filming?'rawFile':'editedFile');
+ const imageInput=$(filming?'filmImages':'editImages');
+ const video=fileInput?.files?.[0]||null;
+ const images=[...(imageInput?.files||[])];
+ if(!video&&!images.length)return false;
+ const status=$(filming?'rawUploadStatus':'editedUploadStatus');
+ const current=state.selected,bookId=current?.book_id;
+ if(!current||!bookId){showFormError(form,'Không xác định được đầu sách. Mở lại video và thử lại.');return true;}
+ try{
+  validateMediaPhotos(images);
+  if(video&&(!video.size||video.size>2*1024*1024*1024))throw Error('Video phải có dữ liệu và không vượt quá 2 GB.');
+  const provisional=appendEvidenceLinks(form.elements.note?.value||'',images.map(f=>({name:f.name,url:'https://drive.google.com/file/d/placeholder/view'})));
+  if(provisional.length>2000)throw Error('Ghi chú và danh sách ảnh quá dài.');
+  if(!window.google?.accounts?.oauth2||!state.googleClientId)throw Error('Chưa sẵn sàng Google Drive. Hãy tải lại Qbooks và đăng nhập Google.');
+ }catch(e){status.textContent=e.message;showFormError(form,e.message);return true;}
+ const destination=resolveMediaFolder(state.books,bookId);
+ const originalLabel=button?.textContent||'Lưu';
+ if(button){button.disabled=true;button.textContent='ĐANG TẢI TỆP…';}
+ status.textContent='Đang yêu cầu quyền Google. Đích lưu: '+destination.label+'. Giữ trình duyệt đang mở cho đến khi lưu thành công.';
+ try{
+  askGoogleDriveToken(async token=>{
+   let recordSaved=false;
+   try{
+    const payload=Object.fromEntries(new FormData(form));
+    if(video){
+     payload[filming?'raw_url':'output_url']=await uploadToDriveFile(video,bookId,token,text=>status.textContent=text);
+     // Keep the successful Drive URL so a later D1 error can be retried without reuploading.
+     form.elements[filming?'raw_url':'output_url'].value=payload[filming?'raw_url':'output_url'];
+     fileInput.value='';
+    }
+    const uploaded=[];
+    for(let i=0;i<images.length;i++){
+     const file=images[i];
+     status.textContent='Đang tải ảnh '+(i+1)+'/'+images.length+' vào '+destination.label+'…';
+     const link=await uploadToDriveFile(file,bookId,token,text=>status.textContent=text);
+     uploaded.push({name:file.name,url:link});
+     // Immediately preserve each successful photo link across partial failures.
+     form.elements.note.value=appendEvidenceLinks(form.elements.note.value,[{name:file.name,url:link}]);
+    }
+    if(uploaded.length){payload.note=form.elements.note.value;imageInput.value='';}
+    if(filming&&!payload.raw_url)throw Error('Chưa có video gốc. Chọn video hoặc nhập liên kết Drive.');
+    if(!filming&&payload.status==='CHỜ DUYỆT'&&!payload.output_url)throw Error('Cần video hậu kỳ để gửi duyệt.');
+    status.textContent='Tệp đã lên Drive. Đang ghi nhận vào Qbooks…';
+    await callback(payload);recordSaved=true;
+    markDraftSaved(form);
+    status.textContent='Đã lưu tệp và trạng thái video vào Qbooks.';
+    await load();state.selected=null;render();
+    if(['film','edit'].includes(state.view))await refreshVideoList();
+    toast('Đã lưu thành công. Tệp được đặt trong '+destination.label+'.');
+   }catch(e){
+    const message=(recordSaved?'Video đã lưu nhưng tải danh sách lỗi: ':'Không lưu được video: ')+e.message;
+    status.textContent=message;showFormError(form,message);toast(message);
+   }finally{if(button){button.disabled=false;button.textContent=originalLabel;}}
+  },()=>{
+   if(button){button.disabled=false;button.textContent=originalLabel;}
+   status.textContent='Chưa cấp quyền Google Drive. Tệp chưa được tải; bấm Lưu để thử lại.';
+  });
+ }catch(e){
+  if(button){button.disabled=false;button.textContent=originalLabel;}
+  status.textContent=e.message;showFormError(form,e.message);
+ }
+ return true;
 }
 function wire(){
  initializeLessonSelection();
@@ -574,8 +629,6 @@ function wire(){
  document.querySelectorAll('[data-book]').forEach(b=>b.onclick=()=>{state.selectedBook=b.dataset.book;navigate('bookDetail')});
  const backBooks=$('backBooks');if(backBooks)backBooks.onclick=()=>navigate('booksProgress');
  document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>{if(b.dataset.goto==='edit')state.videoFilter.review=b.dataset.review||'';navigate(b.dataset.goto);});
- if($('uploadRawVideo'))$('uploadRawVideo').onclick=()=>startUpload('rawFile','rawUploadStatus','raw_url');
- if($('uploadEditedVideo'))$('uploadEditedVideo').onclick=()=>startUpload('editedFile','editedUploadStatus','output_url');
  document.querySelectorAll('form[data-book-folder]').forEach(form=>form.onsubmit=async event=>{
   event.preventDefault();const btn=form.querySelector('button');btn.disabled=true;
   try{
