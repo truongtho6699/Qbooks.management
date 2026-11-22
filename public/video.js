@@ -88,7 +88,7 @@ function mediaLoadNotice(message,error=false){
 }
 function safeMediaRefresh(){
  // Never replace editable forms while a user is entering or reviewing data.
- if(state.selected||['film','edit','books','catalog'].includes(state.view))return;
+ if(state.selected||['edit','books','catalog'].includes(state.view)||$('quickFilmFile')?.files?.length)return;
  const active=document.activeElement;
  if(active?.closest?.('#page form')||active?.matches?.('input,textarea,select'))return;
  render();
@@ -756,10 +756,11 @@ if(document.getElementById('unifiedMediaView')){
    state.googleClientId='';state.view='dashboard';state.managementBook='';
    const page=$('page');if(page)page.replaceChildren();
   },
-  async start(view){
-   const token=sessionStorage.getItem('qbooks_token')||'';
+  async start(view,activeToken){
+   const token=activeToken||sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'';
    if(state.token&&state.token!==token)this.reset();
    state.token=token;
+   if(!token)throw Error('Phiên đăng nhập đã hết hạn. Đăng nhập lại Qbooks.');
    if(!started)started=boot().catch(err=>{started=null;throw err;});
    await started;
    if(view&&NAV.some(item=>item.id===view)&&can(view)&&state.view!==view)navigate(view);
@@ -769,7 +770,7 @@ if(document.getElementById('unifiedMediaView')){
    // Retry only Media loading; no form submissions or state mutations.
    started=null;
    mediaLoadNotice('Đang thử tải lại Media…');
-   return this.start(state.view);
+   return this.start(state.view,state.token);
   },
   navigate(view){if(!can(view))return false;navigate(view);return true;},
   allowed(view){return can(view);},
