@@ -32,7 +32,7 @@ test('Media module exposes lifecycle, navigation, and account-isolation reset',(
  assert.ok(js.includes("document.getElementById('unifiedMediaView')"));
  assert.ok(js.includes('window.QbookMedia={'));
  assert.ok(js.includes('reset(){'));
- assert.ok(js.includes('async start(view)'));
+ assert.ok(js.includes('async start(view,activeToken)'));
  assert.ok(js.includes('window.QbookShell?.mediaChanged'));
  assert.ok(js.includes("state.user=null;state.rights={};state.menuKeys=[]"));
 });
