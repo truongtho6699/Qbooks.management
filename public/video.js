@@ -317,8 +317,13 @@ function evidenceLinksHtml(note){
  if(!lines.length)return '';
  const links=[];
  for(const line of lines){
-  const m=/^Ảnh minh chứng: (.+?) — (https:\/\/drive\.google\.com\/file\/d\/[-A-Za-z0-9_]+\/view)$/.exec(line.trim());
-  if(m)links.push('<a target="_blank" rel="noopener noreferrer" href="'+E(m[2])+'">📷 '+E(m[1])+'</a>');
+  const m=/^Ảnh minh chứng: (.+?) — (https:\/\/\S+)$/.exec(line.trim());
+  if(!m)continue;
+  try{
+   const url=new URL(m[2]);
+   if(url.protocol==='https:'&&url.hostname==='drive.google.com'&&/^\/file\/d\/[-A-Za-z0-9_]+\/view$/.test(url.pathname))
+    links.push('<a target="_blank" rel="noopener noreferrer" href="'+E(url.href)+'">📷 '+E(m[1])+'</a>');
+  }catch{ /* Invalid link stays in the note only; do not render unsafe URLs. */ }
  }
  return links.length?'<div class="qbook-evidence-links" aria-label="Ảnh minh chứng đã lưu">'+links.join('')+'</div>':'';
 }
