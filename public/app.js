@@ -33,13 +33,16 @@ function prefillRememberedAccount(){
 
 const $all=(s)=>[...document.querySelectorAll(s)];
 function notice(text='',ok=false){$('notice').textContent=ok?text:humanizeError(text);$('notice').className=ok?'notice ok':'notice';}
-async function api(method,path,data,blob=false){
+async function api(method,path,data,blob=false,externalSignal=null){
  const headers={};if(state.token)headers.authorization='Bearer '+state.token;
  if(!blob&&data!=null)headers['content-type']='application/json';
  // Read-only calls may retry after a transient network error; never retry writes.
- const attempts=method==='GET'?2:1;
+ const attempts=method==='GET'&&!externalSignal?2:1;
  for(let attempt=0;attempt<attempts;attempt++){
   const controller=new AbortController();
+  const onAbort=()=>controller.abort();
+  if(externalSignal?.aborted)controller.abort();
+  else externalSignal?.addEventListener('abort',onAbort,{once:true});
   const wait=blob?300000:method==='GET'?20000:45000;
   const timer=setTimeout(()=>controller.abort(),wait);
   let res;
@@ -48,12 +51,14 @@ async function api(method,path,data,blob=false){
     body:data==null?undefined:blob?data:JSON.stringify(data),
     signal:controller.signal,cache:method==='GET'?'no-store':'default'});
   }catch(e){
-   clearTimeout(timer);
+   clearTimeout(timer);externalSignal?.removeEventListener('abort',onAbort);
+   if(externalSignal?.aborted)throw Object.assign(new Error('Đã hủy yêu cầu tìm kiếm cũ.'),{name:'AbortError'});
    if(method==='GET'&&attempt<attempts-1)continue;
    throw Error(e.name==='AbortError'?'Máy chủ phản hồi quá chậm, đã dừng yêu cầu. Vui lòng thử lại.':
     'Lỗi kết nối. Kiểm tra Wi-Fi/3G rồi thử lại: '+e.message);
   }
-  clearTimeout(timer);
+  clearTimeout(timer);externalSignal?.removeEventListener('abort',onAbort);
+  if(externalSignal?.aborted)throw Object.assign(new Error('Đã hủy yêu cầu tìm kiếm cũ.'),{name:'AbortError'});
   let result;try{result=await res.json()}catch{result={error:'Máy chủ không trả JSON.'}}
   if(!res.ok)throw Error(result.error||'Máy chủ trả lỗi '+res.status);
   return result;
@@ -930,9 +935,12 @@ function checkSaleDuplicatePreview(){
  warning.hidden=!duplicate;
  warning.textContent=duplicate?'Số hóa đơn này đã có trong danh sách: '+duplicate.invoice_codes+'. Kiểm tra trước khi lưu; hệ thống vẫn kiểm tra trùng trên máy chủ.':'';
 }
-async function loadOrders(){
+let ordersLoadSerial=0;
+async function loadOrders({signal}={}){
+ const serial=++ordersLoadSerial,requestedTab=state.tab;
  const q=$('search').value.trim(),status=state.tab==='pack'?'CHỜ ĐÓNG HÀNG':state.tab==='ship'?'CHỜ VẬN ĐƠN':'';
- const r=await api('GET','/api/orders?q='+encodeURIComponent(q)+'&status='+encodeURIComponent(status));
+ const r=await api('GET','/api/orders?q='+encodeURIComponent(q)+'&status='+encodeURIComponent(status),null,false,signal);
+ if(signal?.aborted||serial!==ordersLoadSerial||state.tab!==requestedTab)return;
  state.orders=r.orders;
  if(state.tab==='sale'){state.saleCustomerCache=saleRecentCustomers(r.orders);refreshSaleSuggestions();updateSaleCustomerHint();checkSaleDuplicatePreview();}
  $('listTitle').textContent=state.tab==='pack'?'Đơn chờ đóng hàng':state.tab==='ship'?'Đơn chờ vận đơn':statusTitle[state.user.role]||'Đơn hàng';
@@ -1422,7 +1430,16 @@ async function loadGroupOptions(){
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));try{await login(b.email,b.pin,!!$('rememberLogin')?.checked)}catch(error){notice(error.message)}});
 $('logoutBtn').onclick=async()=>{if(state.backgroundJob)return notice('Video đang tải nền. Chờ hoàn thành trước khi đăng xuất.');if(!confirmLeave())return;await releaseLocks();try{await api('POST','/api/logout',{})}catch{}state.token='';state.user=null;state.orders=[];state.overviewData=null;state.selected=null;state.sheetReadToken=null;state.sheetReadUntil=0;state.googleWriteToken=null;state.googleWriteUntil=0;state.operationalDriveToken=null;state.operationalDriveUntil=0;state.driveBrowseToken=null;state.driveBrowseUntil=0;state.googleDriveRoot=null;state.menuKeys=[];state.area='orders';state.mediaView='dashboard';window.QbookMedia?.reset();clearSelectedFilePreviews();clearUploadTasks();clearLoginSession();window.history.replaceState(null,'',window.location.pathname);const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;};
-$('search').addEventListener('input',()=>{loadOrders().catch(e=>notice(e.message))});
+let orderSearchTimer=null,orderSearchController=null;
+$('search').addEventListener('input',()=>{
+ clearTimeout(orderSearchTimer);orderSearchController?.abort();
+ const controller=new AbortController();orderSearchController=controller;
+ const initialTab=state.tab;
+ orderSearchTimer=setTimeout(()=>{
+  if(controller.signal.aborted||state.tab!==initialTab)return;
+  loadOrders({signal:controller.signal}).catch(e=>{if(e.name!=='AbortError')notice(e.message)});
+ },300);
+});
 $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packControls'));markDraftSaved($('shipControls'));tab(state.tab);};
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
