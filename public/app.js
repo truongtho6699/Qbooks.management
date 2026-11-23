@@ -116,6 +116,7 @@ async function initGoogleSignIn(){
   const cfg=await api('GET','/api/google/config');
   state.googleClientId=cfg.clientId||null;
   if(!cfg.enabled||!cfg.clientId){
+   $('googleUnavailable').textContent='Đăng nhập Google chưa được cấu hình';
    $('googleStatus').textContent='Google chưa được kết nối. Quản trị cần cấu hình GOOGLE_CLIENT_ID trên Cloudflare Pages.';
    return;
   }
@@ -143,7 +144,7 @@ async function initGoogleSignIn(){
   $('googleUnavailable').hidden=true;
   window.google.accounts.id.renderButton($('googleSignIn'),{type:'standard',theme:'outline',size:'large',shape:'rectangular',text:'continue_with',width:290});
   $('googleStatus').textContent='Dùng tài khoản Google đã được cấp quyền hoặc đăng ký mới để chờ quản trị duyệt.';
- }catch(e){$('googleStatus').textContent=e.message;}
+ }catch(e){$('googleUnavailable').textContent='Chưa kiểm tra được đăng nhập Google';$('googleStatus').textContent=e.message;}
 }
 function resetStaffEdit(){
  state.editStaffId=null;state.menuEditor=null;
