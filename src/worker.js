@@ -731,6 +731,20 @@ async function handle(req,env){
    if(isDirectDrive(u))return json({id,status:u.status,bytes:u.bytes,chunkSize:u.chunk_size,transport:'drive',sessionUrl:u.status==='UPLOADING'?u.drive_session_url:null,parts:[]});
    return json({id,status:u.status,bytes:u.bytes,chunkSize:u.chunk_size,parts:rows.results||[]});
   }
+  if(method==='DELETE'&&!action){
+   // Packers may discard a video they picked (pre-upload) as long as the order is not saved yet.
+   if(u.user_id!==user.id)return fail('Chỉ người tải lên mới được hủy tệp này.',403);
+   if(u.upload_id&&u.status==='UPLOADING')await env.MEDIA.resumeMultipartUpload(u.object_key,u.upload_id).abort().catch(()=>{});
+   if(!isDirectDrive(u))await env.MEDIA.delete(u.object_key).catch(()=>{});
+   if(isDirectDrive(u)&&u.drive_file_id&&directDriveEnabled(env)){
+    try{const token=await googleAccessToken(env);
+     await fetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(u.drive_file_id)+'?supportsAllDrives=true',{method:'PATCH',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({trashed:true})});
+    }catch{}
+   }
+   await env.DB.batch([env.DB.prepare('DELETE FROM upload_parts WHERE upload_id=?').bind(id),env.DB.prepare('DELETE FROM uploads WHERE id=? AND user_id=?').bind(id,user.id)]);
+   await audit(env,user,'UPLOAD_CANCELLED',u.order_id,u.filename);
+   return json({ok:true});
+  }
   if(u.status!=='UPLOADING')throw Error('Phiên tải đã được hoàn tất hoặc hủy.');
   if(method==='POST'&&action==='restart-drive'){
    if(!isDirectDrive(u))return fail('Chỉ khởi tạo lại phiên tải Drive.',409);

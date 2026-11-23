@@ -35,7 +35,7 @@ test('background video maintains order lock, completes packing after bytes and s
  assert.match(app,/const protectedId=state\.backgroundJob\?\.orderId/);
  assert.match(app,/id!==protectedId/);
  assert.match(app,/if\(state\.backgroundJob\)return notice\('Video đang tải nền/);
- assert.match(app,/window\.addEventListener\('beforeunload',e=>\{if\(state\.backgroundJob\)/);
+ assert.match(app,/window\.addEventListener\('beforeunload',e=>\{if\(state\.backgroundJob\|\|\(state\.preUpload&&!state\.preUpload\.done\)\)/);
  assert.match(html,/id="backgroundUploadBar"/);
  assert.match(css,/qbook-background-upload/);
 });

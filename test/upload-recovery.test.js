@@ -13,6 +13,7 @@ function client(overrides={}){
   fingerprint:()=> 'file-key',videoDuration:async()=>{},progress:()=>{},
   uploadVideoToDrive:async()=> 'drive-file',uploadPhotoWithProgress:async()=>{},
   CHUNK_BYTES:8,VIDEO_PART_CONCURRENCY:3,setTimeout,
+  cancelledUploadKeys:new Set(),uploadIdsByKey:new Map(),cancelledError:()=>Object.assign(Error('cancelled'),{cancelled:true}),
   api:async(method,path)=>{calls.push([method,path]);return {id:'upload-1',transport:'drive',chunkSize:8,sessionUrl:'session'};},
   ...overrides
  };
