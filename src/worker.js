@@ -124,7 +124,7 @@ async function handle(req,env){
   if(input.setupKey!==env.SETUP_KEY)throw Object.assign(new Error('Mã thiết lập không hợp lệ.'),{status:403});
   const count=await env.DB.prepare('SELECT COUNT(*) n FROM users').first();
   if(count.n)throw Object.assign(new Error('Hệ thống đã có quản trị; không cho thiết lập lại.'),{status:409});
-  if(!/^\d{3,12}$/.test(String(input.pin||'')))throw Error('PIN quản trị cần 3–12 chữ số.');
+  if(!/^\d{6,12}$/.test(String(input.pin||'')))throw Error('PIN quản trị cần tối thiểu 6 và tối đa 12 chữ số.');
   const salt=uid(),id=uid();
   await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?)')
    .bind(id,clean(input.email).toLowerCase(),clean(input.name)||'Admin','ADMIN',salt,await hashPin(input.pin,salt),1,1,1).run();
@@ -464,7 +464,7 @@ async function handle(req,env){
   if(user.id===id&&(!active||!admin||isView))throw Error('Không thể tự vô hiệu hóa hoặc bỏ quyền quản trị của chính mình.');
   const name=clean(b.name),pin=String(b.pin||'').trim();
   if(!name)throw Error('Tên nhân sự không được trống.');
-  if(pin&&!/^\d{3,8}$/.test(pin))throw Error('PIN mới phải có 3–8 chữ số.');
+  if(pin&&!/^\d{6,8}$/.test(pin))throw Error('PIN mới phải có 6–8 chữ số.');
   const baseRole=isView?'SALE':role;
   const statements=[];
   if(pin){
@@ -485,7 +485,7 @@ async function handle(req,env){
   needRole(user,'ADMIN');const b=await requestJSON(req);
   const role=clean(b.role||'VIEW');
   if(!['VIEW','ADMIN','SALE','PACKER','SHIPPER'].includes(role))throw Error('Vai trò không hợp lệ.');
-  if(!/^\d{3,8}$/.test(String(b.pin??'').trim()))throw Error('Nhân sự mới cần mã PIN gồm 3–8 chữ số (0–9).');
+  if(!/^\d{6,8}$/.test(String(b.pin??'').trim()))throw Error('Nhân sự mới cần mã PIN gồm 6–8 chữ số (0–9).');
   const pin=String(b.pin??'').trim();const salt=uid(),id=uid(),isView=role==='VIEW';
   const queries=[env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?)')
    .bind(id,clean(b.email).toLowerCase(),clean(b.name),isView?'SALE':role,salt,await hashPin(pin,salt),
