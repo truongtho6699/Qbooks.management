@@ -84,6 +84,15 @@ export default {
   ctx.waitUntil((async()=>{
    const id=crypto.randomUUID();
    try{
+    // Expired sessions and order locks can be deleted safely without touching active records.
+    // Cleanup works even while Drive synchronization is disabled, provided DB is bound.
+    if(env.DB){
+     const stamp=Math.floor(Date.now()/1000);
+     try{
+      await env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(stamp).run();
+      await env.DB.prepare('DELETE FROM order_locks WHERE expires_at < ?').bind(stamp).run();
+     }catch(e){console.warn('QBOOKS housekeeping failed: '+safeError(e));}
+    }
     if(!configured(env)){
      // Never turn the job on automatically; record why it cannot synchronize.
      // Only report boolean configuration flags – no token, client secret or sensitive data.
