@@ -1,0 +1,17 @@
+{
+  "name": "QBOOK – Quản trị Giao hàng & Media",
+  "short_name": "QBOOK",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f8fd",
+  "theme_color": "#2563eb",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
