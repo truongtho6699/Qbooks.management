@@ -418,3 +418,19 @@
  #appPage .qbook-media-page #quickFilmSave{min-height:54px}
  #appPage .qbook-media-page #quickFilmForm input[type=file]{width:100%;font-size:16px}
 }
+/* Audit 2026-11-23: reduce repeated identity, small warehouse text and duplicate period filter. */
+#appPage #shippingUserBadge{display:none!important}
+#appPage #overviewPeriod[hidden]{display:none!important}
+#appPage .shipping-overview-filters{grid-template-columns:minmax(240px,2fr) minmax(175px,1fr)}
+#appPage .shipping-order-card .shipping-card-title strong,
+#appPage .shipping-order-card .shipping-card-details,
+#appPage .shipping-mobile-cards .order,
+#appPage .shipping-table small,
+#appPage .overview-card-actions button{font-size:13px;line-height:1.55}
+#appPage .shipping-order-card .shipping-card-title strong{overflow-wrap:anywhere}
+#appPage .shipping-overview-filters select:not([hidden]){min-height:44px}
+@media(max-width:800px){
+ #appPage .shipping-overview-filters{grid-template-columns:minmax(0,1fr)}
+ #appPage .shipping-order-card .shipping-card-title strong{font-size:14px}
+ #appPage .shipping-order-card .shipping-card-details{font-size:13px}
+}
