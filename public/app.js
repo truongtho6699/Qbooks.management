@@ -1084,7 +1084,12 @@ function driveSessionPut(sessionUrl,headers,body,onProgress){
 }
 function driveOffset(res,total){
  if(res.status===200||res.status===201){let d={};try{d=JSON.parse(res.text)}catch{}return {done:true,offset:total,fileId:d.id||null};}
- if(res.status===308){const m=/^bytes=0-(\d+)$/.exec(res.range||'');return {done:false,offset:m?Number(m[1])+1:0};}
+ if(res.status===308){
+  const m=/^bytes=0-(\d+)$/.exec(res.range||'');
+  const offset=m?Number(m[1])+1:0;
+  if((res.range&&!m)||!Number.isSafeInteger(offset)||offset<0||offset>total)throw Error('Google Drive trả tiến độ không hợp lệ.');
+  return {done:false,offset};
+ }
  if(res.status===404||res.status===410)throw Object.assign(Error('Phiên tải Google Drive đã hết hạn. Bấm Lưu lại để tải video từ đầu.'),{expired:true});
  throw Object.assign(Error('Google Drive lỗi HTTP '+res.status),{retry:res.status>=500||res.status===429});
 }
@@ -1100,6 +1105,7 @@ async function uploadVideoToDrive(file,info,background){
    const res=await driveSessionPut(url,{'Content-Range':'bytes '+start+'-'+(end-1)+'/'+total},file.slice(start,end),
     loaded=>progress(file.name,start+loaded,total,background,dest));
    const next=driveOffset(res,total);
+   if(!next.done&&(next.offset<start||next.offset>end))throw Error('Google Drive trả tiến độ không hợp lệ.');
    if(!next.done&&next.offset<=start&&++failures>4)throw Error('Google Drive không nhận thêm dữ liệu ở '+Math.round(start/1048576)+' MB.');
    state_=next;if(next.offset>start)failures=0;
   }catch(e){
@@ -1107,7 +1113,9 @@ async function uploadVideoToDrive(file,info,background){
    if(!e.retry||++failures>4)throw Error('Tải video lên Google Drive gián đoạn: '+e.message);
    await new Promise(r=>setTimeout(r,1500*failures));
    // Ask Drive how much it really stored before resending.
-   state_=await probe().catch(err=>{if(err.expired)throw err;return state_;});
+   const confirmed=await probe().catch(err=>{if(err.expired||!err.retry)throw err;return state_;});
+   if(!confirmed.done&&confirmed.offset<start)throw Error('Google Drive trả tiến độ không hợp lệ.');
+   state_=confirmed;
   }
   progress(file.name,state_.offset,total,background,dest);
  }
@@ -1119,23 +1127,31 @@ async function uploadOne(orderId,stage,file,background=false){
  if(video)await videoDuration(file);
  const key=fingerprint(orderId,stage,file);let id=localStorage.getItem(key);
  let info;
- if(id){try{info=await api('GET','/api/uploads/'+id);if(info.bytes!==undefined&&info.bytes!==file.size)id=null}
+ if(id){try{info=await api('GET','/api/uploads/'+id);if((info.bytes!==undefined&&info.bytes!==file.size)||!['UPLOADING','COMPLETE'].includes(info.status))id=null}
  catch(e){if(/Không tìm thấy phiên tải/.test(e.message))id=null;else throw e}}
  if(!id){
   const result=await api('POST','/api/uploads',{orderId,stage,filename:file.name,contentType:file.type|| (video?'video/mp4':'image/jpeg'),size:file.size});
   id=result.id;localStorage.setItem(key,id);info={status:'UPLOADING',chunkSize:result.chunkSize,transport:result.transport,sessionUrl:result.sessionUrl,parts:[]};
  }
- if(info.status==='COMPLETE'){localStorage.removeItem(key);progress(file.name,file.size,file.size,background);return id}
+ // Keep the fingerprint until the order commit succeeds. Retrying a failed pack
+ // must reuse completed files instead of creating duplicate Drive/R2 objects.
+ if(info.status==='COMPLETE'){progress(file.name,file.size,file.size,background,info.transport==='drive'?'Google Drive':'R2');return id}
  if(!video){
   progress(stage+' · '+file.name,0,file.size,background);await uploadPhotoWithProgress(id,stage,file,background);
-  progress(file.name,file.size,file.size,background);localStorage.removeItem(key);return id;
+  progress(file.name,file.size,file.size,background);return id;
  }
  if(info.transport==='drive'){
   let fileId=null;
   try{fileId=await uploadVideoToDrive(file,info,background);}
-  catch(e){if(e.expired)localStorage.removeItem(key);throw e;}
+  catch(e){
+   if(!e.expired)throw e;
+   // Reuse the D1 record: abandoning it would leave an UPLOADING row that
+   // prevents packing forever, even after a replacement file has completed.
+   const restarted=await api('POST','/api/uploads/'+id+'/restart-drive',{});
+   fileId=await uploadVideoToDrive(file,restarted,background);
+  }
   await api('POST','/api/uploads/'+id+'/complete',{fileId});
-  localStorage.removeItem(key);progress(file.name,file.size,file.size,background,'Google Drive');
+  progress(file.name,file.size,file.size,background,'Google Drive');
   return id;
  }
  const chunk=info.chunkSize||CHUNK_BYTES;
@@ -1161,7 +1177,6 @@ async function uploadOne(orderId,stage,file,background=false){
  await Promise.all(Array.from({length:Math.min(VIDEO_PART_CONCURRENCY,queue.length)},sendParts));
  if(failed)throw failed;
  await api('POST','/api/uploads/'+id+'/complete',{});
- localStorage.removeItem(key);
  progress(file.name,file.size,file.size,background);
  return id;
 }
@@ -1353,6 +1368,7 @@ async function savePack(){
   try{
    const saved=await uploadSelection(id,uploads);
    await api('POST','/api/orders/'+id+'/pack',payload);
+   for(const [stage,file] of uploads)localStorage.removeItem(fingerprint(id,stage,file));
    state.lockedOrderIds.delete(id);markDraftSaved($('packControls'));
    notice('Đã hoàn thành đóng hàng, '+saved.length+' tệp đã lưu R2.',true);
    show('detailView',false);show('ordersView',true);await loadOrders();
@@ -1366,21 +1382,22 @@ async function savePack(){
  $('backgroundUploadBar').hidden=false;
  $('backgroundUploadProgress').value=0;
  $('backgroundUploadTitle').textContent='Đang tải nền video cho đơn '+(order.invoice_codes||id);
- $('backgroundUploadDetail').textContent='Đang gửi video từ thiết bị lên R2. Có thể chuyển menu Qbooks, nhưng KHÔNG đóng tab/Safari trước khi thấy CÓ THỂ ĐÓNG TRÌNH DUYỆT.';
+ $('backgroundUploadDetail').textContent='Đang gửi video lên nơi lưu trữ. Có thể chuyển menu Qbooks, nhưng KHÔNG đóng tab/Safari trước khi thấy CÓ THỂ ĐÓNG TRÌNH DUYỆT.';
  markDraftSaved($('packControls'));
- notice('Đang tải video từ thiết bị lên R2: có thể dùng menu Qbooks khác nhưng chưa được đóng trình duyệt.',true);
+ notice('Đang tải video nền: có thể dùng menu Qbooks khác nhưng chưa được đóng trình duyệt.',true);
  // Deliberately not awaited: render/navigation continue while upload runs.
  void (async()=>{
   try{
    const saved=await uploadSelection(id,uploads,true);
-   // All file bytes are on R2. Keep the warning until the packing record is committed.
+   // Keep the warning until both file storage and the packing record are committed.
    $('backgroundUploadProgress').value=100;
-   $('backgroundUploadTitle').textContent='Video đã tải đủ lên R2 – đang lưu đóng hàng';
+   $('backgroundUploadTitle').textContent='Video đã tải đủ – đang lưu đóng hàng';
    $('backgroundUploadDetail').textContent='Chưa đóng trình duyệt cho đến khi lưu đơn thành công.';
    await api('POST','/api/orders/'+id+'/pack',payload);
+   for(const [stage,file] of uploads)localStorage.removeItem(fingerprint(id,stage,file));
    state.lockedOrderIds.delete(id);
    $('backgroundUploadTitle').textContent='Đã lưu đóng hàng '+(order.invoice_codes||id)+' – CÓ THỂ ĐÓNG TRÌNH DUYỆT';
-   $('backgroundUploadDetail').textContent='Đã lưu '+saved.length+' tệp trên R2. Đồng bộ Google Drive tiếp tục trên máy chủ nếu Worker đồng bộ đã bật.';
+   $('backgroundUploadDetail').textContent='Đã xác nhận lưu '+saved.length+' tệp. Video tải thẳng Drive đã được kiểm tra; tệp còn trên R2 sẽ chờ Worker đồng bộ nếu được bật.';
    if(state.area==='orders'&&state.tab==='pack'&&state.selected?.id===id){
     show('detailView',false);show('ordersView',true);
     await loadOrders().catch(()=>{});
@@ -1416,6 +1433,7 @@ async function saveShip(){
   const uploaded=await uploadSelection(id,uploads);
   await api('POST','/api/shipments',{orderIds,loaiShip,tenShip,sdtShip,
    tienShip:costs[0],hangNang:costs[1],phiBen:costs[2],phuPhi:costs[3],status:'HOÀN THÀNH',note:v('shippingNote')});saved=true;
+  for(const [stage,file] of uploads)localStorage.removeItem(fingerprint(id,stage,file));
   for(const key of orderIds)state.lockedOrderIds.delete(key);
   markDraftSaved($('shipControls'));
   notice('Đã lưu vận đơn. '+uploaded.length+' tệp đã ghi R2. Chuyển Drive khi Worker được kích hoạt; chỉ xóa R2 sau khi xác minh đủ tệp. Dữ liệu Sheets đồng bộ riêng.',true);

@@ -707,7 +707,7 @@ async function handle(req,env){
   }catch(e){if(upload)await upload.abort();throw e;}
   return json({id,chunkSize:multipart?CHUNK_BYTES:size,multipart},201);
  }
- const uMatch=path.match(/^\/api\/uploads\/([a-f0-9-]+)(?:\/(parts\/(\d+)|complete|file))?$/);
+ const uMatch=path.match(/^\/api\/uploads\/([a-f0-9-]+)(?:\/(parts\/(\d+)|complete|file|restart-drive))?$/);
  if(uMatch){
   const id=uMatch[1],action=uMatch[2]||'',u=await pendingUpload(env,id),o=await orderById(env,u.order_id);
   const isFile=action==='file';
@@ -732,6 +732,18 @@ async function handle(req,env){
    return json({id,status:u.status,bytes:u.bytes,chunkSize:u.chunk_size,parts:rows.results||[]});
   }
   if(u.status!=='UPLOADING')throw Error('Phiên tải đã được hoàn tất hoặc hủy.');
+  if(method==='POST'&&action==='restart-drive'){
+   if(!isDirectDrive(u))return fail('Chỉ khởi tạo lại phiên tải Drive.',409);
+   const previous=await probeDriveSession(u.drive_session_url,u.bytes);
+   if(!previous.expired)return fail('Phiên Drive còn hiệu lực hoặc đã hoàn tất. Tiếp tục phiên hiện tại.',409);
+   const token=await googleAccessToken(env);
+   const session=await createDirectVideoSession(token,{uploadId:id,orderId:u.order_id,filename:u.filename,contentType:u.content_type,bytes:u.bytes,origin:sessionOrigin(req,url)});
+   const changed=await env.DB.prepare("UPDATE uploads SET drive_session_url=?,drive_folder_url=?,drive_offset=0 WHERE id=? AND status='UPLOADING' AND drive_session_url=?")
+    .bind(session.sessionUrl,session.folderUrl,id,u.drive_session_url).run();
+   if(changed.meta?.changes!==1)return fail('Phiên tải vừa thay đổi. Vui lòng thử lại.',409);
+   await audit(env,user,'UPLOAD_VIDEO_DRIVE_RESTART',u.order_id,id);
+   return json({id,transport:'drive',sessionUrl:session.sessionUrl,chunkSize:DIRECT_DRIVE_CHUNK});
+  }
   if(method==='PUT'&&!action){
    if(u.upload_id)throw Error('Video cần tải theo từng phần.');
    if(req.headers.has('content-length')&&Number(req.headers.get('content-length'))!==u.bytes)throw Error('Dung lượng ảnh không khớp.');

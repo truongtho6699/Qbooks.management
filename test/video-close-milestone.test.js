@@ -14,5 +14,5 @@ test('never claim browser closed can continue sending bytes',()=>{
  assert.match(html,/Video còn truyền từ điện thoại\/máy tính lên R2: không đóng trình duyệt/);
  assert.match(app,/KHÔNG đóng tab\/Safari/);
  assert.match(app,/window.addEventListener\('beforeunload'/);
- assert.match(app,/Đồng bộ Google Drive tiếp tục trên máy chủ nếu Worker đồng bộ đã bật/);
+ assert.match(app,/tệp còn trên R2 sẽ chờ Worker đồng bộ nếu được bật/);
 });

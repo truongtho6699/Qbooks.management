@@ -97,6 +97,17 @@ test('browser rejects a session URL that is not Google Drive',async()=>{
  await assert.rejects(upload({size:10,slice:()=>({size:10})},{sessionUrl:'https://evil.example/x'},false),/không hợp lệ/);
 });
 
+test('browser rejects impossible Drive offsets instead of skipping bytes',async()=>{
+ const {upload}=loadClient(()=>({status:308,range:'bytes=0-999'}));
+ await assert.rejects(upload({size:10,slice:()=>({size:10})},{sessionUrl:SESSION},false),/tiến độ không hợp lệ/);
+});
+
+test('browser rejects a missing Range after acknowledged progress instead of replaying bytes',async()=>{
+ let requests=0;
+ const {upload}=loadClient(()=>++requests===1?{status:308,range:'bytes=0-3'}:{status:308});
+ await assert.rejects(upload({size:10,slice:(a,b)=>({size:b-a})},{sessionUrl:SESSION,chunkSize:4},false),/tiến độ không hợp lệ/);
+});
+
 test('Google failures fall back to R2 instead of blocking the upload',()=>{
  assert.match(worker,/VIDEO_DIRECT_DRIVE fallback to R2/);
  assert.match(worker,/if\(session\)\{/);
