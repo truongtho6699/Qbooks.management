@@ -77,7 +77,7 @@ function firstInvoice(value){
 function orderCardContents(order){
  const fragment=document.createDocumentFragment();
  const titleRow=el('div',null,'shipping-card-title');
- titleRow.append(el('strong',firstInvoice(order.invoice_codes)+' · Sale: '+(order.sale_name||'Chưa rõ')),statusBadge(order.status));
+ titleRow.append(el('strong',(String(order.invoice_codes||'').trim()||'Chưa có mã hóa đơn')+' · Sale: '+(order.sale_name||'Chưa rõ')),statusBadge(order.status));
  const info=el('div',null,'shipping-card-details');
  const time=String(order.delivery_time||'').trim()||(order.urgent?'GẤP':'Chưa có giờ giao');
  const invoices=String(order.invoice_codes||'').trim();
