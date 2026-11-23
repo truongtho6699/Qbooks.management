@@ -867,40 +867,54 @@ function renderOverview(){
  for(const [label,num,style] of cards){
   const card=el('div',null,'shipping-kpi '+style);card.append(el('small',label),el('strong',Number(num||0).toLocaleString('vi-VN')));kpis.append(card);
  }
+ const serverPage=!!r.pagination;
  const term=$('overviewSearch').value.trim().toLocaleLowerCase('vi'),status=$('overviewStatus').value;
- const rows=r.orders.filter(o=>(!status||o.status===status)&&(!term||[o.id,o.invoice_codes,o.customer,o.sale_name].some(x=>String(x||'').toLocaleLowerCase('vi').includes(term))));
+ const rows=serverPage?r.orders:r.orders.filter(o=>(!status||o.status===status)&&(!term||[o.id,o.invoice_codes,o.customer,o.sale_name].some(x=>String(x||'').toLocaleLowerCase('vi').includes(term))));
  const sort=$('overviewSort').value;
- const timestamp=o=>Date.parse(String(o.created_at||'').replace(' ','T')+'Z')||0;
- rows.sort((a,b)=>sort==='oldest'?timestamp(a)-timestamp(b):
-  sort==='urgent'?Number(Boolean(b.urgent))-Number(Boolean(a.urgent))||timestamp(b)-timestamp(a):
-  sort==='invoice'?String(a.invoice_codes||'').localeCompare(String(b.invoice_codes||''),'vi'):
-  timestamp(b)-timestamp(a));
+ if(!serverPage){
+  const timestamp=o=>Date.parse(String(o.created_at||'').replace(' ','T')+'Z')||0;
+  rows.sort((a,b)=>sort==='oldest'?timestamp(a)-timestamp(b):
+   sort==='urgent'?Number(Boolean(b.urgent))-Number(Boolean(a.urgent))||timestamp(b)-timestamp(a):
+   sort==='invoice'?String(a.invoice_codes||'').localeCompare(String(b.invoice_codes||''),'vi'):
+   timestamp(b)-timestamp(a));
+ }
  const size=Number($('overviewPageSize').value)||20;
- const pages=Math.max(1,Math.ceil(rows.length/size));
+ const matched=serverPage?Number(r.pagination.total||0):rows.length;
+ const pages=serverPage?Number(r.pagination.pages||1):Math.max(1,Math.ceil(rows.length/size));
  state.overviewPage=Math.max(1,Math.min(pages,state.overviewPage||1));
- const start=(state.overviewPage-1)*size,visible=rows.slice(start,start+size);
+ const start=(state.overviewPage-1)*size,visible=serverPage?rows:rows.slice(start,start+size);
  const table=$('overviewRows'),cardsHolder=$('overviewCards');table.replaceChildren();cardsHolder.replaceChildren();
  if(visible.length){for(const o of visible)appendOverviewRow(o,table,cardsHolder);}
  else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=6;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
- $('overviewPageInfo').textContent='Trang '+state.overviewPage+'/'+pages+' · '+rows.length+' đơn phù hợp';
+ $('overviewPageInfo').textContent='Trang '+state.overviewPage+'/'+pages+' · '+matched+' đơn phù hợp';
  $('overviewPrevPage').disabled=state.overviewPage<=1;
  $('overviewNextPage').disabled=state.overviewPage>=pages;
- $('overviewHint').textContent='Đang hiển thị '+visible.length+'/'+rows.length+' đơn phù hợp trong kỳ '+$('overviewPeriod').selectedOptions[0].textContent+'. Tổng dữ liệu API tối đa 300 đơn mới nhất; trang và sắp xếp áp dụng trên kết quả đã tải.';
+ $('overviewHint').textContent='Đang hiển thị '+visible.length+'/'+rows.length+' đơn phù hợp trong kỳ '+$('overviewPeriod').selectedOptions[0].textContent+'. '+(serverPage?'Đã tìm kiếm và phân trang trên toàn bộ dữ liệu có quyền xem.':'Chế độ tương thích: chỉ lọc trên dữ liệu đã tải.');
 }
-let overviewLoading=null;
+let overviewLoading=null,overviewController=null,overviewSerial=0;
 state.overviewPage=1;
 async function loadOverview(){
- // Prevent parallel refresh requests when opening a menu and pressing Refresh.
- if(overviewLoading)return overviewLoading;
+ overviewController?.abort();
+ const controller=new AbortController(),serial=++overviewSerial;
+ overviewController=controller;
  $('overviewHint').textContent='Đang đọc dữ liệu đơn và hồ sơ…';
+ const params=new URLSearchParams({
+  period:$('overviewPeriod').value,
+  page:String(state.overviewPage||1),pageSize:$('overviewPageSize').value||'20',
+  q:$('overviewSearch').value.trim(),
+  status:$('overviewStatus').value,
+  sort:$('overviewSort').value
+ });
  overviewLoading=(async()=>{
   try{
-   const r=await api('GET','/api/shipping/overview?period='+encodeURIComponent($('overviewPeriod').value));
-   state.overviewData=r;state.overviewPage=1;renderOverview();
+   const r=await api('GET','/api/shipping/overview?'+params.toString(),null,false,controller.signal);
+   if(controller.signal.aborted||serial!==overviewSerial)return;
+   state.overviewData=r;renderOverview();
   }catch(e){
+   if(controller.signal.aborted||e.name==='AbortError')return;
    $('overviewHint').textContent='Không tải được dữ liệu: '+e.message;
    throw e;
-  }finally{overviewLoading=null;}
+  }finally{if(serial===overviewSerial){overviewLoading=null;overviewController=null}}
  })();
  return overviewLoading;
 }
@@ -1694,13 +1708,17 @@ $('cancelStaffEdit').onclick=resetStaffEdit;
 $all('.admin-report').forEach(btn=>btn.onclick=()=>loadAdminReport(btn.dataset.kind));
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 $('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
-const refreshOverviewFilters=()=>{state.overviewPage=1;renderOverview()};
-$('overviewSearch').oninput=refreshOverviewFilters;
+let overviewSearchTimer=null;
+const refreshOverviewFilters=()=>{state.overviewPage=1;loadOverview().catch(e=>notice(e.message));};
+$('overviewSearch').oninput=()=>{
+ clearTimeout(overviewSearchTimer);
+ overviewSearchTimer=setTimeout(refreshOverviewFilters,300);
+};
 $('overviewStatus').onchange=refreshOverviewFilters;
 $('overviewSort').onchange=refreshOverviewFilters;
 $('overviewPageSize').onchange=refreshOverviewFilters;
-$('overviewPrevPage').onclick=()=>{state.overviewPage=Math.max(1,state.overviewPage-1);renderOverview()};
-$('overviewNextPage').onclick=()=>{state.overviewPage++;renderOverview()};
+$('overviewPrevPage').onclick=()=>{state.overviewPage=Math.max(1,state.overviewPage-1);loadOverview().catch(e=>notice(e.message))};
+$('overviewNextPage').onclick=()=>{state.overviewPage++;loadOverview().catch(e=>notice(e.message))};
 $('overviewResetFilters').onclick=()=>{
  $('overviewPeriod').value='7days';$('overviewSearch').value='';$('overviewStatus').value='';
  $('overviewSort').value='newest';$('overviewPageSize').value='20';state.overviewPage=1;
@@ -1714,7 +1732,7 @@ function syncPeriodShortcuts(){
 }
 $('overviewPeriod').onchange=async()=>{
  syncPeriodShortcuts();
- if(overviewLoading)await overviewLoading.catch(()=>{});
+ state.overviewPage=1;
  await loadOverview().catch(e=>notice(e.message));
 };
 document.querySelectorAll('[data-qbook-period]').forEach(btn=>{
