@@ -31,7 +31,7 @@ test('Quick period selector reuses existing period API',()=>{
  assert.match(app,/function syncPeriodShortcuts/);
  assert.match(app,/data-qbook-period/);
  assert.match(app,/dispatchEvent\(new Event\('change'\)\)/);
- assert.match(app,/api\/shipping\/overview\?period=/);
+ assert.match(app,/api\/shipping\/overview\?'\+params\.toString\(\)/);
 });
 test('Order detail uses responsive desktop split view, never changes the order status',()=>{
  assert.match(app,/show\('ordersView',true\);show\('saleView',false\);show\('detailView',true\)/);
