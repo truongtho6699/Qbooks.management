@@ -1601,7 +1601,10 @@ async function refreshGoogleSync(){
   const r=await api('GET','/api/sync/status');
   const waiting=r.uploads.filter(u=>!u.drive_file_id).length;
   const last=r.auto?.lastRun;
-  status.textContent='D1: '+r.orders.length+' đơn chờ ghi Sheets · R2: '+waiting+' tệp chưa chuyển Drive · '+
+  const syncBlocked=waiting>0&&(!last||last.status==='DISABLED');
+  status.classList.toggle('qbook-sync-warning',syncBlocked);
+  status.textContent=(syncBlocked?'CẢNH BÁO: '+waiting+' tệp chưa đồng bộ Drive, tác vụ định kỳ chưa hoạt động hoặc đang tắt. Tệp vẫn lưu trên R2; cần quản trị cấu hình Worker và Google Refresh Token. ':'')+
+   'D1: '+r.orders.length+' đơn chờ ghi Sheets · R2: '+waiting+' tệp chưa chuyển Drive · '+
    (r.auto?.moved||0)+' tệp đã xác minh Drive và dọn khỏi R2 · '+(r.auto?.awaitingR2Cleanup||0)+' tệp trên Drive chưa dọn R2. '+
    (last?'Lần chạy tự động gần nhất: '+last.started_at+' ('+last.status+').':
    'Chưa ghi nhận lần chạy tự động; kiểm tra quyền Google ngoại tuyến và trạng thái Worker.');
