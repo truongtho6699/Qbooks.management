@@ -29,7 +29,7 @@ test('Packing and Shipping show selected file previews and release object URLs',
  assert.match(app,/URL\.createObjectURL\(file\)/);
  assert.match(app,/URL\.revokeObjectURL\(url\)/);
  assert.match(app,/\['invoicePics','goodsPics','videos','shippingPics'\]\.forEach\(id=>\$\(id\)\.addEventListener\('change',renderSelectedFiles\)\)/);
- assert.match(app,/renderSelectedFiles\(\);\n \/\/ Desktop follows/);
+ assert.match(app,/renderSelectedFiles\(\);\r?\n \/\/ Desktop follows/);
 });
 test('Media dashboards keep global KPI semantics when filtering by book',()=>{
  assert.match(media,/managementBook:''/);
