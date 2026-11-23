@@ -434,3 +434,5 @@
  #appPage .shipping-order-card .shipping-card-title strong{font-size:14px}
  #appPage .shipping-order-card .shipping-card-details{font-size:13px}
 }
+
+#appPage #syncMessage.qbook-sync-warning{display:block;background:#fff1ec;color:#96382f;border:1px solid #dfaaa1;border-radius:10px;padding:14px 16px;font-size:14px;font-weight:650;line-height:1.55}
