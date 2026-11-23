@@ -37,7 +37,7 @@ test('Overview searches the entire authorized D1 dataset using server page and f
  assert.match(worker,/const counter=await env\.DB\.prepare\('SELECT COUNT\(\*\) AS total FROM orders'/);
  assert.match(worker,/LIMIT \? OFFSET \?/);
  assert.match(worker,/sortSql=\{newest:/);
- assert.match(worker,/pageSize:\$\(\'overviewPageSize\'\)/);
+ assert.match(app,/pageSize:\$\('overviewPageSize'\)\.value/);
  assert.match(app,/const serverPage=!!r\.pagination/);
  assert.match(app,/const matched=serverPage\?Number\(r\.pagination\.total\|\|0\)/);
  assert.match(app,/overviewController\?\.abort\(\)/);
