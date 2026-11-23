@@ -28,11 +28,11 @@ test('server filters by Vietnam creation date with correct inclusive boundaries'
  assert.match(server,/day\+1/);
  assert.match(server,/created_at>=\? AND created_at<\?/);
  assert.match(server,/\.bind\(\.\.\.args\)\.all\(\)/);
- assert.match(server,/return json\(\{orders:\[\.\.\.byId\.values\(\)\],manager:isManager,period,totals/);
+ assert.match(server,/return json\(\{orders:\[\.\.\.byId\.values\(\)\],manager:isManager,period,/);
 });
 test('client uses filtered endpoint and refreshes when filter changes, including when old request pending',()=>{
- assert.match(app,/api\/shipping\/overview\?period=/);
- assert.match(app,/overviewLoading\)await overviewLoading\.catch/);
+ assert.match(app,/api\/shipping\/overview\?'\+params\.toString\(\)/);
+ assert.match(app,/overviewController\?\.abort\(\)/);
  assert.match(app,/overviewPeriod'\)\.selectedOptions\[0\]/);
  assert.match(css,/minmax\(145px,0\.8fr\)/);
 });

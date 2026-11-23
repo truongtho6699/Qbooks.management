@@ -28,11 +28,11 @@ test('multiple images may upload concurrently while video stays sequential',()=>
  assert.match(app,/xhr\.timeout=150000/);
  assert.match(app,/uploadPhotoWithProgress\(id,stage,file,background\)/);
 });
-test('overview GET loads are deduplicated, network calls have bounded waits',()=>{
- assert.match(app,/if\(overviewLoading\)return overviewLoading/);
+test('overview GET loads cancel earlier requests; network calls have bounded waits',()=>{
+ assert.match(app,/overviewController\?\.abort\(\)/);
  assert.match(app,/const timer=setTimeout\(\(\)=>controller\.abort\(\),wait\)/);
- assert.match(app,/const attempts=method==='GET'\?2:1/);
- assert.match(app,/finally\{overviewLoading=null;\}/);
+ assert.match(app,/const attempts=method==='GET'&&!externalSignal\?2:1/);
+ assert.match(app,/if\(serial===overviewSerial\)\{overviewLoading=null;overviewController=null\}/);
 });
 test('video parts upload in parallel with a bounded worker pool',()=>{
  assert.match(app,/const VIDEO_PART_CONCURRENCY=3/);

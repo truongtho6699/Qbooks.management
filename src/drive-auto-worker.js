@@ -84,7 +84,31 @@ export default {
   ctx.waitUntil((async()=>{
    const id=crypto.randomUUID();
    try{
-    if(!configured(env))return;
+    // Expired sessions and order locks can be deleted safely without touching active records.
+    // Cleanup works even while Drive synchronization is disabled, provided DB is bound.
+    if(env.DB){
+     const stamp=Math.floor(Date.now()/1000);
+     try{
+      await env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(stamp).run();
+      await env.DB.prepare('DELETE FROM order_locks WHERE expires_at < ?').bind(stamp).run();
+     }catch(e){console.warn('QBOOKS housekeeping failed: '+safeError(e));}
+    }
+    if(!configured(env)){
+     // Never turn the job on automatically; record why it cannot synchronize.
+     // Only report boolean configuration flags – no token, client secret or sensitive data.
+     const missing=[
+      ...(env.SYNC_ENABLED==='true'?[]:['SYNC_ENABLED']),
+      ...(!env.DB?['DB']:[]),...(!env.MEDIA?['MEDIA']:[]),
+      ...(!env.GOOGLE_CLIENT_ID?['GOOGLE_CLIENT_ID']:[]),
+      ...(!env.GOOGLE_OAUTH_CLIENT_SECRET?['GOOGLE_OAUTH_CLIENT_SECRET']:[]),
+      ...(!env.GOOGLE_REFRESH_TOKEN?['GOOGLE_REFRESH_TOKEN']:[])
+     ];
+     console.warn('QBOOKS Drive sync DISABLED; missing: '+missing.join(', '));
+     if(env.DB)await env.DB.prepare(
+      "INSERT INTO drive_sync_runs(id,started_at,finished_at,status,processed_files,completed_files,failed_files,notes) VALUES(?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,'DISABLED',0,0,0,?)"
+     ).bind(id,missing.join(', ').slice(0,900)).run().catch(()=>{});
+     return;
+    }
     const result=await syncBatch(env);
     if(!result.processed)return;
     await env.DB.prepare(

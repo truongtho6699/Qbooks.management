@@ -124,7 +124,7 @@ async function handle(req,env){
   if(input.setupKey!==env.SETUP_KEY)throw Object.assign(new Error('Mã thiết lập không hợp lệ.'),{status:403});
   const count=await env.DB.prepare('SELECT COUNT(*) n FROM users').first();
   if(count.n)throw Object.assign(new Error('Hệ thống đã có quản trị; không cho thiết lập lại.'),{status:409});
-  if(!/^\d{3,12}$/.test(String(input.pin||'')))throw Error('PIN quản trị cần 3–12 chữ số.');
+  if(!/^\d{6,12}$/.test(String(input.pin||'')))throw Error('PIN quản trị cần tối thiểu 6 và tối đa 12 chữ số.');
   const salt=uid(),id=uid();
   await env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?)')
    .bind(id,clean(input.email).toLowerCase(),clean(input.name)||'Admin','ADMIN',salt,await hashPin(input.pin,salt),1,1,1).run();
@@ -464,7 +464,7 @@ async function handle(req,env){
   if(user.id===id&&(!active||!admin||isView))throw Error('Không thể tự vô hiệu hóa hoặc bỏ quyền quản trị của chính mình.');
   const name=clean(b.name),pin=String(b.pin||'').trim();
   if(!name)throw Error('Tên nhân sự không được trống.');
-  if(pin&&!/^\d{3,8}$/.test(pin))throw Error('PIN mới phải có 3–8 chữ số.');
+  if(pin&&!/^\d{6,8}$/.test(pin))throw Error('PIN mới phải có 6–8 chữ số.');
   const baseRole=isView?'SALE':role;
   const statements=[];
   if(pin){
@@ -485,7 +485,7 @@ async function handle(req,env){
   needRole(user,'ADMIN');const b=await requestJSON(req);
   const role=clean(b.role||'VIEW');
   if(!['VIEW','ADMIN','SALE','PACKER','SHIPPER'].includes(role))throw Error('Vai trò không hợp lệ.');
-  if(!/^\d{3,8}$/.test(String(b.pin??'').trim()))throw Error('Nhân sự mới cần mã PIN gồm 3–8 chữ số (0–9).');
+  if(!/^\d{6,8}$/.test(String(b.pin??'').trim()))throw Error('Nhân sự mới cần mã PIN gồm 6–8 chữ số (0–9).');
   const pin=String(b.pin??'').trim();const salt=uid(),id=uid(),isView=role==='VIEW';
   const queries=[env.DB.prepare('INSERT INTO users(id,email,name,role,pin_salt,pin_hash,can_pack,can_ship,can_admin) VALUES(?,?,?,?,?,?,?,?,?)')
    .bind(id,clean(b.email).toLowerCase(),clean(b.name),isView?'SALE':role,salt,await hashPin(pin,salt),
@@ -518,8 +518,32 @@ async function handle(req,env){
   }
   if(from){conditions.push('created_at>=? AND created_at<?');args.push(from,through);}
   const where=conditions.length?' WHERE '+conditions.join(' AND '):'';
-  const data=await env.DB.prepare('SELECT id,created_by,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').bind(...args).all();
-  const orders=data.results||[];
+  const paginated=url.searchParams.has('page');
+  // Legacy callers keep their original 300-row response. New clients explicitly request
+  // server-side search, sorting, filtered counts, and pagination over the FULL D1 dataset.
+  let page=1,pageSize=20,matchingTotal=null,orders;
+  if(paginated){
+   page=Math.max(1,Math.min(100000,Number.parseInt(url.searchParams.get('page')||'1',10)||1));
+   pageSize=[20,50,100].includes(Number(url.searchParams.get('pageSize')))?Number(url.searchParams.get('pageSize')):20;
+   const q=clean(url.searchParams.get('q')).slice(0,120),status=clean(url.searchParams.get('status')).slice(0,50);
+   if(status&&!['CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH'].includes(status))
+    throw Error('Bộ lọc trạng thái không hợp lệ.');
+   const filterConditions=[...conditions],filterArgs=[...args];
+   if(status){filterConditions.push('status=?');filterArgs.push(status);}
+   if(q){filterConditions.push('(invoice_codes LIKE ? OR customer LIKE ? OR sale_name LIKE ?)');filterArgs.push(...Array(3).fill('%'+q+'%'));}
+   const filteredWhere=filterConditions.length?' WHERE '+filterConditions.join(' AND '):'';
+   const sort=clean(url.searchParams.get('sort')||'newest');
+   const sortSql={newest:'created_at DESC,id DESC',oldest:'created_at ASC,id ASC',urgent:'urgent DESC,created_at DESC,id DESC',invoice:'invoice_codes COLLATE NOCASE ASC,id ASC'}[sort];
+   if(!sortSql)throw Error('Kiểu sắp xếp không hợp lệ.');
+   const counter=await env.DB.prepare('SELECT COUNT(*) AS total FROM orders'+filteredWhere).bind(...filterArgs).first();
+   matchingTotal=Number(counter?.total||0);
+   const result=await env.DB.prepare('SELECT id,created_by,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+filteredWhere+' ORDER BY '+sortSql+' LIMIT ? OFFSET ?').bind(...filterArgs,pageSize,(page-1)*pageSize).all();
+   orders=result.results||[];
+  }else{
+   const result=await env.DB.prepare('SELECT id,created_by,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').bind(...args).all();
+   orders=result.results||[];
+  }
+  const summary=paginated?await env.DB.prepare("SELECT COUNT(*) AS total,SUM(CASE WHEN status='CHỜ ĐÓNG HÀNG' THEN 1 ELSE 0 END) AS waitingPacking,SUM(CASE WHEN status='CHỜ VẬN ĐƠN' THEN 1 ELSE 0 END) AS waitingShipping,SUM(CASE WHEN status='ĐANG GIAO' THEN 1 ELSE 0 END) AS moving,SUM(CASE WHEN status='HOÀN THÀNH' THEN 1 ELSE 0 END) AS completed FROM orders"+where).bind(...args).first():null;
   const byId=new Map(orders.map(o=>[o.id,{...o,media:[]}]));
   if(orders.length){
    const ids=orders.map(o=>o.id);
@@ -529,12 +553,14 @@ async function handle(req,env){
     for(const media of files.results||[])byId.get(media.order_id)?.media.push(media);
    }
   }
-  return json({orders:[...byId.values()],manager:isManager,period,totals:{
-    total:orders.length,
-    waitingPacking:orders.filter(o=>o.status==='CHỜ ĐÓNG HÀNG').length,
-    waitingShipping:orders.filter(o=>o.status==='CHỜ VẬN ĐƠN').length,
-    moving:orders.filter(o=>o.status==='ĐANG GIAO').length,
-    completed:orders.filter(o=>o.status==='HOÀN THÀNH').length
+  return json({orders:[...byId.values()],manager:isManager,period,
+   ...(paginated?{pagination:{page,pageSize,total:matchingTotal,pages:Math.max(1,Math.ceil(matchingTotal/pageSize))}}:{}),
+   totals:{
+    total:summary?Number(summary.total||0):orders.length,
+    waitingPacking:summary?Number(summary.waitingPacking||0):orders.filter(o=>o.status==='CHỜ ĐÓNG HÀNG').length,
+    waitingShipping:summary?Number(summary.waitingShipping||0):orders.filter(o=>o.status==='CHỜ VẬN ĐƠN').length,
+    moving:summary?Number(summary.moving||0):orders.filter(o=>o.status==='ĐANG GIAO').length,
+    completed:summary?Number(summary.completed||0):orders.filter(o=>o.status==='HOÀN THÀNH').length
   }});
  }
  if(method==='GET'&&path==='/api/orders'){

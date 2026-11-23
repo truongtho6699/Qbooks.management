@@ -10,7 +10,7 @@ test('overview sorts and paginates only authorized fetched orders without changi
  assert.match(app,/state\.overviewPage=Math\.max\(1,Math\.min\(pages,state\.overviewPage\|\|1\)\)/);
  assert.match(app,/overviewResetFilters'\)\.onclick/);
  assert.match(app,/overviewPeriod'\)\.value='7days'/);
- assert.match(app,/dữ liệu API tối đa 300 đơn mới nhất/);
+ assert.match(app,/Đã tìm kiếm và phân trang trên toàn bộ dữ liệu/);
  assert.match(html,/<option value="7days" selected>/);
 });
 test('Sale provides explicit customer fill, non-authoritative duplicate warning, keeps server validation',()=>{

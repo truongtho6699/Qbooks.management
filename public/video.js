@@ -567,10 +567,10 @@ function askGoogleDriveToken(continueWith,onFailure=()=>{}){
  if(!state.googleClientId)throw Error('Google Client ID chưa sẵn sàng; tải lại trang.');
  const client=window.google.accounts.oauth2.initTokenClient({
   client_id:state.googleClientId,scope:'https://www.googleapis.com/auth/drive',
-  callback:r=>{if(r.error||!r.access_token){onFailure();return toast('Google chưa cấp quyền Drive: '+(r.error||'Đã hủy'));}continueWith(r.access_token).catch(e=>{onFailure();toast(e.message)});},
+  callback:r=>{if(r.error||!r.access_token){onFailure();return toast('Google chưa cấp quyền Drive: '+(r.error||'Đã hủy'));}sessionStorage.setItem('qbooks_media_drive_granted','true');continueWith(r.access_token).catch(e=>{onFailure();toast(e.message)});},
   error_callback:r=>{onFailure();toast('Không thể mở Google: '+(r.type||'Lỗi trình duyệt'));}
  });
- client.requestAccessToken({prompt:'consent'});
+ client.requestAccessToken({prompt:sessionStorage.getItem('qbooks_media_drive_granted')==='true'?'':'consent'});
 }
 function googleFolderId(bookId){
  const b=state.books.find(x=>x.id===bookId);
