@@ -1,0 +1,8 @@
+# QBOOK Pages security headers. Avoid restrictive script/connect CSP until Google OAuth and Drive upload are browser-tested.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), camera=(self), microphone=(self)
+  Content-Security-Policy: frame-ancestors 'none'; object-src 'none'; base-uri 'self'
+  Cache-Control: no-cache, must-revalidate
