@@ -48,3 +48,12 @@ test('admin screens have search, filters, log paging and sync retry controls',()
   assert.match(html,new RegExp('id="'+id+'"'),id);
  assert.match(html,/<details class="panel" data-admin-section="sync"><summary>/);
 });
+
+test('reports show D1 UTC times in Vietnam time and the staff list scrolls in place',()=>{
+ const c={};vm.createContext(c);
+ vm.runInContext(app.slice(app.indexOf('function vnTime('),app.indexOf('async function loadAdminReport('))+';this.vnTime=vnTime;',c);
+ assert.match(c.vnTime('2026-11-24 06:04:47'),/13:04:47/);
+ assert.equal(c.vnTime('không phải ngày'),'không phải ngày');
+ const css=readFileSync(new URL('../public/style.css',import.meta.url),'utf8');
+ assert.match(css,/#staffList\.staff-list\{max-height:min\(55vh,520px\);overflow:auto/);
+});
