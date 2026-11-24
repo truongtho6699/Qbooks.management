@@ -186,8 +186,11 @@ function selectStaff(person){
  markDraftSaved(form);
  $('saveStaffBtn').textContent='LƯU THAY ĐỔI NHÂN SỰ';
  renderStaffList();
- if(state.adminPanel==='permissions')loadStaffMenuPermissions(person.id,person.name,person.role).catch(e=>notice('Không đọc được phân quyền: '+e.message));
- (state.adminPanel==='permissions'?$('menuPermissionsPanel'):form).scrollIntoView({behavior:'smooth',block:'center'});
+ if(state.adminPanel==='permissions'){
+  loadStaffMenuPermissions(person.id,person.name,person.role)
+   .then(()=>$('menuPermissionsPanel').scrollIntoView({behavior:'smooth',block:'start'}))
+   .catch(e=>notice('Không đọc được phân quyền: '+e.message));
+ }else form.scrollIntoView({behavior:'smooth',block:'start'});
 }
 function renderStaffList(){
  const list=$('staffList'),people=state.staffUsers||[];
@@ -252,6 +255,12 @@ async function saveStaffMenuPermissions(){
   await loadStaffMenuPermissions(edit.id,edit.name,edit.role);
  }catch(e){notice('Không lưu được phân quyền: '+e.message);}
 }
+// D1 stores UTC ("YYYY-MM-DD HH:MM:SS"); show it in Vietnam time.
+function vnTime(value){
+ if(!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(value||''))return value;
+ const d=new Date(String(value).replace(' ','T')+(/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)?'':'Z'));
+ return Number.isNaN(d.getTime())?value:d.toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour12:false});
+}
 async function loadAdminReport(kind,page=1){
  const wrap=$('adminReport');wrap.replaceChildren(el('p','Đang tải '+kind+'...'));
  state.adminReportKind=kind;
@@ -269,8 +278,16 @@ async function loadAdminReport(kind,page=1){
   const header=document.createElement('tr');
   for(const name of report.headers||[])header.append(el('th',name));
   table.append(header);
+  const headers=report.headers||[];
   for(const record of report.rows||[]){
-   const tr=document.createElement('tr');for(const value of record)tr.append(el('td',String(value??'')));
+   const tr=document.createElement('tr');
+   record.forEach((value,i)=>{
+    const name=headers[i];let text=String(value??'');
+    if(name==='THOI_GIAN'||name==='CAP_NHAT')text=vnTime(text);
+    const td=el('td',name==='CHI_TIET'&&text.length>220?text.slice(0,220)+'…':text,name==='CHI_TIET'?'log-details':null);
+    if(name==='CHI_TIET'&&text.length>220)td.title=text;
+    tr.append(td);
+   });
    table.append(tr);
   }
   wrap.replaceChildren(table);
