@@ -149,6 +149,7 @@ async function initGoogleSignIn(){
 function resetStaffEdit(){
  state.editStaffId=null;state.menuEditor=null;
  show('menuPermissionsPanel',false);
+ if($('staffUnlockRow'))$('staffUnlockRow').hidden=true;
  $('staffForm').reset();
  $('staffForm').elements.email.readOnly=false;
  $('staffForm').elements.role.disabled=false;
@@ -157,32 +158,69 @@ function resetStaffEdit(){
  $('staffForm').elements.role.onchange?.();
  markDraftSaved($('staffForm'));
 }
-async function loadStaffUsers(){
- if(!capabilities().admin)return;
- const r=await api('GET','/api/users'),list=$('staffList');
+// ---- Tài khoản và nhân sự / Phân quyền: searchable list with clear status badges ----
+function staffRoles(person){
+ if(person.role==='VIEW')return ['Chỉ xem'];
+ return [person.can_admin?'Quản trị':'',person.can_pack?'Đóng hàng':'',person.can_ship?'Vận đơn':'',person.role==='SALE'?'Sale':''].filter(Boolean);
+}
+function staffMatches(person,q,filter){
+ if(q&&!(person.name+' '+person.email).toLowerCase().includes(q))return false;
+ return filter==='all'||(filter==='active'&&person.active)||(filter==='inactive'&&!person.active)||(filter==='locked'&&person.locked_until>0)
+  ||(filter==='admin'&&person.can_admin)||(filter==='VIEW'&&person.role==='VIEW')||(filter==='pack'&&person.can_pack)||(filter==='ship'&&person.can_ship);
+}
+function lastLoginText(value){
+ if(!value)return 'Chưa ghi nhận đăng nhập';
+ const d=new Date(String(value).replace(' ','T')+'Z');
+ return Number.isNaN(d.getTime())?'Đăng nhập: '+value:'Đăng nhập gần nhất: '+d.toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour12:false});
+}
+function selectStaff(person){
+ state.editStaffId=person.id;
+ const form=$('staffForm');
+ form.elements.name.value=person.name;form.elements.email.value=person.email;
+ form.elements.email.readOnly=true;form.elements.role.value=person.role;
+ form.elements.role.disabled=false;form.elements.pin.value='';
+ form.elements.dongHang.checked=!!person.can_pack;form.elements.vanDon.checked=!!person.can_ship;
+ form.elements.admin.checked=!!person.can_admin;form.elements.active.checked=!!person.active;
+ form.elements.unlock.checked=false;$('staffUnlockRow').hidden=!(person.locked_until>0);
+ form.elements.role.onchange();
+ markDraftSaved(form);
+ $('saveStaffBtn').textContent='LƯU THAY ĐỔI NHÂN SỰ';
+ renderStaffList();
+ if(state.adminPanel==='permissions')loadStaffMenuPermissions(person.id,person.name,person.role).catch(e=>notice('Không đọc được phân quyền: '+e.message));
+ (state.adminPanel==='permissions'?$('menuPermissionsPanel'):form).scrollIntoView({behavior:'smooth',block:'center'});
+}
+function renderStaffList(){
+ const list=$('staffList'),people=state.staffUsers||[];
+ const q=($('staffSearch')?.value||'').trim().toLowerCase(),filter=$('staffFilter')?.value||'all';
+ const shown=people.filter(p=>staffMatches(p,q,filter));
  list.replaceChildren();
- for(const person of r.users||[]){
-  const row=button(person.name+' · '+person.email+' · '+(person.active?'HOẠT ĐỘNG':'NGỪNG')+' · '+(person.role==='VIEW'?'VIEW · Chỉ xem':[person.can_pack?'Đóng hàng':'',person.can_ship?'Vận đơn':'',person.can_admin?'Admin':''].filter(Boolean).join('/')),()=>{
-   state.editStaffId=person.id;
-   const form=$('staffForm');
-   form.elements.name.value=person.name;form.elements.email.value=person.email;
-   form.elements.email.readOnly=true;form.elements.role.value=person.role;
-   form.elements.role.disabled=false;form.elements.pin.value='';
-   form.elements.dongHang.checked=!!person.can_pack;form.elements.vanDon.checked=!!person.can_ship;
-   form.elements.admin.checked=!!person.can_admin;form.elements.active.checked=!!person.active;
-   form.elements.role.onchange();
-   markDraftSaved(form);
-   $('saveStaffBtn').textContent='LƯU THAY ĐỔI NHÂN SỰ';
-   if(state.adminPanel==='permissions')loadStaffMenuPermissions(person.id,person.name,person.role).catch(e=>notice('Không đọc được phân quyền: '+e.message));
-   (state.adminPanel==='permissions'?$('menuPermissionsPanel'):form).scrollIntoView({behavior:'smooth',block:'center'});
-  },'order');
+ const active=people.filter(p=>p.active).length,admins=people.filter(p=>p.active&&p.can_admin).length,locked=people.filter(p=>p.locked_until>0).length;
+ $('staffCount').textContent='Hiển thị '+shown.length+'/'+people.length+' · '+active+' hoạt động · '+admins+' quản trị'+(locked?' · '+locked+' tạm khóa':'');
+ if(!shown.length)return list.append(el('p','Không có nhân sự phù hợp.'));
+ for(const person of shown){
+  const row=button('',()=>selectStaff(person),'order staff-row'+(state.editStaffId===person.id?' selected':''));
+  const main=el('span',null,'staff-main');
+  main.append(el('strong',person.name),meta(person.email),meta(lastLoginText(person.last_login)));
+  const badges=el('span',null,'staff-badges');
+  badges.append(el('span',person.active?'Hoạt động':'Ngừng','staff-badge '+(person.active?'ok':'off')));
+  if(person.locked_until>0)badges.append(el('span','Tạm khóa sai PIN','staff-badge warn'));
+  for(const r of staffRoles(person))badges.append(el('span',r,'staff-badge'+(r==='Quản trị'?' admin':'')));
+  if(person.google_linked)badges.append(el('span','Google','staff-badge'));
+  row.append(main,badges);
+  row.setAttribute('aria-label',person.name+', '+person.email);
   list.append(row);
  }
+}
+async function loadStaffUsers(){
+ if(!capabilities().admin)return;
+ const r=await api('GET','/api/users');
+ state.staffUsers=r.users||[];
+ renderStaffList();
 }
 async function loadStaffMenuPermissions(id,name,role){
  if(!capabilities().admin)return;
  const details=await api('GET','/api/users/'+id+'/menus');
- state.menuEditor={id,role,keys:details.keys};
+ state.menuEditor={id,name,role,keys:details.keys};
  const grid=$('menuPermissionsGrid');grid.replaceChildren();
  $('menuPermissionsUser').textContent='Nhân sự: '+name+' · Vai trò: '+role;
  const sections=[['Quản lý giao hàng',details.keys.filter(k=>k.startsWith('orders.'))],['Quản lý Media',details.keys.filter(k=>k.startsWith('media.'))],['Quản trị hệ thống',details.keys.filter(k=>k.startsWith('system.'))]];
@@ -211,13 +249,22 @@ async function saveStaffMenuPermissions(){
  try{
   await api('PUT','/api/users/'+edit.id+'/menus',{permissions,video});
   notice('Đã lưu phân quyền theo từng menu.',true);
-  await loadStaffMenuPermissions(edit.id,$('menuPermissionsUser').textContent,edit.role);
+  await loadStaffMenuPermissions(edit.id,edit.name,edit.role);
  }catch(e){notice('Không lưu được phân quyền: '+e.message);}
 }
-async function loadAdminReport(kind){
+async function loadAdminReport(kind,page=1){
  const wrap=$('adminReport');wrap.replaceChildren(el('p','Đang tải '+kind+'...'));
+ state.adminReportKind=kind;
+ const isLog=kind==='LOG';$('logToolbar').hidden=!isLog;
+ for(const b of document.querySelectorAll('.admin-report'))b.setAttribute('aria-pressed',String(b.dataset.kind===kind));
  try{
-  const report=await api('GET','/api/admin/data?kind='+encodeURIComponent(kind));
+  const extra=isLog?'&page='+page+'&q='+encodeURIComponent($('logSearch').value.trim())+($('logShowLogins').checked?'&logins=1':''):'';
+  const report=await api('GET','/api/admin/data?kind='+encodeURIComponent(kind)+extra);
+  if(isLog){
+   state.logPage=report.page||1;
+   $('logPage').textContent='Trang '+(report.page||1)+'/'+(report.pages||1)+' · '+(report.total??report.rows?.length??0)+' dòng';
+   $('logPrev').disabled=(report.page||1)<=1;$('logNext').disabled=(report.page||1)>=(report.pages||1);
+  }
   const table=document.createElement('table');table.className='admin-table';
   const header=document.createElement('tr');
   for(const name of report.headers||[])header.append(el('th',name));
@@ -236,19 +283,21 @@ async function loadPendingGoogle(){
   const res=await api('GET','/api/google/pending');
   container.replaceChildren();
   if(!res.registrations.length)return container.append(el('p','Không có đăng ký Google chờ duyệt.'));
+  container.append(el('p',res.registrations.length+' đăng ký đang chờ duyệt.','hint'));
   for(const person of res.registrations){
    const row=el('div',null,'order google-pending');
    const info=el('div');
    info.append(el('strong',person.name),meta(person.email),meta(person.existing_user?'Đã có nhân sự: chỉ liên kết Google, giữ nguyên quyền.':'Đăng ký mới: cần chọn vai trò.'),meta('Đăng ký: '+person.requested_at));
    const controls=el('div',null,'google-actions');
    const select=document.createElement('select');
-   [['PACKER','Đóng hàng'],['SHIPPER','Vận đơn'],['SALE','Sale']].forEach(([value,title])=>{
+   [['VIEW','Chỉ xem (mặc định)'],['PACKER','Đóng hàng'],['SHIPPER','Vận đơn'],['SALE','Sale']].forEach(([value,title])=>{
     const opt=document.createElement('option');opt.value=value;opt.textContent=title;select.append(opt);
    });
    if(person.existing_user){select.disabled=true;select.title='Tài khoản đã có, sẽ giữ nguyên vai trò.';}
    const approve=button(person.existing_user?'Liên kết Google':'Duyệt',async()=>{
     approve.disabled=true;
     try{
+     if(!person.existing_user&&select.value!=='VIEW'&&!confirm('Cấp quyền '+select.selectedOptions[0].textContent+' cho '+person.email+'?')){approve.disabled=false;return;}
      await api('POST','/api/google/approve',{sub:person.google_sub,role:select.value});
      notice('Đã duyệt tài khoản '+person.email+'.',true);
      await loadPendingGoogle();
@@ -256,6 +305,7 @@ async function loadPendingGoogle(){
    },'primary');
    const reject=button('Từ chối',async()=>{
     reject.disabled=true;
+    if(!confirm('Từ chối đăng ký của '+person.email+'?')){reject.disabled=false;return;}
     try{await api('POST','/api/google/reject',{sub:person.google_sub});notice('Đã từ chối yêu cầu '+person.email+'.',true);await loadPendingGoogle();}
     catch(e){notice(e.message);}finally{reject.disabled=false;}
    },'secondary');
@@ -1633,7 +1683,7 @@ $('saleForm').addEventListener('submit',async e=>{
 });
 $('saveMenuPermissions').onclick=saveStaffMenuPermissions;
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
-$('staffForm').addEventListener('submit',async e=>{e.preventDefault();const f=e.target;const data=Object.fromEntries(new FormData(f));const pinInput=f.querySelector('input[name="pin"]');data.pin=String(pinInput?.value??data.pin??'').trim();data.dongHang=f.elements.dongHang.checked;data.vanDon=f.elements.vanDon.checked;data.admin=f.elements.admin.checked;data.active=f.elements.active.checked;if((!state.editStaffId||data.pin)&&!/^\d{6,8}$/.test(data.pin))return showFieldError(f,'pin','Mã PIN mới phải gồm 6–8 chữ số từ 0 đến 9.');if(data.role==='VIEW'){data.dongHang=false;data.vanDon=false;data.admin=false;}try{const r=state.editStaffId?await api('PATCH','/api/users/'+state.editStaffId,data):await api('POST','/api/users',data);notice('Đã lưu nhân sự '+r.id,true);const savedId=r.id;const savedName=data.name;const savedRole=data.role;resetStaffEdit();await loadStaffUsers();await loadAdminReport('STAFF');await loadStaffMenuPermissions(savedId,savedName,savedRole);}catch(err){notice(err.message);showFormError(f,err.message)}});
+$('staffForm').addEventListener('submit',async e=>{e.preventDefault();const f=e.target;const data=Object.fromEntries(new FormData(f));const pinInput=f.querySelector('input[name="pin"]');data.pin=String(pinInput?.value??data.pin??'').trim();data.dongHang=f.elements.dongHang.checked;data.vanDon=f.elements.vanDon.checked;data.admin=f.elements.admin.checked;data.active=f.elements.active.checked;data.unlock=!!f.elements.unlock?.checked;if((!state.editStaffId||data.pin)&&!/^\d{6,8}$/.test(data.pin))return showFieldError(f,'pin','Mã PIN mới phải gồm 6–8 chữ số từ 0 đến 9.');if(data.role==='VIEW'){data.dongHang=false;data.vanDon=false;data.admin=false;}try{const r=state.editStaffId?await api('PATCH','/api/users/'+state.editStaffId,data):await api('POST','/api/users',data);notice('Đã lưu nhân sự '+data.name+(r.sessionsRevoked?' · đã đăng xuất người này trên mọi thiết bị':''),true);const savedId=r.id;const savedName=data.name;const savedRole=data.role;resetStaffEdit();await loadStaffUsers();await loadStaffMenuPermissions(savedId,savedName,savedRole);}catch(err){notice(err.message);showFormError(f,err.message)}});
 const SHEET_ID='1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw';
 async function googleRead(url,token){
  const res=await fetch(url,{headers:{Authorization:'Bearer '+token},cache:'no-store'});
@@ -1743,15 +1793,26 @@ async function refreshGoogleSync(){
    (last?'Lần chạy tự động gần nhất: '+last.started_at+' ('+last.status+').':
    'Chưa ghi nhận lần chạy tự động; kiểm tra quyền Google ngoại tuyến và trạng thái Worker.');
 
+  const pendingFiles=r.uploads.filter(u=>!u.drive_file_id),errored=pendingFiles.filter(u=>u.auto_error);
+  const summary=$('syncSummary');summary.replaceChildren();
+  for(const [label,value,bad] of [['Chờ lên Drive',pendingFiles.length,false],['Đang lỗi (tự thử lại)',errored.length,errored.length>0],['Đã lên Drive',r.uploads.length-pendingFiles.length,false],['Đơn chờ ghi DATA_TONG',r.orders.length,false]]){
+   const box=el('div',null,bad?'bad':'');box.append(el('strong',String(value)),el('span',label));summary.append(box);
+  }
+  $('syncRetryAll').disabled=!errored.length;
   const media=$('syncUploads');media.replaceChildren();
-  if(!r.uploads.length)media.append(el('p','Không có ảnh/video mới cần kiểm tra.'));
-  for(const file of r.uploads){
+  const visible=$('syncShowDone').checked?r.uploads:pendingFiles;
+  if(!visible.length)media.append(el('p',r.uploads.length?'Tất cả tệp gần đây đã lên Google Drive.':'Không có ảnh/video mới cần kiểm tra.'));
+  for(const file of visible){
    const div=el('div',null,'order');
    const label=el('div',(file.order_id+' · '+file.stage+' · '+file.filename+' · '+(file.bytes/1048576).toFixed(1)+' MB'));
    const span=el('span',file.r2_deleted_at?'Đã chuyển Drive · Đã dọn R2':file.r2_delete_error?'Lỗi dọn R2 – vẫn giữ bản gốc':file.drive_file_id?'Đã có trên Drive · Chờ xác minh/dọn R2':file.auto_error?'Lỗi tạm thời – sẽ thử lại':(file.drive_offset?'Đã chuyển '+Math.floor(100*file.drive_offset/file.bytes)+'%':'Đang chờ đồng bộ'),'tag');
    if(file.auto_error||file.r2_delete_error)span.title=file.auto_error||file.r2_delete_error;
    div.append(label,span);
-   if(!file.drive_file_id){
+   if(!file.drive_file_id&&file.auto_error){
+    const retry=button('Thử lại ngay',async()=>{retry.disabled=true;try{await api('POST','/api/sync/retry',{uploadId:file.id});notice('Đã xếp lại tệp, Worker sẽ thử trong khoảng 1 phút.',true);}catch(e){notice(e.message);}finally{retry.disabled=false;}},'secondary');
+    div.append(retry);
+   }
+   if(!file.drive_file_id&&syncBlocked){ // Worker off: manual transfer with the admin's Google consent
     const btn=button(file.drive_offset?'Tiếp tục chuyển':'Chuyển sang Drive',()=>mirrorGoogleFile(file.id,btn),'secondary');
     div.append(btn);
    }
@@ -1845,6 +1906,19 @@ $('staffForm').elements.role.onchange=()=>{
 $('cancelStaffEdit').onclick=resetStaffEdit;
 $all('.admin-report').forEach(btn=>btn.onclick=()=>loadAdminReport(btn.dataset.kind));
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
+$('staffSearch').addEventListener('input',renderStaffList);
+$('staffFilter').addEventListener('change',renderStaffList);
+let logSearchTimer=null;
+$('logSearch').addEventListener('input',()=>{clearTimeout(logSearchTimer);logSearchTimer=setTimeout(()=>loadAdminReport('LOG',1),350);});
+$('logShowLogins').addEventListener('change',()=>loadAdminReport('LOG',1));
+$('logPrev').onclick=()=>loadAdminReport('LOG',Math.max(1,(state.logPage||1)-1));
+$('logNext').onclick=()=>loadAdminReport('LOG',(state.logPage||1)+1);
+$('syncShowDone').addEventListener('change',()=>refreshGoogleSync());
+$('syncRetryAll').onclick=async()=>{
+ $('syncRetryAll').disabled=true;
+ try{const r=await api('POST','/api/sync/retry',{});notice('Đã xếp lại '+r.files+' tệp lỗi; Worker sẽ thử trong khoảng 1 phút.',true);await refreshGoogleSync();}
+ catch(e){notice(e.message);$('syncRetryAll').disabled=false;}
+};
 $('overviewRefresh').onclick=()=>loadOverview().catch(e=>notice(e.message));
 let overviewSearchTimer=null;
 const refreshOverviewFilters=()=>{state.overviewPage=1;loadOverview().catch(e=>notice(e.message));};
