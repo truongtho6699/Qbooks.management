@@ -150,11 +150,11 @@
 <div class="span-all"><button id="submitEditOrder" type="submit" class="primary">Lưu thay đổi</button></div>
 </form></dialog>
 <div id="backgroundUploadBar" class="qbook-background-upload" role="status" aria-live="polite" hidden>
-<strong id="backgroundUploadTitle">Đang tải video nền…</strong>
+<div class="qbook-bg-head"><strong id="backgroundUploadTitle">Đang tải video nền…</strong><span id="backgroundUploadPercent" class="qbook-bg-percent"></span><button type="button" id="backgroundUploadClose" class="qbook-mini-close" aria-label="Ẩn thông báo tải nền" hidden>✕</button></div>
 <progress id="backgroundUploadProgress" max="100" value="0"></progress>
 <small id="backgroundUploadDetail">Vẫn tiếp tục khi chuyển menu trong Qbooks. Không đóng tab.</small>
 </div>
-<section id="qbookUploadActivity" class="qbook-upload-activity" aria-label="Tình trạng tệp đang tải" hidden><div class="qbook-upload-head"><strong>Hàng đợi tải tệp</strong><button type="button" id="qbookUploadCollapse" aria-expanded="true">Thu gọn</button></div><p id="qbookUploadSummary" class="hint">Chưa có tệp được tải trong phiên này.</p><div id="qbookUploadItems" class="qbook-upload-items"></div><p class="hint">Đã lưu trên máy chủ chưa đồng nghĩa đã có trên Google Drive. Kiểm tra trạng thái Drive trong Tổng hợp.</p></section>
+<section id="qbookUploadActivity" class="qbook-upload-activity" aria-label="Tình trạng tệp đang tải" hidden><div class="qbook-upload-head"><strong>Hàng đợi tải tệp</strong><span class="qbook-upload-head-actions"><button type="button" id="qbookUploadCollapse" aria-expanded="true">Thu gọn</button><button type="button" id="qbookUploadClose" class="qbook-mini-close" aria-label="Ẩn hàng đợi tải tệp">✕</button></span></div><p id="qbookUploadSummary" class="hint">Chưa có tệp được tải trong phiên này.</p><div id="qbookUploadItems" class="qbook-upload-items"></div><p class="hint qbook-upload-note">Đã lưu trên máy chủ chưa đồng nghĩa đã có trên Google Drive. Kiểm tra trạng thái Drive trong Tổng hợp.</p></section>
 <dialog id="orderSummaryDialog" class="order-summary-dialog" aria-labelledby="orderSummaryTitle">
  <div class="summary-header"><h2 id="orderSummaryTitle">Chi tiết đơn</h2><div class="overview-card-actions"><button type="button" id="editFromOrderDetail" class="primary" hidden>Sửa đơn</button><button type="button" id="closeOrderSummary" class="secondary" aria-label="Đóng">Đóng ✕</button></div></div>
  <div id="orderSummaryInfo"></div>
