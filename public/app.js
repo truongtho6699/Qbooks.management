@@ -88,6 +88,8 @@ function orderCardContents(order){
  const invoices=String(order.invoice_codes||'').trim();
  info.textContent=[time,invoices,order.customer,order.address].filter(Boolean).join(' · ');
  fragment.append(titleRow,info);
+ if(order.status==='CHỜ ĐÓNG HÀNG'&&order.repack_stages&&order.repack_stages!=='[]')
+  fragment.append(el('span','↺ ĐÓNG LẠI · '+(order.repack_reason||''),'qbook-repack-tag'));
  return fragment;
 }
 function makeCard(order,fn){
@@ -905,6 +907,31 @@ function overviewMediaLinks(container,order){
  if(folder){const link=el('a','Thư mục chứa','overview-link');link.href=folder;link.target='_blank';link.rel='noopener noreferrer';container.append(link);}
  if(!container.children.length)container.append(el('span','Chưa có hồ sơ','muted'));
 }
+function canRequestRepack(order){
+ if(!state.user||state.user.role==='VIEW'||!order||order.status!=='CHỜ VẬN ĐƠN')return false;
+ const r=capabilities();
+ return r.admin||r.pack||(state.user.role==='SALE'&&(order.created_by===state.user.id||order.sale_name===state.user.name));
+}
+function openRepackRequest(order){
+ const form=el('div',null,'qbook-repack-form');
+ const checks=Object.entries(REPACK_LABELS).map(([stage,label])=>{const l=el('label',null,'check'),c=document.createElement('input');c.type='checkbox';c.value=stage;c.checked=stage==='VIDEO_DONG_HANG';l.append(c,el('span',label));form.append(l);return c;});
+ const reason=document.createElement('textarea');reason.placeholder='VD: Đóng thiếu 2 quyển Toán 3, kho kiểm lại và quay video mới';reason.maxLength=500;reason.setAttribute('aria-label','Lý do đóng lại');
+ const reasonLabel=el('label');reasonLabel.append(el('span','Lý do (kho sẽ thấy khi mở đơn)'),reason);form.append(reasonLabel);
+ const send=button('Gửi yêu cầu đóng lại',async()=>{
+  const stages=checks.filter(c=>c.checked).map(c=>c.value);
+  if(!stages.length)return notice('Chọn ít nhất một phần cần làm lại.');
+  if(reason.value.trim().length<3){reason.focus();return notice('Nhập lý do đóng lại.');}
+  send.disabled=true;
+  try{
+   const r=await api('POST','/api/orders/'+order.id+'/repack',{stages,reason:reason.value.trim()});
+   notice('Đã chuyển đơn '+(order.invoice_codes||order.id)+' về Chờ đóng hàng'+(r.replacedFiles?' · '+r.replacedFiles+' tệp cũ được lưu làm lịch sử':'')+'.',true);
+   closeAdminDetail();
+   if(state.tab==='overview')loadOverview().catch(()=>{});else loadOrders().catch(()=>{});
+  }catch(e){notice(e.message);}finally{send.disabled=false;}
+ },'primary');
+ openAdminDetail('Yêu cầu đóng lại · '+(order.invoice_codes||order.id),[['Khách',order.customer],['Trạng thái hiện tại',order.status],['Chọn phần cần làm lại',form]],
+  {actions:[button('Hủy',closeAdminDetail,'secondary'),send]});
+}
 function canEditOrder(order){
  if(!state.user||state.user.role==='VIEW'||!order)return false;
  if(capabilities().admin)return true;
@@ -983,6 +1010,7 @@ function showOrderSummary(order){
   }
  }
  $('editFromOrderDetail').hidden=!canEditOrder(order);
+ $('repackFromOrderDetail').hidden=!canRequestRepack(order);
  if(typeof modal.showModal==='function')modal.showModal();else modal.hidden=false;
 }
 function renderOverview(){
@@ -1109,6 +1137,15 @@ async function loadPackingHelpers(){
   }
  }catch(e){list.append(el('p','Chưa tải được danh sách nhân sự: '+e.message));}
 }
+const REPACK_LABELS={VIDEO_DONG_HANG:'Quay lại video',HANG_HOA:'Chụp lại ảnh hàng hóa',ANH_HOA_DON:'Chụp lại ảnh hóa đơn'};
+function repackStages(order){try{const v=JSON.parse(order?.repack_stages||'[]');return Array.isArray(v)?v:[];}catch{return [];}}
+function renderRepackBanner(order){
+ const box=$('repackBanner'),stages=repackStages(order);
+ box.replaceChildren();box.hidden=!stages.length;
+ if(!stages.length)return;
+ box.append(el('strong','↺ Đơn được yêu cầu ĐÓNG LẠI'+(order.repack_count>1?' (lần '+order.repack_count+')':'')),
+  el('span','Lý do: '+(order.repack_reason||'—')),el('br'),el('span','Cần làm: '+stages.map(x=>REPACK_LABELS[x]||x).join(' · ')+'. Tệp cũ đã được giữ lại làm lịch sử.'));
+}
 async function openOrder(order){
  if(state.saving)return;
  if(state.backgroundJob?.orderId===order.id)return notice('Đơn này đang tải video nền. Vui lòng theo dõi thanh trạng thái.');
@@ -1128,6 +1165,7 @@ async function openOrder(order){
   el('p','Vận chuyển: '+(order.transport||'')+' · Nhà xe: '+(order.carrier||'')+' · Nội dung: '+(order.original_content||'')));
  show('packControls',pack);show('shipControls',ship);show('progressWrap',false);
  $('boxes').value=order.boxes||0;$('packNote').value=order.packing_note||'';
+ renderRepackBanner(pack?order:null);
  if(pack)await loadPackingHelpers();
  if(ship){
   $('shippingBoxes').value=order.boxes||0;
@@ -1138,6 +1176,7 @@ async function openOrder(order){
   $('heavyFee').value=order.heavy_fee||0;
   $('terminalFee').value=order.terminal_fee||0;
   $('extraFee').value=order.extra_fee||0;
+  applyShippingType();
   $('shippingNote').value=order.shipping_note||'';
   
   updateShippingTotal();
@@ -1407,6 +1446,23 @@ function renderSelectedFiles(){
   if(items.length>12)node.append(el('small','Còn '+(items.length-12)+' tệp khác đã chọn.'));
  }
 }
+// Delivery types: pickup / customer-paid courier cost us nothing (fees locked at 0);
+// 'trừ công nợ' records the shipping we support so it can be deducted from the customer's debt.
+const SHIP_TYPES=['Ship ruột','Kiot','App','Khách tự lấy','Ship ngoài – khách trả','Ship ngoài – trừ công nợ'];
+const NO_FEE_SHIP_TYPES=['Khách tự lấy','Ship ngoài – khách trả'];
+function applyShippingType(){
+ const type=$('shippingType').value,noFee=NO_FEE_SHIP_TYPES.includes(type),debt=type==='Ship ngoài – trừ công nợ';
+ for(const id of ['shippingFee','heavyFee','terminalFee','extraFee']){const f=$(id);if(noFee)f.value=0;f.disabled=noFee;}
+ $('shippingPersonLabel').textContent=type==='Khách tự lấy'?'Người nhận hàng':type.startsWith('Ship ngoài')?'Tên ship / nhà xe':'Tên ship';
+ $('shippingPerson').placeholder=type==='Ship ruột'?'Bắt buộc khi chọn Ship ruột':'Không bắt buộc';
+ $('shippingFeeLabel').textContent=debt?'Tiền ship hỗ trợ (trừ công nợ)':'Tiền ship';
+ const hint=$('shippingTypeHint');
+ hint.textContent=type==='Khách tự lấy'?'Khách / người nhà đến lấy hàng: không phát sinh phí ship. Chụp ảnh bàn giao khi giao hàng.':
+  type==='Ship ngoài – khách trả'?'Khách tự đặt ship và tự trả: bên mình không trả phí, các khoản phí được để 0.':
+  debt?'Khách đặt ship, bên mình hỗ trợ tiền ship và trừ vào công nợ: nhập số tiền hỗ trợ; ghi rõ trong ghi chú nếu cần.':'';
+ hint.hidden=!hint.textContent;
+ updateShippingTotal();
+}
 function updateShippingTotal(){
  const fields=['shippingFee','heavyFee','terminalFee','extraFee'];
  const total=fields.reduce((sum,id)=>sum+(Number($(id).value)||0),0);
@@ -1590,6 +1646,8 @@ async function savePack(){
  for(const f of $('videos').files)uploads.push(['VIDEO_DONG_HANG',f]);
  const payload={boxes:Number($('boxes').value),nguoiDongCung:$all('.packHelperChoice:checked').map(x=>x.value),note:$('packNote').value};
  const hasVideo=uploads.some(([stage])=>stage==='VIDEO_DONG_HANG');
+ const redoMissing=repackStages(order).filter(stage=>!uploads.some(([s])=>s===stage));
+ if(redoMissing.length)return notice('Đơn đóng lại cần tải mới: '+redoMissing.map(x=>REPACK_LABELS[x]||x).join(', ')+'.');
  if(state.backgroundJob&&(hasVideo||state.backgroundJob.orderId===id))return notice('Đang có video tải nền. Bạn có thể tiếp tục đóng đơn khác không kèm video.');
  if(!hasVideo){
   setBusy(true);
@@ -1653,7 +1711,7 @@ async function saveShip(){
   const id=state.selected.id,groupIds=$all('.shippingGroupCheck:checked').map(x=>x.value);
   const orderIds=groupIds.length?[...new Set(groupIds.concat(id))]:[id];
   const loaiShip=v('shippingType'),tenShip=v('shippingPerson'),sdtShip=v('shippingPhone');
-  if(!['Ship ruột','Kiot','App'].includes(loaiShip))throw Error('Vui lòng chọn loại ship.');
+  if(!SHIP_TYPES.includes(loaiShip))throw Error('Vui lòng chọn loại ship.');
   if(loaiShip==='Ship ruột'&&!tenShip)throw Error('Tên ship bắt buộc khi chọn Ship ruột.');
   const costs=['shippingFee','heavyFee','terminalFee','extraFee'].map(id=>Number($(id).value)||0);
   if(costs.some(x=>!Number.isSafeInteger(x)||x<0))throw Error('Các khoản phí phải là số nguyên không âm.');
@@ -1717,6 +1775,7 @@ $('recorderStop').addEventListener('click',()=>recorder.media?.stop());
 $('recorderCancel').addEventListener('click',cancelRecording);
 $('recorderDialog').addEventListener('cancel',e=>{e.preventDefault();cancelRecording();});
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
+$('shippingType').addEventListener('change',applyShippingType);
 $('saleDeliveryMode').onchange=()=>{const timed=$('saleDeliveryMode').value==='THOI_GIAN';$('saleDeliveryTimeBox').hidden=!timed;$('saleDeliveryTime').required=timed;if(!timed)$('saleDeliveryTime').value='';};
 $('saleForm').elements.customer.addEventListener('input',updateSaleCustomerHint);
 $('saleForm').elements.invoice_codes.addEventListener('input',checkSaleDuplicatePreview);
@@ -2109,6 +2168,7 @@ $('closeEditOrder').onclick=()=>$('editOrderDialog').close();
 $('editOrderForm').onsubmit=saveOrderEdit;
 $('editFromOrderDetail').onclick=()=>{const order=state.summaryOrder;if(!order||!canEditOrder(order))return; $('orderSummaryDialog').close();openEditOrder(order);};
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
+$('repackFromOrderDetail').onclick=()=>{const order=state.summaryOrder;if(!order||!canRequestRepack(order))return;$('orderSummaryDialog').close();openRepackRequest(order);};
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
 window.addEventListener('beforeunload',e=>{if(state.backgroundJob||(state.preUpload&&!state.preUpload.done)){e.preventDefault();e.returnValue='';}});
 prefillRememberedAccount();
