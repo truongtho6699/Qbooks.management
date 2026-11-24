@@ -90,7 +90,7 @@ function render(config){
    makeBranch(container,'QUẢN TRỊ HỆ THỐNG',adminOpen,1,()=>scope==='desktop'?onAdmin('accounts'):setRoot('admin'),'settings','admin',scope);
    if(adminOpen){
     const children=make('div','qbn-children qbn-admin-children');children.id='qbn-panel-admin-'+scope;
-    const sections=[['accounts','Tài khoản và nhân sự'],['permissions','Phân quyền tài khoản'],['approvals','Duyệt tài khoản Google'],['sync','Đồng bộ dữ liệu'],['logs','Dữ liệu và nhật ký']];
+    const sections=[['accounts','Tài khoản & phân quyền'],['approvals','Duyệt tài khoản Google'],['sync','Đồng bộ dữ liệu'],['logs','Dữ liệu và nhật ký']];
     for(const [key,label] of sections)makeLeaf(children,label,area==='admin'&&adminView===key,2,()=>onAdmin(key));
     container.append(children);
    }

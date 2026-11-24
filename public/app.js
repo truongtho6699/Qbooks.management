@@ -146,17 +146,70 @@ async function initGoogleSignIn(){
   $('googleStatus').textContent='Dùng tài khoản Google đã được cấp quyền hoặc đăng ký mới để chờ quản trị duyệt.';
  }catch(e){$('googleUnavailable').textContent='Chưa kiểm tra được đăng nhập Google';$('googleStatus').textContent=e.message;}
 }
+// ---- Tài khoản & phân quyền: one popup for profile, PIN, roles, menus and Media rights ----
+function staffDialogError(message){const n=$('staffDialogError');n.textContent=message||'';n.hidden=!message;}
 function resetStaffEdit(){
  state.editStaffId=null;state.menuEditor=null;
- show('menuPermissionsPanel',false);
- if($('staffUnlockRow'))$('staffUnlockRow').hidden=true;
- $('staffForm').reset();
- $('staffForm').elements.email.readOnly=false;
- $('staffForm').elements.role.disabled=false;
+ const form=$('staffForm');form.reset();
+ form.elements.email.readOnly=false;form.elements.role.disabled=false;
+ form.elements.role.value='VIEW';
+ $('staffUnlockRow').hidden=true;
+ $('menuPermissionsGrid').replaceChildren();$('menuPermissionsUser').textContent='';
+ staffDialogError('');
  $('saveStaffBtn').textContent='TẠO NHÂN SỰ';
- $('staffForm').elements.role.value='VIEW';
- $('staffForm').elements.role.onchange?.();
- markDraftSaved($('staffForm'));
+}
+function closeStaffDialog(force=false){
+ const dialog=$('staffDialog');if(!dialog.open)return;
+ if(!force&&state.staffDialogBaseline!==staffFormSnapshot()&&!confirm('Bạn có thay đổi chưa lưu. Đóng cửa sổ và bỏ các thay đổi này?'))return;
+ dialog.close();markDraftSaved($('staffForm'));
+}
+function staffFormSnapshot(){
+ return JSON.stringify([...$('staffForm').querySelectorAll('input,select')].map(x=>x.type==='checkbox'?x.checked:x.value));
+}
+async function openStaffDialog(person=null){
+ if(!capabilities().admin)return;
+ resetStaffEdit();
+ const form=$('staffForm');
+ $('staffDialogTitle').textContent=person?'Sửa nhân sự · '+person.name:'Thêm nhân sự mới';
+ if(person){
+  state.editStaffId=person.id;
+  form.elements.name.value=person.name;form.elements.email.value=person.email;form.elements.email.readOnly=true;
+  form.elements.role.value=person.role;
+  form.elements.dongHang.checked=!!person.can_pack;form.elements.vanDon.checked=!!person.can_ship;
+  form.elements.admin.checked=!!person.can_admin;form.elements.active.checked=!!person.active;
+  $('staffUnlockRow').hidden=!(person.locked_until>0);
+  $('saveStaffBtn').textContent='LƯU THAY ĐỔI';
+ }
+ applyStaffRoleControls();
+ $('staffDialog').showModal();
+ try{
+  // Menu keys/labels are global; a new person starts from the menus their roles grant.
+  await loadStaffMenuPermissions(person?person.id:state.user.id,person?person.name:'Nhân sự mới',person?person.role:form.elements.role.value,!person);
+  if(!person)syncRoleMenus();
+ }catch(e){staffDialogError('Không đọc được phân quyền menu: '+e.message);}
+ state.staffDialogBaseline=staffFormSnapshot();markDraftSaved(form);
+ (person?form.elements.name:form.elements.name).focus();
+ renderStaffList();
+}
+// Role → menus that the role needs. Ticking a role switches its menus on (and off when unticked).
+const ROLE_MENUS={pack:['orders.overview','orders.pack'],ship:['orders.overview','orders.ship'],sale:['orders.sale'],admin:['system.admin']};
+function roleState(){
+ const f=$('staffForm').elements,role=f.role.value,view=role==='VIEW';
+ return {view,admin:!view&&(f.admin.checked||role==='ADMIN'),pack:!view&&(f.dongHang.checked||role==='PACKER'||role==='ADMIN'),
+  ship:!view&&(f.vanDon.checked||role==='SHIPPER'||role==='ADMIN'),sale:!view&&role==='SALE'};
+}
+function syncRoleMenus(){
+ const r=roleState(),boxes=new Map([...document.querySelectorAll('#menuPermissionsGrid [data-menu-key]')].map(x=>[x.dataset.menuKey,x]));
+ const wanted=new Set(Object.entries(ROLE_MENUS).filter(([k])=>r[k]).flatMap(([,keys])=>keys));
+ for(const key of new Set(Object.values(ROLE_MENUS).flat())){const box=boxes.get(key);if(box&&!box.disabled)box.checked=wanted.has(key);}
+ const grid=$('menuPermissionsGrid');grid.classList.toggle('locked',r.admin);
+ $('menuPermissionsUser').textContent=r.admin?'Quản trị viên luôn thấy mọi menu và có mọi quyền Media.':r.view?'Tài khoản Chỉ xem: chỉ thấy các menu được bật, không được chỉnh sửa nghiệp vụ.':'Có thể bật/tắt thêm từng menu.';
+ for(const id of ['grantFilm','grantEdit','grantManage'])$(id).disabled=r.view;
+ for(const box of boxes.values())if(['system.admin','media.staff','media.permissions','media.audit'].includes(box.dataset.menuKey))box.disabled=r.view;
+}
+function applyStaffRoleControls(){
+ const view=$('staffForm').elements.role.value==='VIEW';
+ for(const k of ['dongHang','vanDon','admin']){const control=$('staffForm').elements[k];if(view)control.checked=false;control.disabled=view;}
 }
 // ---- Tài khoản và nhân sự / Phân quyền: searchable list with clear status badges ----
 function staffRoles(person){
@@ -173,25 +226,7 @@ function lastLoginText(value){
  const d=new Date(String(value).replace(' ','T')+'Z');
  return Number.isNaN(d.getTime())?'Đăng nhập: '+value:'Đăng nhập gần nhất: '+d.toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour12:false});
 }
-function selectStaff(person){
- state.editStaffId=person.id;
- const form=$('staffForm');
- form.elements.name.value=person.name;form.elements.email.value=person.email;
- form.elements.email.readOnly=true;form.elements.role.value=person.role;
- form.elements.role.disabled=false;form.elements.pin.value='';
- form.elements.dongHang.checked=!!person.can_pack;form.elements.vanDon.checked=!!person.can_ship;
- form.elements.admin.checked=!!person.can_admin;form.elements.active.checked=!!person.active;
- form.elements.unlock.checked=false;$('staffUnlockRow').hidden=!(person.locked_until>0);
- form.elements.role.onchange();
- markDraftSaved(form);
- $('saveStaffBtn').textContent='LƯU THAY ĐỔI NHÂN SỰ';
- renderStaffList();
- if(state.adminPanel==='permissions'){
-  loadStaffMenuPermissions(person.id,person.name,person.role)
-   .then(()=>$('menuPermissionsPanel').scrollIntoView({behavior:'smooth',block:'start'}))
-   .catch(e=>notice('Không đọc được phân quyền: '+e.message));
- }else form.scrollIntoView({behavior:'smooth',block:'start'});
-}
+function selectStaff(person){openStaffDialog(person).catch(e=>notice(e.message));}
 function renderStaffList(){
  const list=$('staffList'),people=state.staffUsers||[];
  const q=($('staffSearch')?.value||'').trim().toLowerCase(),filter=$('staffFilter')?.value||'all';
@@ -220,40 +255,31 @@ async function loadStaffUsers(){
  state.staffUsers=r.users||[];
  renderStaffList();
 }
-async function loadStaffMenuPermissions(id,name,role){
+async function loadStaffMenuPermissions(id,name,role,blank=false){
  if(!capabilities().admin)return;
  const details=await api('GET','/api/users/'+id+'/menus');
- state.menuEditor={id,name,role,keys:details.keys};
+ state.menuEditor={id:blank?null:id,name,role,keys:details.keys};
  const grid=$('menuPermissionsGrid');grid.replaceChildren();
- $('menuPermissionsUser').textContent='Nhân sự: '+name+' · Vai trò: '+role;
  const sections=[['Quản lý giao hàng',details.keys.filter(k=>k.startsWith('orders.'))],['Quản lý Media',details.keys.filter(k=>k.startsWith('media.'))],['Quản trị hệ thống',details.keys.filter(k=>k.startsWith('system.'))]];
  for(const [heading,keys] of sections){
   const group=el('fieldset',null,'menu-rights');group.append(el('legend',heading));
   for(const key of keys){
    const label=el('label',null,'menu-right-item'),input=document.createElement('input');
-   input.type='checkbox';input.dataset.menuKey=key;input.checked=details.menus.includes(key);
+   input.type='checkbox';input.dataset.menuKey=key;input.checked=!blank&&details.menus.includes(key);
    if(role==='VIEW'&&['system.admin','media.staff','media.permissions','media.audit'].includes(key))input.disabled=true;
    label.append(input,el('span',details.labels[key]||key));group.append(label);
   }
   grid.append(group);
  }
- $('grantFilm').checked=!!details.video?.can_film;
- $('grantEdit').checked=!!details.video?.can_edit;
- $('grantManage').checked=!!details.video?.can_manage;
- const isView=role==='VIEW';
- for(const id of ['grantFilm','grantEdit','grantManage'])$(id).disabled=isView;
- show('menuPermissionsPanel',true);
+ $('grantFilm').checked=!blank&&!!details.video?.can_film;
+ $('grantEdit').checked=!blank&&!!details.video?.can_edit;
+ $('grantManage').checked=!blank&&!!details.video?.can_manage;
+ syncRoleMenusLabelOnly();
 }
-async function saveStaffMenuPermissions(){
- const edit=state.menuEditor;if(!edit)return notice('Chọn nhân sự cần phân quyền.');
- const permissions={};
- for(const el of document.querySelectorAll('#menuPermissionsGrid [data-menu-key]'))permissions[el.dataset.menuKey]=!!el.checked&&!el.disabled;
- const video={can_film:$('grantFilm').checked&&!$('grantFilm').disabled,can_edit:$('grantEdit').checked&&!$('grantEdit').disabled,can_manage:$('grantManage').checked&&!$('grantManage').disabled};
- try{
-  await api('PUT','/api/users/'+edit.id+'/menus',{permissions,video});
-  notice('Đã lưu phân quyền theo từng menu.',true);
-  await loadStaffMenuPermissions(edit.id,edit.name,edit.role);
- }catch(e){notice('Không lưu được phân quyền: '+e.message);}
+function syncRoleMenusLabelOnly(){ // refresh hints/disabled state without changing ticks
+ const r=roleState();$('menuPermissionsGrid').classList.toggle('locked',r.admin);
+ $('menuPermissionsUser').textContent=r.admin?'Quản trị viên luôn thấy mọi menu và có mọi quyền Media.':r.view?'Tài khoản Chỉ xem: chỉ thấy các menu được bật, không được chỉnh sửa nghiệp vụ.':'Có thể bật/tắt thêm từng menu.';
+ for(const id of ['grantFilm','grantEdit','grantManage'])$(id).disabled=r.view;
 }
 // D1 stores UTC ("YYYY-MM-DD HH:MM:SS"); show it in Vietnam time.
 function vnTime(value){
@@ -288,10 +314,63 @@ async function loadAdminReport(kind,page=1){
     if(name==='CHI_TIET'&&text.length>220)td.title=text;
     tr.append(td);
    });
+   tr.classList.add('clickable');tr.tabIndex=0;
+   const open=()=>openAdminDetail(kind==='LOG'?'Nhật ký · '+String(record[2]??''):'Chi tiết dòng',
+    headers.map((h,i)=>[h,h==='CHI_TIET'?'':(h==='THOI_GIAN'||h==='CAP_NHAT'?vnTime(String(record[i]??'')):record[i])]),
+    {pre:headers.includes('CHI_TIET')?prettyDetails(record[headers.indexOf('CHI_TIET')]):null,actions:[button('Đóng',closeAdminDetail,'secondary')]});
+   tr.onclick=open;tr.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};
    table.append(tr);
   }
   wrap.replaceChildren(table);
  }catch(e){wrap.replaceChildren(el('p',e.message));}
+}
+// ---- Generic admin detail popup (approvals, logs, sync files) ----
+function openAdminDetail(title,fields,{pre=null,actions=[]}={}){
+ $('adminDetailTitle').textContent=title;
+ const body=$('adminDetailBody');body.replaceChildren();
+ const dl=document.createElement('dl');
+ for(const [label,value] of fields){if(value===undefined||value===null||value==='')continue;dl.append(el('dt',label));const dd=el('dd');value instanceof Node?dd.append(value):dd.textContent=String(value);dl.append(dd);}
+ body.append(dl);
+ if(pre){const block=el('pre',pre);body.append(block);}
+ $('adminDetailActions').replaceChildren(...actions);
+ if(!$('adminDetailDialog').open)$('adminDetailDialog').showModal();
+}
+function closeAdminDetail(){if($('adminDetailDialog').open)$('adminDetailDialog').close();}
+function prettyDetails(text){try{const v=JSON.parse(text);return typeof v==='object'&&v?JSON.stringify(v,null,2):String(text);}catch{return String(text||'');}}
+async function openStaffById(id){
+ const r=await api('GET','/api/users');state.staffUsers=r.users||[];
+ const person=state.staffUsers.find(p=>p.id===id);
+ if(person)await openStaffDialog(person);
+}
+function openGoogleRegistration(person){
+ const select=document.createElement('select');select.setAttribute('aria-label','Vai trò khi duyệt');
+ [['VIEW','Chỉ xem (mặc định)'],['PACKER','Đóng hàng'],['SHIPPER','Vận đơn'],['SALE','Sale']].forEach(([value,title])=>{
+  const opt=document.createElement('option');opt.value=value;opt.textContent=title;select.append(opt);
+ });
+ if(person.existing_user){select.disabled=true;select.title='Tài khoản đã có, sẽ giữ nguyên vai trò.';}
+ const approve=button(person.existing_user?'Liên kết Google':'Duyệt',async()=>{
+  approve.disabled=true;
+  try{
+   if(!person.existing_user&&select.value!=='VIEW'&&!confirm('Cấp quyền '+select.selectedOptions[0].textContent+' cho '+person.email+'?'))return;
+   const r=await api('POST','/api/google/approve',{sub:person.google_sub,role:select.value});
+   notice('Đã duyệt tài khoản '+person.email+'.',true);
+   await loadPendingGoogle();
+   // Offer the full editor right away to fine-tune menus and Media rights.
+   openAdminDetail('Đã duyệt · '+person.name,[['Email',person.email],['Vai trò',r.role||select.value]],{actions:[
+    button('Đóng',closeAdminDetail,'secondary'),
+    button('Mở để phân quyền chi tiết',()=>{closeAdminDetail();openStaffById(r.id).catch(e=>notice(e.message));},'primary')]});
+  }catch(e){notice(e.message);}finally{approve.disabled=false;}
+ },'primary');
+ const reject=button('Từ chối',async()=>{
+  if(!confirm('Từ chối đăng ký của '+person.email+'?'))return;
+  reject.disabled=true;
+  try{await api('POST','/api/google/reject',{sub:person.google_sub});notice('Đã từ chối yêu cầu '+person.email+'.',true);closeAdminDetail();await loadPendingGoogle();}
+  catch(e){notice(e.message);}finally{reject.disabled=false;}
+ },'secondary');
+ openAdminDetail('Đăng ký Google · '+person.name,[
+  ['Email',person.email],['Đăng ký lúc',vnTime(person.requested_at)],
+  ['Tình trạng',person.existing_user?'Đã có nhân sự: chỉ liên kết Google, giữ nguyên quyền.':'Đăng ký mới: chọn vai trò khi duyệt.'],
+  ['Vai trò khi duyệt',select]],{actions:[reject,approve]});
 }
 async function loadPendingGoogle(){
  const container=$('googlePendingList');
@@ -300,33 +379,14 @@ async function loadPendingGoogle(){
   const res=await api('GET','/api/google/pending');
   container.replaceChildren();
   if(!res.registrations.length)return container.append(el('p','Không có đăng ký Google chờ duyệt.'));
-  container.append(el('p',res.registrations.length+' đăng ký đang chờ duyệt.','hint'));
+  container.append(el('p',res.registrations.length+' đăng ký đang chờ duyệt · bấm vào từng người để duyệt.','hint'));
   for(const person of res.registrations){
-   const row=el('div',null,'order google-pending');
-   const info=el('div');
-   info.append(el('strong',person.name),meta(person.email),meta(person.existing_user?'Đã có nhân sự: chỉ liên kết Google, giữ nguyên quyền.':'Đăng ký mới: cần chọn vai trò.'),meta('Đăng ký: '+person.requested_at));
-   const controls=el('div',null,'google-actions');
-   const select=document.createElement('select');
-   [['VIEW','Chỉ xem (mặc định)'],['PACKER','Đóng hàng'],['SHIPPER','Vận đơn'],['SALE','Sale']].forEach(([value,title])=>{
-    const opt=document.createElement('option');opt.value=value;opt.textContent=title;select.append(opt);
-   });
-   if(person.existing_user){select.disabled=true;select.title='Tài khoản đã có, sẽ giữ nguyên vai trò.';}
-   const approve=button(person.existing_user?'Liên kết Google':'Duyệt',async()=>{
-    approve.disabled=true;
-    try{
-     if(!person.existing_user&&select.value!=='VIEW'&&!confirm('Cấp quyền '+select.selectedOptions[0].textContent+' cho '+person.email+'?')){approve.disabled=false;return;}
-     await api('POST','/api/google/approve',{sub:person.google_sub,role:select.value});
-     notice('Đã duyệt tài khoản '+person.email+'.',true);
-     await loadPendingGoogle();
-    }catch(e){notice(e.message);}finally{approve.disabled=false;}
-   },'primary');
-   const reject=button('Từ chối',async()=>{
-    reject.disabled=true;
-    if(!confirm('Từ chối đăng ký của '+person.email+'?')){reject.disabled=false;return;}
-    try{await api('POST','/api/google/reject',{sub:person.google_sub});notice('Đã từ chối yêu cầu '+person.email+'.',true);await loadPendingGoogle();}
-    catch(e){notice(e.message);}finally{reject.disabled=false;}
-   },'secondary');
-   controls.append(select,approve,reject);row.append(info,controls);container.append(row);
+   const row=button('',()=>openGoogleRegistration(person),'order google-pending staff-row');
+   const info=el('span',null,'staff-main');
+   info.append(el('strong',person.name),meta(person.email),meta('Đăng ký: '+vnTime(person.requested_at)));
+   const badges=el('span',null,'staff-badges');
+   badges.append(el('span',person.existing_user?'Liên kết tài khoản có sẵn':'Đăng ký mới','staff-badge warn'));
+   row.append(info,badges);container.append(row);
   }
  }catch(e){notice('Không tải được đăng ký Google: '+e.message);}
 }
@@ -345,7 +405,7 @@ async function bootstrap(){
   const permitted=key=>keys.includes('orders.'+key),hasOrders=['overview','sale','pack','ship'].some(permitted),hasMedia=keys.some(k=>k.startsWith('media.'));
   state.tab=rights.admin?'overview':['overview','sale','pack','ship'].find(permitted)||'overview';
   const params=new URLSearchParams(window.location.search),tabParam=params.get('tab'),mediaParam=params.get('view'),section=params.get('section'),toAdmin=params.get('nav')==='admin';
-  if(toAdmin&&rights.admin){state.adminPanel=['accounts','permissions','approvals','sync','logs'].includes(params.get('panel'))?params.get('panel'):'accounts';tab('staff',state.adminPanel);return;}
+  if(toAdmin&&rights.admin){const wanted=params.get('panel')==='permissions'?'accounts':params.get('panel');state.adminPanel=['accounts','approvals','sync','logs'].includes(wanted)?wanted:'accounts';tab('staff',state.adminPanel);return;}
   if(((section==='media'||params.get('nav')==='media')&&(hasMedia||rights.admin))||(!hasOrders&&hasMedia)){
    await openMedia(mediaParam||undefined);return;
   }
@@ -504,13 +564,9 @@ function switchView(){
  if(key==='staff'){
    for(const panel of document.querySelectorAll('#staffView [data-admin-section]')){
     const section=panel.dataset.adminSection;
-    if(panel.id==='menuPermissionsPanel')continue; // Show only after selecting an employee.
-    panel.hidden=state.adminPanel==='permissions'?section!=='accounts':section!==state.adminPanel;
+    panel.hidden=section!==state.adminPanel;
    }
-   if(['accounts','permissions'].includes(state.adminPanel)){
-    $('staffAdminTitle').textContent=state.adminPanel==='permissions'?'Phân quyền tài khoản':'Quản trị nhân sự / PIN';
-    $('staffForm').hidden=state.adminPanel==='permissions';
-    $('menuPermissionsPanel').hidden=true;
+   if(state.adminPanel==='accounts'){
     state.menuEditor=null;
     trackDraft($('staffForm'));loadStaffUsers();
    }
@@ -527,7 +583,7 @@ async function releaseLocks(){
  for(const id of ids)state.lockedOrderIds.delete(id);
  await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
 }
-function tab(key,panel){if((state.area!=='orders'||state.tab!==key||(key==='staff'&&panel&&state.adminPanel!==panel))&&!confirmLeave())return;if(key==='staff'&&!menuAllowed('system.admin'))return notice('Chưa được cấp quyền Quản trị hệ thống.');if(key!=='staff'&&!menuAllowed('orders.'+key))return notice('Chưa được cấp quyền menu này.');if(state.lockedOrderIds.size)releaseLocks();if(key==='staff'&&['accounts','permissions','approvals','sync','logs'].includes(panel))state.adminPanel=panel;state.tab=key;state.area=key==='staff'?'admin':'orders';state.orderMenuExpanded=key!=='staff';if(key==='staff')window.QbookNavigation?.focusAdmin();else window.QbookNavigation?.focusOrders();switchView();}
+function tab(key,panel){if((state.area!=='orders'||state.tab!==key||(key==='staff'&&panel&&state.adminPanel!==panel))&&!confirmLeave())return;if(key==='staff'&&!menuAllowed('system.admin'))return notice('Chưa được cấp quyền Quản trị hệ thống.');if(key!=='staff'&&!menuAllowed('orders.'+key))return notice('Chưa được cấp quyền menu này.');if(state.lockedOrderIds.size)releaseLocks();if(key==='staff'&&panel==='permissions')panel='accounts';if(key==='staff'&&['accounts','approvals','sync','logs'].includes(panel))state.adminPanel=panel;state.tab=key;state.area=key==='staff'?'admin':'orders';state.orderMenuExpanded=key!=='staff';if(key==='staff')window.QbookNavigation?.focusAdmin();else window.QbookNavigation?.focusOrders();switchView();}
 const MEDIA_LABELS={ANH_HOA_DON:'Ảnh hóa đơn',VIDEO_DONG_HANG:'Video đóng hàng',HANG_HOA:'Ảnh hàng hóa',GIAO_HANG:'Ảnh bàn giao'};
 const LINK_LABELS=[['packing_folder_url','Thư mục đóng hàng'],['shipping_folder_url','Thư mục vận đơn'],['invoice_folder_url','Thư mục ảnh hóa đơn'],['video_folder_url','Thư mục video'],['goods_folder_url','Thư mục ảnh hàng hóa']];
 function safeDriveUrl(value){
@@ -1698,9 +1754,34 @@ $('saleForm').addEventListener('submit',async e=>{
   else showFormError(form,err.message);
  }finally{if(submit){submit.disabled=false;submit.textContent='LƯU ĐƠN SALE';}}
 });
-$('saveMenuPermissions').onclick=saveStaffMenuPermissions;
 $('createGroup').onclick=async()=>{const orderIds=$all('.groupCheck:checked').map(c=>c.value);try{const r=await api('POST','/api/groups',{orderIds});notice('Đã tạo nhóm '+r.groupId,true);await loadGroupOptions()}catch(e){notice(e.message)}};
-$('staffForm').addEventListener('submit',async e=>{e.preventDefault();const f=e.target;const data=Object.fromEntries(new FormData(f));const pinInput=f.querySelector('input[name="pin"]');data.pin=String(pinInput?.value??data.pin??'').trim();data.dongHang=f.elements.dongHang.checked;data.vanDon=f.elements.vanDon.checked;data.admin=f.elements.admin.checked;data.active=f.elements.active.checked;data.unlock=!!f.elements.unlock?.checked;if((!state.editStaffId||data.pin)&&!/^\d{6,8}$/.test(data.pin))return showFieldError(f,'pin','Mã PIN mới phải gồm 6–8 chữ số từ 0 đến 9.');if(data.role==='VIEW'){data.dongHang=false;data.vanDon=false;data.admin=false;}try{const r=state.editStaffId?await api('PATCH','/api/users/'+state.editStaffId,data):await api('POST','/api/users',data);notice('Đã lưu nhân sự '+data.name+(r.sessionsRevoked?' · đã đăng xuất người này trên mọi thiết bị':''),true);const savedId=r.id;const savedName=data.name;const savedRole=data.role;resetStaffEdit();await loadStaffUsers();await loadStaffMenuPermissions(savedId,savedName,savedRole);}catch(err){notice(err.message);showFormError(f,err.message)}});
+$('staffForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const f=e.target;staffDialogError('');
+ const data={name:f.elements.name.value.trim(),email:f.elements.email.value.trim(),role:f.elements.role.value,pin:String(f.elements.pin.value||'').trim(),
+  dongHang:f.elements.dongHang.checked,vanDon:f.elements.vanDon.checked,admin:f.elements.admin.checked,active:f.elements.active.checked,unlock:!!f.elements.unlock.checked};
+ if(!data.name)return staffDialogError('Nhập họ tên nhân sự.');
+ if(!state.editStaffId&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))return staffDialogError('Email không hợp lệ.');
+ if((!state.editStaffId||data.pin)&&!/^\d{6,8}$/.test(data.pin))return staffDialogError('Mã PIN '+(state.editStaffId?'mới ':'')+'phải gồm 6–8 chữ số từ 0 đến 9.');
+ if(data.role==='VIEW'){data.dongHang=false;data.vanDon=false;data.admin=false;}
+ const permissions={};
+ for(const box of document.querySelectorAll('#menuPermissionsGrid [data-menu-key]'))permissions[box.dataset.menuKey]=!!box.checked&&!box.disabled;
+ const video={can_film:$('grantFilm').checked&&!$('grantFilm').disabled,can_edit:$('grantEdit').checked&&!$('grantEdit').disabled,can_manage:$('grantManage').checked&&!$('grantManage').disabled};
+ const btn=$('saveStaffBtn');btn.disabled=true;
+ let savedId=state.editStaffId;
+ try{
+  const r=state.editStaffId?await api('PATCH','/api/users/'+state.editStaffId,data):await api('POST','/api/users',data);
+  savedId=r.id;state.editStaffId=savedId;
+  if(Object.keys(permissions).length)await api('PUT','/api/users/'+savedId+'/menus',{permissions,video});
+  notice('Đã lưu nhân sự '+data.name+(r.sessionsRevoked?' · đã đăng xuất người này trên mọi thiết bị':''),true);
+  closeStaffDialog(true);
+  await loadStaffUsers();
+ }catch(err){
+  // A new person may already exist when only the menu step failed: keep the popup in edit mode.
+  if(savedId){$('staffForm').elements.email.readOnly=true;$('saveStaffBtn').textContent='LƯU THAY ĐỔI';$('staffDialogTitle').textContent='Sửa nhân sự · '+data.name;}
+  staffDialogError(err.message);
+ }finally{btn.disabled=false;}
+});
 const SHEET_ID='1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw';
 async function googleRead(url,token){
  const res=await fetch(url,{headers:{Authorization:'Bearer '+token},cache:'no-store'});
@@ -1795,6 +1876,19 @@ async function importGoogleSheets(){
  }catch(e){$('legacyStatus').textContent='Không nhập được D1: '+e.message;}
  finally{btn.disabled=!$('confirmImport').checked;}
 }
+function syncFileState(file){
+ return file.r2_deleted_at?'Đã chuyển Drive · Đã dọn R2':file.r2_delete_error?'Lỗi dọn R2 – vẫn giữ bản gốc':file.drive_file_id?'Đã có trên Drive':file.auto_error?'Lỗi tạm thời – sẽ thử lại':(file.drive_offset?'Đã chuyển '+Math.floor(100*file.drive_offset/file.bytes)+'%':'Đang chờ đồng bộ');
+}
+function openSyncFile(file){
+ const actions=[button('Đóng',closeAdminDetail,'secondary')];
+ if(file.drive_file_id){const a=el('a','Mở trên Google Drive','primary button-link');a.href='https://drive.google.com/file/d/'+encodeURIComponent(file.drive_file_id)+'/view';a.target='_blank';a.rel='noopener';actions.push(a);}
+ else if(file.auto_error){const retry=button('Thử lại ngay',async()=>{retry.disabled=true;try{await api('POST','/api/sync/retry',{uploadId:file.id});notice('Đã xếp lại tệp, Worker sẽ thử trong khoảng 1 phút.',true);closeAdminDetail();await refreshGoogleSync();}catch(e){notice(e.message);retry.disabled=false;}},'primary');actions.push(retry);}
+ openAdminDetail('Tệp · '+file.filename,[
+  ['Đơn',file.order_id],['Loại',MEDIA_LABELS[file.stage]||file.stage],['Dung lượng',(file.bytes/1048576).toFixed(1)+' MB'],
+  ['Trạng thái',syncFileState(file)],['Số lần thử',file.auto_attempts||''],['Thư mục Drive',file.drive_folder_url||''],
+  ['Đã xác minh',file.drive_verified_at?vnTime(file.drive_verified_at):''],['Dọn R2',file.r2_deleted_at?vnTime(file.r2_deleted_at):'Giữ bản gốc trên R2']],
+  {pre:file.auto_error||file.r2_delete_error||null,actions});
+}
 async function refreshGoogleSync(){
  if(!capabilities().admin)return;
  const status=$('syncMessage');
@@ -1820,8 +1914,11 @@ async function refreshGoogleSync(){
   const visible=$('syncShowDone').checked?r.uploads:pendingFiles;
   if(!visible.length)media.append(el('p',r.uploads.length?'Tất cả tệp gần đây đã lên Google Drive.':'Không có ảnh/video mới cần kiểm tra.'));
   for(const file of visible){
-   const div=el('div',null,'order');
-   const label=el('div',(file.order_id+' · '+file.stage+' · '+file.filename+' · '+(file.bytes/1048576).toFixed(1)+' MB'));
+   const div=el('div',null,'order sync-row');
+   const label=el('div',(file.order_id+' · '+(MEDIA_LABELS[file.stage]||file.stage)+' · '+file.filename+' · '+(file.bytes/1048576).toFixed(1)+' MB'));
+   div.tabIndex=0;div.setAttribute('role','button');
+   const openFile=ev=>{if(ev.target.closest('button'))return;openSyncFile(file);};
+   div.onclick=openFile;div.onkeydown=e=>{if(e.target===div&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openSyncFile(file);}};
    const span=el('span',file.r2_deleted_at?'Đã chuyển Drive · Đã dọn R2':file.r2_delete_error?'Lỗi dọn R2 – vẫn giữ bản gốc':file.drive_file_id?'Đã có trên Drive · Chờ xác minh/dọn R2':file.auto_error?'Lỗi tạm thời – sẽ thử lại':(file.drive_offset?'Đã chuyển '+Math.floor(100*file.drive_offset/file.bytes)+'%':'Đang chờ đồng bộ'),'tag');
    if(file.auto_error||file.r2_delete_error)span.title=file.auto_error||file.r2_delete_error;
    div.append(label,span);
@@ -1916,11 +2013,13 @@ $('confirmImport').onchange=()=>{$('importGoogleSheets').disabled=!$('confirmImp
 $('importGoogleSheets').onclick=importGoogleSheets;
 $('checkLegacy').onclick=checkLegacy;
 $('previewLegacy').onclick=previewLegacy;
-$('staffForm').elements.role.onchange=()=>{
- const view=$('staffForm').elements.role.value==='VIEW';
- for(const k of ['dongHang','vanDon','admin']){const control=$('staffForm').elements[k];if(view)control.checked=false;control.disabled=view;}
-};
-$('cancelStaffEdit').onclick=resetStaffEdit;
+$('staffForm').elements.role.onchange=()=>{applyStaffRoleControls();syncRoleMenus();};
+for(const name of ['dongHang','vanDon','admin'])$('staffForm').elements[name].addEventListener('change',syncRoleMenus);
+$('addStaffBtn').onclick=()=>openStaffDialog(null).catch(e=>notice(e.message));
+$('closeStaffDialog').onclick=()=>closeStaffDialog();
+$('closeAdminDetail').onclick=closeAdminDetail;
+$('staffDialog').addEventListener('cancel',e=>{e.preventDefault();closeStaffDialog();});
+$('cancelStaffEdit').onclick=()=>closeStaffDialog();
 $all('.admin-report').forEach(btn=>btn.onclick=()=>loadAdminReport(btn.dataset.kind));
 $('refreshGooglePending').onclick=()=>loadPendingGoogle();
 $('staffSearch').addEventListener('input',renderStaffList);
