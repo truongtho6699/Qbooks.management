@@ -484,4 +484,43 @@
  #appPage .shipping-table{min-width:0!important;width:100%}
  #appPage .overview-chips{gap:5px}
  #appPage .overview-chip{padding:5px 8px}
+
+/* ===== Compact upload status (2026-11-24): small strips instead of big cards ===== */
+.qbook-bg-head{display:flex;align-items:center;gap:8px;min-width:0}
+.qbook-bg-head strong{flex:1;min-width:0}
+.qbook-bg-percent{flex:none;font-size:12px;font-weight:700;color:#1756a0;font-variant-numeric:tabular-nums}
+.qbook-upload-head-actions{display:flex;gap:6px;align-items:center}
+.qbook-mini-close{flex:none;background:#f1f5f9;border:1px solid #dbe3ee;color:#475569;border-radius:8px;min-width:36px;min-height:36px;padding:0 8px;font-size:14px;line-height:1;cursor:pointer}
+.qbook-mini-close[hidden]{display:none!important}
+.qbook-background-upload.done{border-color:#86d3ae}
+.qbook-background-upload.failed{border-color:#f0b4ab}
+@media(max-width:800px){
+ .qbook-background-upload{
+  left:8px!important;right:8px!important;width:auto!important;
+  bottom:calc(78px + env(safe-area-inset-bottom))!important;
+  padding:8px 10px!important;gap:5px!important;border-radius:12px!important;max-height:none!important;
+  box-shadow:0 6px 18px #0b2b4d26!important;
+ }
+ .qbook-background-upload strong{font-size:12.5px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .qbook-background-upload progress{height:5px!important}
+ .qbook-background-upload small{display:none}
+ .qbook-background-upload.expanded small{display:block}
+ .qbook-background-upload.expanded strong{white-space:normal}
+ .qbook-upload-activity{
+  left:8px!important;right:8px!important;width:auto!important;
+  bottom:calc(78px + env(safe-area-inset-bottom))!important;
+  padding:6px 10px!important;border-radius:12px!important;max-height:40dvh!important;
+  box-shadow:0 6px 18px #0b2b4d26!important;
+ }
+ .qbook-background-upload:not([hidden])~.qbook-upload-activity:not([hidden]){
+  bottom:calc(78px + 62px + env(safe-area-inset-bottom))!important;max-height:30dvh!important;
+ }
+ .qbook-upload-head strong{font-size:12.5px}
+ .qbook-upload-head button{min-height:36px!important;padding:4px 10px!important;font-size:12.5px}
+ .qbook-upload-activity #qbookUploadSummary{margin:2px 0 0!important}
+ .qbook-upload-activity .qbook-upload-note{display:none}
+ .qbook-upload-activity.open .qbook-upload-note{display:block}
+}
+@media(max-width:800px){
+ .qbook-background-upload.expanded:not([hidden])~.qbook-upload-activity:not([hidden]){bottom:calc(78px + 118px + env(safe-area-inset-bottom))!important}
 }
