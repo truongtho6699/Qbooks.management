@@ -26,7 +26,7 @@ test('visible keyboard focus, reduced motion and high contrast are handled',()=>
 test('all native dialogs have accessible labels with known heading ids',()=>{
  const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(x=>x[1]));
  const dialogs=[...html.matchAll(/<dialog\s+([^>]+)>/g)];
- assert.equal(dialogs.length,5);
+ assert.equal(dialogs.length,6);
  for(const [,attrs] of dialogs){
   const labelledby=/aria-labelledby="([^"]+)"/.exec(attrs)?.[1];
   assert.ok(labelledby&&ids.has(labelledby));

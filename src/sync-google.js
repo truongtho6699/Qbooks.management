@@ -4,7 +4,8 @@ const SHEET_ID='1TSuK6EF2yK8Qb9ZAU1v98VhzekrjX2SKkIDmR7OXMiw';
 const ROOT_FOLDER='18rw-KCkTs0Q8MYABCzYTxfLh_W7pbx83';
 export const VIDEO_ARCHIVE_FOLDER='1I3yAbCsMn_PiJ-haPblWdNNujbDYmy2N';
 const GOOGLE_BASE='https://www.googleapis.com';
-const CHUNK=8*1024*1024;
+// 32 MB parts (a multiple of Drive's 256 KiB unit): 4× fewer Worker→Drive round-trips.
+const CHUNK=32*1024*1024;
 const clean=s=>String(s??'').trim();
 const validToken=t=>typeof t==='string'&&t.length>=30&&t.length<=4096&&/^[A-Za-z0-9._~+\/_-]+$/.test(t);
 const conflict=message=>Object.assign(new Error(message),{status:409});
