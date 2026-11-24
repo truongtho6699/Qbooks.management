@@ -48,7 +48,12 @@ CREATE TABLE IF NOT EXISTS orders (
  shipped_at TEXT,
  created_by TEXT REFERENCES users(id),
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
- updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ repack_reason TEXT NOT NULL DEFAULT '',
+ repack_stages TEXT NOT NULL DEFAULT '',
+ repack_requested_at TEXT,
+ repack_requested_by TEXT,
+ repack_count INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_group ON orders(group_id);

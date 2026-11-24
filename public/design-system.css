@@ -436,3 +436,10 @@
 }
 
 #appPage #syncMessage.qbook-sync-warning{display:block;background:#fff1ec;color:#96382f;border:1px solid #dfaaa1;border-radius:10px;padding:14px 16px;font-size:14px;font-weight:650;line-height:1.55}
+
+/* Re-pack: order sent back to the warehouse */
+.qbook-repack-banner{margin:8px 0 12px;padding:10px 12px;border-radius:10px;background:#fff4e5;border:1px solid #f3c58a;color:#7a4300;font-size:14px;line-height:1.5}
+.qbook-repack-banner strong{display:block;margin-bottom:2px}
+.qbook-repack-tag{display:inline-block;margin-top:6px;padding:2px 8px;border-radius:999px;background:#fff4e5;border:1px solid #f3c58a;color:#7a4300;font-size:12px;font-weight:700}
+.qbook-repack-form{display:grid;gap:10px}.qbook-repack-form label.check{display:flex;gap:8px;align-items:center}
+.qbook-repack-form textarea{min-height:80px;width:100%}

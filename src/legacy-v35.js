@@ -10,6 +10,10 @@ export const V35_COLUMNS=Object.freeze([
 ]);
 export const V35_STATUS=Object.freeze(['CHỜ ĐÓNG HÀNG','CHỜ VẬN ĐƠN','ĐANG GIAO','HOÀN THÀNH']);
 export const V35_SHIP_TYPES=Object.freeze(['Ship ruột','Kiot','App']);
+// Operational delivery types (2026-11-24). Pickup / customer-paid courier cost the company
+// nothing; 'trừ công nợ' records the shipping we support and deduct from the customer's debt.
+export const NO_FEE_SHIP_TYPES=Object.freeze(['Khách tự lấy','Ship ngoài – khách trả']);
+export const SHIP_TYPES=Object.freeze([...V35_SHIP_TYPES,...NO_FEE_SHIP_TYPES,'Ship ngoài – trừ công nợ']);
 const field=(row,i)=>String(row?.[i]??'').trim();
 export function parseVNDate(v){
  const m=String(v||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
@@ -68,7 +72,9 @@ export function normalizeV35Row(row){
 }
 export function validateShippingForm(f){
  const type=String(f.loaiShip||'').trim();
- if(!V35_SHIP_TYPES.includes(type))throw Error('Loại ship chỉ được chọn Ship ruột, Kiot hoặc App.');
+ if(!SHIP_TYPES.includes(type))throw Error('Loại ship không hợp lệ. Chọn: '+SHIP_TYPES.join(', ')+'.');
+ // No company cost for pickup or customer-paid courier: ignore any typed fee.
+ if(NO_FEE_SHIP_TYPES.includes(type))f={...f,tienShip:0,hangNang:0,phiBen:0,phuPhi:0};
  const phone=String(f.sdtShip||'').trim();
  if(phone&&!/^(\+84|0)[0-9]{9,10}$/.test(phone))throw Error('Số điện thoại ship không hợp lệ.');
  if(type==='Ship ruột'&&!String(f.tenShip||'').trim())throw Error('Tên ship là bắt buộc khi chọn Ship ruột.');

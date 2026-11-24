@@ -53,7 +53,8 @@ async function assertOrderLock(env,user,orderId,stage){
 async function checkUploads(env,orderId,stages){
  const rows=await env.DB.prepare('SELECT stage,status FROM uploads WHERE order_id=?').bind(orderId).all();
  const data=rows.results||[];
- if(data.some(x=>stages.includes(x.stage)&&x.status!=='COMPLETE'))throw Error('Có ảnh/video chưa tải xong. Vui lòng tiếp tục tải trước khi lưu.');
+ // SUPERSEDED = replaced during a re-pack; kept for history, never blocks saving.
+ if(data.some(x=>stages.includes(x.stage)&&x.status!=='COMPLETE'&&x.status!=='SUPERSEDED'))throw Error('Có ảnh/video chưa tải xong. Vui lòng tiếp tục tải trước khi lưu.');
  return data.filter(x=>stages.includes(x.stage)&&x.status==='COMPLETE');
 }
 function mustStageAccess(user,u,o){
@@ -589,10 +590,10 @@ async function handle(req,env){
    if(!sortSql)throw Error('Kiểu sắp xếp không hợp lệ.');
    const counter=await env.DB.prepare('SELECT COUNT(*) AS total FROM orders'+filteredWhere).bind(...filterArgs).first();
    matchingTotal=Number(counter?.total||0);
-   const result=await env.DB.prepare('SELECT id,created_by,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+filteredWhere+' ORDER BY '+sortSql+' LIMIT ? OFFSET ?').bind(...filterArgs,pageSize,(page-1)*pageSize).all();
+   const result=await env.DB.prepare('SELECT id,created_by,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,shipping_type,total_fee,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content,repack_reason,repack_stages,repack_count FROM orders'+filteredWhere+' ORDER BY '+sortSql+' LIMIT ? OFFSET ?').bind(...filterArgs,pageSize,(page-1)*pageSize).all();
    orders=result.results||[];
   }else{
-   const result=await env.DB.prepare('SELECT id,created_by,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').bind(...args).all();
+   const result=await env.DB.prepare('SELECT id,created_by,invoice_codes,customer,sale_name,quantity,address,urgent,delivery_time,shipping_person,shipping_phone,shipping_type,total_fee,status,created_at,updated_at,group_id,transport,carrier,packing_folder_url,shipping_folder_url,invoice_folder_url,video_folder_url,goods_folder_url,original_content,repack_reason,repack_stages,repack_count FROM orders'+where+' ORDER BY created_at DESC LIMIT 300').bind(...args).all();
    orders=result.results||[];
   }
   const summary=paginated?await env.DB.prepare("SELECT COUNT(*) AS total,SUM(CASE WHEN status='CHỜ ĐÓNG HÀNG' THEN 1 ELSE 0 END) AS waitingPacking,SUM(CASE WHEN status='CHỜ VẬN ĐƠN' THEN 1 ELSE 0 END) AS waitingShipping,SUM(CASE WHEN status='ĐANG GIAO' THEN 1 ELSE 0 END) AS moving,SUM(CASE WHEN status='HOÀN THÀNH' THEN 1 ELSE 0 END) AS completed FROM orders"+where).bind(...args).first():null;
@@ -863,15 +864,49 @@ async function handle(req,env){
   if(o.status!==STATUS.PACK)throw Error('Đơn đã đóng hoặc không còn ở trạng thái chờ.');
   await assertOrderLock(env,user,id,'DONG_HANG');
   await checkUploads(env,id,['ANH_HOA_DON','VIDEO_DONG_HANG','HANG_HOA']);
+  // Re-pack: every stage that was sent back needs at least one NEW file.
+  let redo=[];try{redo=JSON.parse(o.repack_stages||'[]');}catch{}
+  if(Array.isArray(redo)&&redo.length){
+   const fresh=await env.DB.prepare("SELECT DISTINCT stage FROM uploads WHERE order_id=? AND status='COMPLETE' AND created_at>=?").bind(id,o.repack_requested_at||'').all();
+   const have=new Set((fresh.results||[]).map(x=>x.stage)),labels={ANH_HOA_DON:'ảnh hóa đơn',VIDEO_DONG_HANG:'video đóng hàng',HANG_HOA:'ảnh hàng hóa'};
+   const missing=redo.filter(x=>!have.has(x));
+   if(missing.length)throw Error('Đơn đóng lại cần tải mới: '+missing.map(x=>labels[x]||x).join(', ')+'.');
+  }
   const helpers=Array.isArray(b.nguoiDongCung)?b.nguoiDongCung.map(clean).filter(Boolean):[];
   if(helpers.length>100)throw Error('Số lượng người đóng cùng vượt giới hạn.');
   const boxes=Number(b.boxes);
   if(!Number.isSafeInteger(boxes)||boxes<0)throw Error('Số thùng không hợp lệ.');
-  const result=await env.DB.prepare("UPDATE orders SET status=?,boxes=?,packing_helpers=?,packing_note=?,packed_by=?,packed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,local_dirty=CASE WHEN source_system='GOOGLE_SHEETS' THEN 1 ELSE local_dirty END WHERE id=? AND status=?")
+  const result=await env.DB.prepare("UPDATE orders SET status=?,boxes=?,packing_helpers=?,packing_note=?,packed_by=?,packed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,repack_stages='',local_dirty=CASE WHEN source_system='GOOGLE_SHEETS' THEN 1 ELSE local_dirty END WHERE id=? AND status=?")
    .bind(STATUS.SHIP,boxes,JSON.stringify(helpers),clean(b.note),user.id,id,STATUS.PACK).run();
   if(!result.meta.changes)throw Error('Đơn đã được người khác xử lý.');
   await env.DB.prepare('DELETE FROM order_locks WHERE order_id=? AND user_id=?').bind(id,user.id).run();
   await audit(env,user,'PACK',id);return json({ok:true,status:STATUS.SHIP});
+ }
+ // ---- Re-pack: a packed order (wrong items, bad video/photos) goes back to the warehouse ----
+ const repackMatch=path.match(/^\/api\/orders\/([A-Za-z0-9_-]+)\/repack$/);
+ if(method==='POST'&&repackMatch){
+  const id=repackMatch[1],o=await orderById(env,id),b=await requestJSON(req);
+  const isOwnerSale=hasRole(user,'SALE')&&(o.created_by===user.id||(o.sale_name&&o.sale_name===user.name));
+  if(!(hasRole(user,'ADMIN')||hasRole(user,'PACKER')||isOwnerSale))
+   throw Object.assign(new Error('Chỉ Sale của đơn, kho đóng hàng hoặc quản trị được yêu cầu đóng lại.'),{status:403});
+  if(o.status!==STATUS.SHIP)throw Object.assign(new Error('Chỉ yêu cầu đóng lại khi đơn đang Chờ vận đơn (chưa giao).'),{status:409});
+  const stages=[...new Set((Array.isArray(b.stages)?b.stages:[]).map(clean))];
+  if(!stages.length||stages.some(x=>!['ANH_HOA_DON','VIDEO_DONG_HANG','HANG_HOA'].includes(x)))throw Error('Chọn phần cần làm lại: video, ảnh hàng hóa hoặc ảnh hóa đơn.');
+  const reason=clean(b.reason).slice(0,500);
+  if(reason.length<3)throw Error('Nhập lý do đóng lại để kho biết cần sửa gì.');
+  const lock=await env.DB.prepare('SELECT user_id,expires_at FROM order_locks WHERE order_id=?').bind(id).first();
+  if(lock&&lock.expires_at>now()&&lock.user_id!==user.id)throw Object.assign(new Error('Đơn đang được người khác mở để vận đơn. Thử lại sau ít phút.'),{status:409});
+  const ph=stages.map(()=>'?').join(',');
+  const results=await env.DB.batch([
+   env.DB.prepare("UPDATE orders SET status=?,repack_reason=?,repack_stages=?,repack_requested_at=CURRENT_TIMESTAMP,repack_requested_by=?,repack_count=repack_count+1,updated_at=CURRENT_TIMESTAMP,local_dirty=CASE WHEN source_system='GOOGLE_SHEETS' THEN 1 ELSE local_dirty END WHERE id=? AND status=?")
+    .bind(STATUS.PACK,reason,JSON.stringify(stages),user.id,id,STATUS.SHIP),
+   // Old files are kept (history, Drive copy) but no longer count as this order's evidence.
+   env.DB.prepare("UPDATE uploads SET status='SUPERSEDED' WHERE order_id=? AND status='COMPLETE' AND stage IN ("+ph+")").bind(id,...stages),
+   env.DB.prepare('DELETE FROM order_locks WHERE order_id=?').bind(id)
+  ]);
+  if(results[0].meta.changes!==1)throw Object.assign(new Error('Trạng thái đơn vừa thay đổi; tải lại danh sách.'),{status:409});
+  await audit(env,user,'REPACK_REQUEST',id,JSON.stringify({stages,reason,replacedFiles:results[1].meta.changes}));
+  return json({ok:true,status:STATUS.PACK,stages,replacedFiles:results[1].meta.changes});
  }
  if(method==='POST'&&path==='/api/shipments'){
    await requireMenu('orders.ship');needRole(user,'SHIPPER');const b=await requestJSON(req),ids=[...new Set((b.orderIds||[]).map(String))];
