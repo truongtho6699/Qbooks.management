@@ -965,27 +965,55 @@ async function saveOrderEdit(event){
  }catch(e){notice('Chưa sửa được đơn: '+e.message);showFormError(form,e.message);}
  finally{button.disabled=false;}
 }
+// One compact chip per evidence type in lists (the full file list stays in "Chi tiết đơn").
+function overviewChips(order){
+ const box=el('div',null,'overview-media-links overview-chips');
+ const chip=(icon,label,count,href,file)=>{
+  const text=label+(count>1?' ('+count+')':'');
+  let node;
+  if(href){node=el('a',null,'overview-chip');node.href=href;node.target='_blank';node.rel='noopener noreferrer';}
+  else{node=button('',()=>openStoredImage(file),'overview-chip');node.title='Xem ảnh đã lưu trên Qbooks (chưa lên Drive)';}
+  node.append(el('span',icon,'overview-chip-icon'),el('span',text));
+  return node;
+ };
+ for(const [stage,label,icon,folderKey] of [['HANG_HOA','Ảnh hàng hóa','▣','goods_folder_url'],['GIAO_HANG','Ảnh giao hàng','⇄','shipping_folder_url']]){
+  const items=(order.media||[]).filter(x=>x.stage===stage);
+  const folder=safeDriveUrl(order[folderKey]);
+  if(!items.length&&!folder)continue;
+  const first=items.find(x=>x.drive_file_id)||items[0];
+  // Several files: open the Drive folder when we have it, otherwise the first file.
+  const href=(items.length>1&&folder)||(first?.drive_file_id?fileDriveUrl(first.drive_file_id):folder);
+  box.append(chip(icon,label,items.length,href,first));
+ }
+ const video=(order.media||[]).filter(x=>x.stage==='VIDEO_DONG_HANG');
+ if(video.length){const v=video.find(x=>x.drive_file_id);box.append(chip('▶','Video',video.length,v?fileDriveUrl(v.drive_file_id):safeDriveUrl(order.video_folder_url),video[0]));}
+ const folder=safeDriveUrl(order.packing_folder_url)||safeDriveUrl(order.shipping_folder_url)||safeDriveUrl(order.goods_folder_url);
+ if(folder){const a=el('a',null,'overview-chip overview-chip-folder');a.href=folder;a.target='_blank';a.rel='noopener noreferrer';a.title='Mở thư mục hồ sơ trên Google Drive';a.append(el('span','📁','overview-chip-icon'),el('span','Thư mục'));box.append(a);}
+ if(!box.children.length)box.append(el('span','Chưa có hồ sơ','muted overview-empty'));
+ return box;
+}
+function overviewActions(order){
+ const box=el('div',null,'overview-row-actions');
+ const detail=button('Chi tiết',()=>showOrderSummary(order),'secondary overview-detail-btn');
+ const copy=button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary copy-order-btn');
+ copy.title='Copy nội dung đơn hàng';copy.setAttribute('aria-label','Copy đơn hàng '+(order.invoice_codes||order.id));
+ box.append(detail,copy);return box;
+}
 function appendOverviewRow(order,table,cardHolder){
  const code=order.invoice_codes||order.id;
  const tr=document.createElement('tr');
- const orderTd=document.createElement('td');orderTd.append(el('strong',code),el('small',order.id));
- const customer=document.createElement('td');customer.append(el('strong',order.customer||'—'),el('small','Sale: '+(order.sale_name||'—')));
- const status=document.createElement('td');status.append(statusBadge(order.status));
- const links=document.createElement('td');links.className='overview-media-links';overviewMediaLinks(links,order);
- const goodsCard=goodsImageCard(order);if(goodsCard)links.prepend(goodsCard);
- const detail=document.createElement('td');detail.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'));
- const action=document.createElement('td');action.className='overview-copy-actions';
- const copy=button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary');copy.classList.add('copy-order-btn');
- action.append(copy);
- tr.append(orderTd,customer,status,links,detail,action);table.append(tr);
+ const orderTd=document.createElement('td');orderTd.className='overview-code';
+ const shortId=el('small',String(order.id||'').slice(0,8));shortId.title=order.id;
+ orderTd.append(el('strong',code),shortId);
+ const customer=document.createElement('td');customer.className='overview-customer';customer.append(el('strong',order.customer||'—'),el('small','Sale: '+(order.sale_name||'—')));
+ const status=document.createElement('td');status.className='overview-status';status.append(statusBadge(order.status));
+ const links=document.createElement('td');links.className='overview-links-cell';links.append(overviewChips(order));
+ const action=document.createElement('td');action.className='overview-actions-cell';action.append(overviewActions(order));
+ tr.append(orderTd,customer,status,links,action);table.append(tr);
  const card=el('article',null,'overview-mobile-card');
- card.append(el('strong',code),el('small',(order.customer||'—')+' · '+(order.sale_name||'—')),statusBadge(order.status));
- const linksMobile=el('div',null,'overview-media-links');overviewMediaLinks(linksMobile,order);
- const mobileGoods=goodsImageCard(order);if(mobileGoods)linksMobile.prepend(mobileGoods);
- card.append(linksMobile);
- const controls=el('div',null,'overview-card-actions');
- controls.append(button('Chi tiết đơn',()=>showOrderSummary(order),'secondary'),button('Copy đơn hàng',()=>copyOrderToClipboard(order),'secondary'));
- card.append(controls);cardHolder.append(card);
+ const head=el('div',null,'overview-mobile-head');head.append(el('strong',code),statusBadge(order.status));
+ card.append(head,el('small',(order.customer||'—')+' · Sale: '+(order.sale_name||'—')),overviewChips(order),overviewActions(order));
+ cardHolder.append(card);
 }
 function showOrderSummary(order){
  state.summaryOrder=order;
@@ -1038,7 +1066,7 @@ function renderOverview(){
  const start=(state.overviewPage-1)*size,visible=serverPage?rows:rows.slice(start,start+size);
  const table=$('overviewRows'),cardsHolder=$('overviewCards');table.replaceChildren();cardsHolder.replaceChildren();
  if(visible.length){for(const o of visible)appendOverviewRow(o,table,cardsHolder);}
- else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=6;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
+ else{const td=el('td','Không tìm thấy đơn phù hợp.');td.colSpan=5;const tr=el('tr');tr.append(td);table.append(tr);cardsHolder.append(el('p','Không có đơn phù hợp.'));}
  $('overviewPageInfo').textContent='Trang '+state.overviewPage+'/'+pages+' · '+matched+' đơn phù hợp';
  $('overviewPrevPage').disabled=state.overviewPage<=1;
  $('overviewNextPage').disabled=state.overviewPage>=pages;
@@ -1188,8 +1216,9 @@ async function openOrder(order){
 function progress(file,done,total,background=false,dest='R2'){
  if(background&&state.backgroundJob){
   $('backgroundUploadBar').hidden=false;
-  $('backgroundUploadTitle').textContent='Đang tải nền: '+file;
-  $('backgroundUploadProgress').value=total?Math.min(100,Math.round(done/total*100)):0;
+  const pct=total?Math.min(100,Math.round(done/total*100)):0;
+  $('backgroundUploadTitle').textContent='Đang tải video · '+file;
+  $('backgroundUploadProgress').value=pct;$('backgroundUploadPercent').textContent=pct+'%';
   $('backgroundUploadDetail').textContent=Math.round(done/1048576)+' / '+Math.round(total/1048576)+' MB đã truyền. Chưa thể đóng trình duyệt khi video chưa gửi đủ.';
  }
  $('progressWrap').hidden=false;$('uploadLabel').textContent='Đang tải: '+file;
@@ -1364,7 +1393,9 @@ function updateUploadTask(orderId,stage,file,status,detail=''){
  if(uploadTaskRecords.size>30)uploadTaskRecords.delete(uploadTaskRecords.keys().next().value);
  const panel=$('qbookUploadActivity'),list=$('qbookUploadItems'),summary=$('qbookUploadSummary');
  if(!panel||!list||!summary)return;
+ if(panel.hidden&&window.matchMedia?.('(max-width:800px)').matches)setUploadListOpen(false); // phones: one line by default
  panel.hidden=false;list.replaceChildren();
+ clearTimeout(uploadPanelTimer);
  const records=[...uploadTaskRecords.values()].reverse();
  const done=records.filter(x=>x.status==='STORED').length,errors=records.filter(x=>x.status==='ERROR').length;
  summary.textContent='Đã lưu '+done+'/'+records.length+' tệp vào Qbooks'+(errors?' · '+errors+' tệp cần thử lại':'')+'.';
@@ -1376,12 +1407,26 @@ function updateUploadTask(orderId,stage,file,status,detail=''){
   if(rec.detail)stateLabel.title=rec.detail;
   row.append(caption,stateLabel);list.append(row);
  }
+ // Everything stored without errors: tidy the panel away after a short moment.
+ if(records.length&&done===records.length)uploadPanelTimer=setTimeout(()=>{if(!state.backgroundJob)panel.hidden=true;},8000);
 }
-$('qbookUploadCollapse').onclick=()=>{
- const list=$('qbookUploadItems'),open=!list.hidden;
- list.hidden=open;$('qbookUploadCollapse').textContent=open?'Mở danh sách':'Thu gọn';
- $('qbookUploadCollapse').setAttribute('aria-expanded',String(!open));
-};
+let uploadPanelTimer=null;
+function setUploadListOpen(open){
+ $('qbookUploadItems').hidden=!open;$('qbookUploadActivity').classList.toggle('open',open);
+ $('qbookUploadCollapse').textContent=open?'Thu gọn':'Mở danh sách';$('qbookUploadCollapse').setAttribute('aria-expanded',String(open));
+}
+$('qbookUploadCollapse').onclick=()=>setUploadListOpen($('qbookUploadItems').hidden);
+$('qbookUploadClose').onclick=()=>{clearTimeout(uploadPanelTimer);$('qbookUploadActivity').hidden=true;};
+// Background bar: tap to show/hide the long explanation on phones; ✕ once finished.
+$('backgroundUploadBar').addEventListener('click',e=>{if(e.target.closest('button'))return;$('backgroundUploadBar').classList.toggle('expanded');});
+$('backgroundUploadClose').onclick=()=>{$('backgroundUploadBar').hidden=true;};
+function backgroundBarState(stateName){
+ const bar=$('backgroundUploadBar');bar.classList.toggle('done',stateName==='done');bar.classList.toggle('failed',stateName==='failed');
+ $('backgroundUploadClose').hidden=stateName==='running';
+ clearTimeout(backgroundBarTimer);
+ if(stateName==='done')backgroundBarTimer=setTimeout(()=>{if(!state.backgroundJob)bar.hidden=true;},10000);
+}
+let backgroundBarTimer=null;
 async function uploadSelection(orderId,items,background=false){
  // Photos use independent R2 objects. Allow up to 3 uploads concurrently instead
  // of blocking on every image. Preserve video sequential upload to limit bandwidth.
@@ -1665,9 +1710,9 @@ async function savePack(){
  // Files stay referenced by this in-page task; it survives SPA menu switches,
  // NOT browser/tab termination. Multipart upload IDs enable safe manual resume.
  state.backgroundJob={orderId:id,filename:uploads.filter(x=>x[0]==='VIDEO_DONG_HANG').map(x=>x[1].name).join(', '),status:'RUNNING'};
- $('backgroundUploadBar').hidden=false;
- $('backgroundUploadProgress').value=0;
- $('backgroundUploadTitle').textContent='Đang tải nền video cho đơn '+(order.invoice_codes||id);
+ $('backgroundUploadBar').hidden=false;backgroundBarState('running');
+ $('backgroundUploadProgress').value=0;$('backgroundUploadPercent').textContent='0%';
+ $('backgroundUploadTitle').textContent='Đang tải video · '+(order.invoice_codes||id);
  $('backgroundUploadDetail').textContent='Đang gửi video lên nơi lưu trữ. Có thể chuyển menu Qbooks, nhưng KHÔNG đóng tab/Safari trước khi thấy CÓ THỂ ĐÓNG TRÌNH DUYỆT.';
  markDraftSaved($('packControls'));
  notice('Đang tải video nền: có thể dùng menu Qbooks khác nhưng chưa được đóng trình duyệt.',true);
@@ -1682,19 +1727,21 @@ async function savePack(){
    const saved=[...preSaved,...await uploadSelection(id,rest,true)];
    // Keep the warning until both file storage and the packing record are committed.
    $('backgroundUploadProgress').value=100;
-   $('backgroundUploadTitle').textContent='Video đã tải đủ – đang lưu đóng hàng';
+   $('backgroundUploadTitle').textContent='Video đã tải đủ · đang lưu đơn…';$('backgroundUploadPercent').textContent='100%';
    $('backgroundUploadDetail').textContent='Chưa đóng trình duyệt cho đến khi lưu đơn thành công.';
    await api('POST','/api/orders/'+id+'/pack',payload);
    for(const [stage,file] of uploads)localStorage.removeItem(fingerprint(id,stage,file));
    state.lockedOrderIds.delete(id);
-   $('backgroundUploadTitle').textContent='Đã lưu đóng hàng '+(order.invoice_codes||id)+' – CÓ THỂ ĐÓNG TRÌNH DUYỆT';
+   $('backgroundUploadTitle').textContent='✓ Đã lưu '+(order.invoice_codes||id)+' · CÓ THỂ ĐÓNG TRÌNH DUYỆT';
+   $('backgroundUploadPercent').textContent='';backgroundBarState('done');
    $('backgroundUploadDetail').textContent='Đã xác nhận lưu '+saved.length+' tệp. Video tải thẳng Drive đã được kiểm tra; tệp còn trên R2 sẽ chờ Worker đồng bộ nếu được bật.';
    if(state.area==='orders'&&state.tab==='pack'&&state.selected?.id===id){
     show('detailView',false);show('ordersView',true);
     await loadOrders().catch(()=>{});
    }
   }catch(e){
-   $('backgroundUploadTitle').textContent='Tải nền chưa hoàn thành: '+(order.invoice_codes||id);
+   $('backgroundUploadTitle').textContent='Tải chưa xong: '+(order.invoice_codes||id)+' · chạm để xem';
+   $('backgroundUploadPercent').textContent='';backgroundBarState('failed');$('backgroundUploadBar').classList.add('expanded');
    $('backgroundUploadDetail').textContent=e.message+' · Video chưa xác nhận hoàn tất: mở lại đơn và chọn lại tệp để tiếp tục.';
    notice('Tải video nền gặp lỗi: '+e.message);
    state.lockedOrderIds.delete(id);

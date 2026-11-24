@@ -443,3 +443,84 @@
 .qbook-repack-tag{display:inline-block;margin-top:6px;padding:2px 8px;border-radius:999px;background:#fff4e5;border:1px solid #f3c58a;color:#7a4300;font-size:12px;font-weight:700}
 .qbook-repack-form{display:grid;gap:10px}.qbook-repack-form label.check{display:flex;gap:8px;align-items:center}
 .qbook-repack-form textarea{min-height:80px;width:100%}
+
+
+/* ===== Overview table (2026-11-24): real table cells, one chip per evidence type ===== */
+#appPage .shipping-table td{vertical-align:middle}
+#appPage .shipping-table td.overview-links-cell,#appPage .shipping-table td.overview-actions-cell{display:table-cell!important}
+#appPage .overview-code strong{display:block;white-space:nowrap}
+#appPage .overview-code small,#appPage .overview-customer small{display:block;color:#64748b;font-size:12px;margin-top:2px}
+#appPage .overview-customer strong{display:block;overflow-wrap:anywhere}
+#appPage .overview-status{white-space:nowrap}
+#appPage .overview-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#appPage .overview-chip{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 10px;border:1px solid #cdddf8;border-radius:8px;
+ background:#edf4ff;color:#155fc4;font-size:12px;font-weight:700;line-height:1.2;text-decoration:none;white-space:nowrap;cursor:pointer;width:auto;margin:0}
+#appPage .overview-chip:hover,#appPage .overview-chip:focus-visible{background:#daeafa;border-color:#2873c7}
+#appPage .overview-chip-folder{background:#fff;color:#334155;border-color:#dbe3ee}
+#appPage .overview-chip-icon{font-size:13px;line-height:1}
+#appPage .overview-empty{font-size:12px;color:#94a3b8}
+#appPage .overview-actions-col{width:1%;white-space:nowrap}
+#appPage .overview-row-actions{display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:nowrap}
+#appPage .overview-row-actions button{width:auto;min-width:0;min-height:34px;padding:6px 12px;font-size:12.5px;white-space:nowrap;margin:0}
+#appPage .overview-row-actions .overview-detail-btn{background:#2563eb;color:#fff;border-color:#2563eb}
+#appPage .overview-row-actions .overview-detail-btn:hover{background:#1d4ed8}
+#appPage .overview-mobile-card{display:grid;gap:8px}
+#appPage .overview-mobile-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+#appPage .overview-mobile-card .overview-row-actions{justify-content:stretch}
+#appPage .overview-mobile-card .overview-row-actions button{flex:1;min-height:40px}
+/* Filter row: the reset button sits on the same baseline as the two dropdowns */
+#appPage .qbook-overview-controls{align-items:end}
+#appPage .qbook-overview-controls>button{align-self:end;margin-bottom:0}
+/* Medium screens: keep every column visible without horizontal scrolling */
+@media(max-width:1280px) and (min-width:801px){
+ #appPage .overview-row-actions{flex-direction:column;align-items:stretch}
+ #appPage .overview-row-actions button{width:100%}
+ #appPage .overview-code small{display:none}
+ #appPage .shipping-table th,#appPage .shipping-table td{padding-left:10px;padding-right:10px}
+}
+#appPage .qbook-overview-controls>label{margin-bottom:0}
+#appPage .qbook-overview-controls{margin-bottom:15px}
+@media(max-width:1280px) and (min-width:801px){
+ #appPage .shipping-table{min-width:0!important;width:100%}
+ #appPage .overview-chips{gap:5px}
+ #appPage .overview-chip{padding:5px 8px}
+
+/* ===== Compact upload status (2026-11-24): small strips instead of big cards ===== */
+.qbook-bg-head{display:flex;align-items:center;gap:8px;min-width:0}
+.qbook-bg-head strong{flex:1;min-width:0}
+.qbook-bg-percent{flex:none;font-size:12px;font-weight:700;color:#1756a0;font-variant-numeric:tabular-nums}
+.qbook-upload-head-actions{display:flex;gap:6px;align-items:center}
+.qbook-mini-close{flex:none;background:#f1f5f9;border:1px solid #dbe3ee;color:#475569;border-radius:8px;min-width:36px;min-height:36px;padding:0 8px;font-size:14px;line-height:1;cursor:pointer}
+.qbook-mini-close[hidden]{display:none!important}
+.qbook-background-upload.done{border-color:#86d3ae}
+.qbook-background-upload.failed{border-color:#f0b4ab}
+@media(max-width:800px){
+ .qbook-background-upload{
+  left:8px!important;right:8px!important;width:auto!important;
+  bottom:calc(78px + env(safe-area-inset-bottom))!important;
+  padding:8px 10px!important;gap:5px!important;border-radius:12px!important;max-height:none!important;
+  box-shadow:0 6px 18px #0b2b4d26!important;
+ }
+ .qbook-background-upload strong{font-size:12.5px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .qbook-background-upload progress{height:5px!important}
+ .qbook-background-upload small{display:none}
+ .qbook-background-upload.expanded small{display:block}
+ .qbook-background-upload.expanded strong{white-space:normal}
+ .qbook-upload-activity{
+  left:8px!important;right:8px!important;width:auto!important;
+  bottom:calc(78px + env(safe-area-inset-bottom))!important;
+  padding:6px 10px!important;border-radius:12px!important;max-height:40dvh!important;
+  box-shadow:0 6px 18px #0b2b4d26!important;
+ }
+ .qbook-background-upload:not([hidden])~.qbook-upload-activity:not([hidden]){
+  bottom:calc(78px + 62px + env(safe-area-inset-bottom))!important;max-height:30dvh!important;
+ }
+ .qbook-upload-head strong{font-size:12.5px}
+ .qbook-upload-head button{min-height:36px!important;padding:4px 10px!important;font-size:12.5px}
+ .qbook-upload-activity #qbookUploadSummary{margin:2px 0 0!important}
+ .qbook-upload-activity .qbook-upload-note{display:none}
+ .qbook-upload-activity.open .qbook-upload-note{display:block}
+}
+@media(max-width:800px){
+ .qbook-background-upload.expanded:not([hidden])~.qbook-upload-activity:not([hidden]){bottom:calc(78px + 118px + env(safe-area-inset-bottom))!important}
+}
