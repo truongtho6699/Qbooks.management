@@ -40,11 +40,11 @@ test('Goods image folder takes precedence over individual file and rejects unsaf
  assert.match(make.goodsImageLinks(o)[0],/drive.google.com\/file\/d\//);
 });
 test('Desktop and mobile both expose copy action; merchandise image is an anchor',()=>{
- assert.match(html,/<th>Thao tác<\/th>/);
+ assert.match(html,/<th class="overview-actions-col">Thao tác<\/th>/);
  assert.match(source,/const copy=button\('Copy đơn hàng',\(\)=>copyOrderToClipboard\(order\)/);
  assert.match(source,/button\('Copy đơn hàng',\(\)=>copyOrderToClipboard\(order\)/);
  assert.match(source,/link=el\('a',null,'goods-image-card'\)/);
  assert.match(source,/link\.href=url;link\.target='_blank'/);
- assert.match(source,/td\.colSpan=6/);
+ assert.match(source,/td\.colSpan=5/); // Chi tiết + Copy share the Thao tác column
  assert.match(css,/\.goods-image-card/);
 });
