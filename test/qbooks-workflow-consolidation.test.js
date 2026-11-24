@@ -52,8 +52,9 @@ test('Media menu removed duplicates and moved administration to System Admin',()
  const groups=nav.slice(nav.indexOf('const MEDIA_GROUPS='),nav.indexOf('const iconPaths='));
  for(const removed of ["['adminOverview',","['createVideo',","['staff',","['permissions',","['audit',"])
   assert.ok(!groups.includes(removed),'Media NAV still contains '+removed);
- for(const value of ['Tài khoản và nhân sự','Phân quyền tài khoản','Dữ liệu và nhật ký'])
+ for(const value of ['Tài khoản & phân quyền','Dữ liệu và nhật ký'])
   assert.ok(nav.includes(value));
+ assert.ok(!nav.includes("['permissions','Phân quyền tài khoản']"),'accounts and permissions are one menu');
  assert.match(nav,/makeBranch\(container,'QUẢN TRỊ HỆ THỐNG',adminOpen,1/);
  assert.match(app,/adminPanel:'accounts'/);
  assert.match(app,/data-admin-section/);

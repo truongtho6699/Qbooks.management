@@ -126,13 +126,16 @@ test('Admin can atomically save menu grants and Media roles for an existing staf
   async all(){return {results:[]}},
   async run(){return {meta:{changes:1}}}
  }},async batch(stmts){statements.push(...stmts.map(x=>x.sql));batches.push(stmts);return stmts.map(()=>({success:true}))}}};
- const body={permissions:{'orders.sale':true,'media.dashboard':true,'media.film':true},video:{can_film:true,can_edit:false,can_manage:false}};
+ // SALE + Quay: orders.sale, media.dashboard and media.film are role defaults (not stored);
+ // orders.ship=true and media.catalog=false deviate from the defaults and are stored.
+ const body={permissions:{'orders.sale':true,'media.dashboard':true,'media.film':true,'orders.ship':true,'media.catalog':false},video:{can_film:true,can_edit:false,can_manage:false}};
  const r=await worker.fetch(new Request('https://qbooks.test/api/users/12345678-1234-1234-1234-123456789abc/menus',{
   method:'PUT',headers:{authorization:'Bearer admin-session','content-type':'application/json'},body:JSON.stringify(body)}),env);
  assert.equal(r.status,200);
  assert.equal(batches.length,1);
  assert.ok(statements.some(x=>x.startsWith('DELETE FROM user_menu_permissions')));
- assert.equal(statements.filter(x=>x.startsWith('INSERT INTO user_menu_permissions')).length,3);
+ const inserts=batches[0].filter(x=>x.sql.startsWith('INSERT INTO user_menu_permissions')).map(x=>x.params[1]+'='+x.params[2]);
+ assert.deepEqual(inserts.sort(),['media.catalog=0','orders.ship=1']);
  assert.ok(statements.some(x=>x.startsWith('INSERT INTO video_role_grants')));
 });
 test('Unknown menu key is rejected before changing staff permissions',async()=>{

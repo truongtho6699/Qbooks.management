@@ -6,7 +6,7 @@ import {syncStatus,driveInit,driveChunk,sheetCommit,DIRECT_DRIVE_CHUNK,createDir
 import {googleAccessToken} from './drive-auto-worker.js';
 import {checkDriveCopy} from './r2-drive-move.js';
 import {videoApi} from './video-manager.js';
-import {MENU_KEYS,MENU_LABELS,resolveMenuPermissions,allowedMenu} from './menu-permissions.js';
+import {MENU_KEYS,MENU_LABELS,resolveMenuPermissions,allowedMenu,menuDefaults} from './menu-permissions.js';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const fail=(message,status=400)=>json({error:message},status);
@@ -183,10 +183,14 @@ async function handle(req,env){
    if(!input.video||typeof input.video!=='object')throw Error('Thiếu quyền Media.');
    const v=input.video;for(const flag of ['can_film','can_edit','can_manage'])if(typeof v[flag]!=='boolean')throw Error('Quyền Media không hợp lệ: '+flag);
    const stmts=[env.DB.prepare('DELETE FROM user_menu_permissions WHERE user_id=?').bind(targetId)];
-   for(const [key,enabled] of Object.entries(perms))stmts.push(env.DB.prepare('INSERT INTO user_menu_permissions(user_id,menu_key,allowed) VALUES(?,?,?)').bind(targetId,key,enabled?1:0));
+   // Store only deviations from the role defaults, so later role changes (e.g. ticking
+   // "Đóng hàng") still switch the matching menus on instead of being masked by stale rows.
+   const defaults=new Set(menuDefaults({...profile,can_pack:Number(target.can_pack),can_ship:Number(target.can_ship),can_admin:Number(target.can_admin)},{can_film:v.can_film?1:0,can_edit:v.can_edit?1:0,can_manage:v.can_manage?1:0}));
+   const overrides=Object.entries(perms).filter(([key,enabled])=>enabled!==defaults.has(key));
+   for(const [key,enabled] of overrides)stmts.push(env.DB.prepare('INSERT INTO user_menu_permissions(user_id,menu_key,allowed) VALUES(?,?,?)').bind(targetId,key,enabled?1:0));
    stmts.push(env.DB.prepare('INSERT INTO video_role_grants(user_id,can_film,can_edit,can_manage) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET can_film=excluded.can_film,can_edit=excluded.can_edit,can_manage=excluded.can_manage')
      .bind(targetId,v.can_film?1:0,v.can_edit?1:0,v.can_manage?1:0));
-   await env.DB.batch(stmts);await audit(env,user,'UPDATE_MENU_PERMISSIONS','',JSON.stringify({targetId,menus:Object.keys(perms)}));
+   await env.DB.batch(stmts);await audit(env,user,'UPDATE_MENU_PERMISSIONS','',JSON.stringify({targetId,overrides:Object.fromEntries(overrides),video:{film:!!v.can_film,edit:!!v.can_edit,manage:!!v.can_manage}}));
    return json({ok:true,userId:targetId});
   }
   throw Object.assign(new Error('Phương thức không hợp lệ.'),{status:405});

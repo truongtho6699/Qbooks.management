@@ -32,9 +32,13 @@ test('role badges and last login text are readable',()=>{
  assert.match(lastLoginText('2026-11-24 08:05:00'),/^Đăng nhập gần nhất: .*15:05/);
 });
 
-test('permission panel keeps the person name after saving (no "Nhân sự: Nhân sự:")',()=>{
- assert.match(app,/await loadStaffMenuPermissions\(edit\.id,edit\.name,edit\.role\);/);
- assert.match(app,/state\.menuEditor=\{id,name,role,keys:details\.keys\};/);
+test('one popup edits profile, roles and menus with a single save',()=>{
+ assert.match(html,/<dialog id="staffDialog" class="order-summary-dialog staff-dialog" aria-labelledby="staffDialogTitle">/);
+ const dialog=html.slice(html.indexOf('<dialog id="staffDialog"'),html.indexOf('</dialog>',html.indexOf('<dialog id="staffDialog"')));
+ for(const id of ['staffForm','menuPermissionsGrid','grantFilm','saveStaffBtn','staffUnlockRow'])assert.match(dialog,new RegExp('id="'+id+'"'),id);
+ assert.ok(!html.includes('id="saveMenuPermissions"'),'no second save button');
+ assert.match(app,/await api\('PUT','\/api\/users\/'\+savedId\+'\/menus',\{permissions,video\}\)/);
+ assert.match(app,/const wanted=params\.get\('panel'\)==='permissions'\?'accounts'/);
 });
 
 test('Google approvals default to VIEW and ask before granting more or rejecting',()=>{
