@@ -235,3 +235,13 @@ body{background:#eef2f9}
 .menu-right-item:has(input:disabled){opacity:.55}
 #menuPermissionsPanel{margin-top:18px}
 @media(max-width:680px){.menu-permissions-grid{grid-template-columns:1fr}.menu-rights{padding:11px}}
+
+/* In-app 720p recorder: small files that upload in seconds */
+.record-video-btn{margin-top:8px;width:100%}
+.recorder-dialog{width:min(96vw,560px);border:0;border-radius:16px;padding:16px}
+.recorder-dialog::backdrop{background:rgba(15,23,42,.7)}
+.recorder-dialog video{width:100%;max-height:60vh;background:#000;border-radius:12px;object-fit:contain}
+.recorder-status{display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.recorder-dot{width:10px;height:10px;border-radius:50%;background:#dc2626;animation:recblink 1s infinite}
+@keyframes recblink{50%{opacity:.25}}
+.recorder-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}

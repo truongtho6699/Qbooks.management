@@ -3,7 +3,7 @@ import {trackDraft,markDraftSaved,confirmLeave,protectBeforeUnload,humanizeError
 const CHUNK_BYTES=8*1024*1024;
 const VIDEO_PART_CONCURRENCY=3;
 const $=id=>document.getElementById(id);
-const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null,adminPanel:'accounts',backgroundJob:null,editOrder:null};
+const state={token:sessionStorage.getItem('qbooks_token')||localStorage.getItem('qbooks_remember_token')||'',user:null,orders:[],selected:null,tab:'orders',saving:false,lockedOrderIds:new Set(),orderMenuExpanded:false,menuKeys:[],menuEditor:null,area:'orders',mediaView:'dashboard',mediaPromise:null,adminPanel:'accounts',backgroundJob:null,preUpload:null,editOrder:null};
 const statusTitle={PACKER:'Đơn chờ đóng hàng',SHIPPER:'Đơn chờ vận đơn',SALE:'Đơn hàng',ADMIN:'Tất cả đơn hàng'};
 const REMEMBER_EMAIL='qbooks_remember_email';
 const REMEMBER_TOKEN='qbooks_remember_token';
@@ -455,6 +455,7 @@ function switchView(){
 }
 async function releaseLocks(){
  const protectedId=state.backgroundJob?.orderId;
+ if(state.preUpload&&state.preUpload.orderId!==protectedId)await cancelPreUpload();
  const ids=[...state.lockedOrderIds].filter(id=>id!==protectedId);
  for(const id of ids)state.lockedOrderIds.delete(id);
  await Promise.allSettled(ids.map(id=>api('DELETE','/api/orders/'+id+'/lock')));
@@ -1033,8 +1034,15 @@ function progress(file,done,total,background=false,dest='R2'){
  $('uploadProgress').value=Math.min(100,Math.round(done/total*100));
  $('uploadDetail').textContent=Math.round(done/1048576)+' / '+Math.round(total/1048576)+' MB đã ghi nhận tại '+dest;
 }
+// Uploads that the packer discarded (changed the selection or left the order) stop at the next part.
+const cancelledUploadKeys=new Set(),uploadIdsByKey=new Map();
+const cancelledError=()=>Object.assign(Error('Đã hủy tải video.'),{cancelled:true});
 function fingerprint(orderId,stage,file){return 'qbooks_upload_v1|'+orderId+'|'+stage+'|'+file.name+'|'+file.size+'|'+file.lastModified}
+// Videos recorded in-app are capped at 60 minutes by the recorder itself; WebM from
+// MediaRecorder reports an infinite duration, so skip the metadata probe for them.
+const recordedVideos=new WeakSet();
 async function videoDuration(file){
+ if(recordedVideos.has(file))return;
  return new Promise((resolve,reject)=>{
   const node=document.createElement('video'),url=URL.createObjectURL(file);
   const timer=setTimeout(()=>finish(Error('Không đọc được thời lượng video.')),20000);
@@ -1093,13 +1101,14 @@ function driveOffset(res,total){
  if(res.status===404||res.status===410)throw Object.assign(Error('Phiên tải Google Drive đã hết hạn. Bấm Lưu lại để tải video từ đầu.'),{expired:true});
  throw Object.assign(Error('Google Drive lỗi HTTP '+res.status),{retry:res.status>=500||res.status===429});
 }
-async function uploadVideoToDrive(file,info,background){
+async function uploadVideoToDrive(file,info,background,cancelKey){
  const url=info.sessionUrl,total=file.size,chunk=info.chunkSize||32*1024*1024,dest='Google Drive';
  if(!/^https:\/\/(www\.googleapis\.com|content-googleapis\.com)\/upload\/drive\//.test(String(url||'')))throw Error('Phiên tải Google Drive không hợp lệ.');
  const probe=async()=>driveOffset(await driveSessionPut(url,{'Content-Range':'bytes */'+total},null),total);
  let state_=await probe(),failures=0;
  progress(file.name,state_.offset,total,background,dest);
  while(!state_.done){
+  if(cancelKey&&cancelledUploadKeys.has(cancelKey))throw cancelledError();
   const start=state_.offset,end=Math.min(start+chunk,total);
   try{
    const res=await driveSessionPut(url,{'Content-Range':'bytes '+start+'-'+(end-1)+'/'+total},file.slice(start,end),
@@ -1133,6 +1142,7 @@ async function uploadOne(orderId,stage,file,background=false){
   const result=await api('POST','/api/uploads',{orderId,stage,filename:file.name,contentType:file.type|| (video?'video/mp4':'image/jpeg'),size:file.size});
   id=result.id;localStorage.setItem(key,id);info={status:'UPLOADING',chunkSize:result.chunkSize,transport:result.transport,sessionUrl:result.sessionUrl,parts:[]};
  }
+ uploadIdsByKey.set(key,id);
  // Keep the fingerprint until the order commit succeeds. Retrying a failed pack
  // must reuse completed files instead of creating duplicate Drive/R2 objects.
  if(info.status==='COMPLETE'){progress(file.name,file.size,file.size,background,info.transport==='drive'?'Google Drive':'R2');return id}
@@ -1142,7 +1152,7 @@ async function uploadOne(orderId,stage,file,background=false){
  }
  if(info.transport==='drive'){
   let fileId=null;
-  try{fileId=await uploadVideoToDrive(file,info,background);}
+  try{fileId=await uploadVideoToDrive(file,info,background,key);}
   catch(e){
    if(!e.expired)throw e;
    // Reuse the D1 record: abandoning it would leave an UPLOADING row that
@@ -1164,6 +1174,7 @@ async function uploadOne(orderId,stage,file,background=false){
  let failed=null;
  const sendParts=async()=>{
   while(queue.length&&!failed){
+   if(cancelledUploadKeys.has(key)){failed=cancelledError();throw failed;}
    const n=queue.shift(),start=(n-1)*chunk,end=Math.min(start+chunk,file.size),piece=file.slice(start,end);
    let retries=0;
    while(!failed){
@@ -1353,6 +1364,100 @@ function showSavedMediaLinks(order,result,newStatus){
  const summary={...order,status:newStatus,media:result.files};
  showOrderSummary(summary);
 }
+// ---- Start sending packing videos the moment they are picked ----------------------------
+// The phone first copies/converts the video into the browser ("loading"); afterwards the
+// upload runs while the packer fills in boxes/notes, so LƯU only has to finish the tail.
+function startVideoPreUpload(){
+ const order=state.selected;
+ if(!order||state.tab!=='pack'||order.status!=='CHỜ ĐÓNG HÀNG')return;
+ const items=[...($('videos').files||[])].map(f=>['VIDEO_DONG_HANG',f]);
+ const keys=items.map(([stage,file])=>fingerprint(order.id,stage,file));
+ const current=state.preUpload;
+ if(current&&current.orderId===order.id&&current.keys.join('\n')===keys.join('\n'))return;
+ const previous=current?cancelPreUpload(current):Promise.resolve();
+ if(!items.length||state.backgroundJob)return; // another order's video is still in the background
+ const job={orderId:order.id,items,keys,done:false,error:null};
+ job.promise=previous.then(()=>uploadSelection(order.id,items,true))
+  .then(r=>{job.done=true;return r},e=>{job.error=e;throw e});
+ job.settled=job.promise.catch(()=>{});
+ state.preUpload=job;
+ const status=$('packingDriveStatus');if(status)status.textContent='Video đang được tải lên ngay khi chọn. Bạn cứ điền tiếp các mục khác rồi bấm LƯU.';
+}
+async function cancelPreUpload(job=state.preUpload){
+ if(!job)return;
+ if(state.preUpload===job)state.preUpload=null;
+ for(const k of job.keys)cancelledUploadKeys.add(k);
+ await job.settled;
+ const ids=[];
+ for(const k of job.keys){const id=uploadIdsByKey.get(k)||localStorage.getItem(k);if(id)ids.push(id);localStorage.removeItem(k);uploadIdsByKey.delete(k);cancelledUploadKeys.delete(k);}
+ await Promise.allSettled(ids.map(id=>api('DELETE','/api/uploads/'+id)));
+}
+// ---- In-app 720p recorder ------------------------------------------------------------------
+// Phone camera apps record 1080p/4K at 10–50 Mbps (a 4-minute clip ≈ 465 MB, often kept in
+// iCloud). Recording here at 720p/~2 Mbps gives ≈ 15 MB per minute, stored locally, so the
+// "loading" step disappears and the upload (which starts immediately) takes seconds.
+const RECORDER_MAX_MS=60*60*1000,RECORDER_BITRATE=2000000;
+const recorder={stream:null,media:null,chunks:[],bytes:0,started:0,timer:null};
+function recorderMime(){
+ const list=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+ return list.find(t=>window.MediaRecorder?.isTypeSupported?.(t))||'';
+}
+function recorderError(message){const n=$('recorderError');n.textContent=message;n.hidden=!message;}
+function recorderReset(){
+ clearInterval(recorder.timer);recorder.timer=null;
+ recorder.stream?.getTracks().forEach(t=>t.stop());
+ recorder.stream=null;recorder.media=null;recorder.chunks=[];recorder.bytes=0;
+ $('recorderPreview').srcObject=null;$('recorderDot').hidden=true;
+ $('recorderStart').hidden=false;$('recorderStop').hidden=true;$('recorderTime').textContent='00:00';$('recorderSize').textContent='0 MB';
+}
+async function openRecorder(){
+ if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){$('videos').click();return;} // old browser: normal picker
+ recorderError('');
+ try{
+  recorder.stream=await navigator.mediaDevices.getUserMedia({audio:true,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30,max:30}}});
+ }catch(e){
+  recorderReset();
+  alert('Không mở được camera. Hãy cho phép QBooks dùng camera và micro, hoặc chọn video có sẵn.');
+  return;
+ }
+ $('recorderPreview').srcObject=recorder.stream;
+ $('recorderDialog').showModal();
+}
+function startRecording(){
+ const mimeType=recorderMime();
+ try{recorder.media=new MediaRecorder(recorder.stream,{...(mimeType?{mimeType}:{}),videoBitsPerSecond:RECORDER_BITRATE,audioBitsPerSecond:64000});}
+ catch{recorderError('Trình duyệt không hỗ trợ quay video. Hãy chọn video có sẵn.');return;}
+ recorder.chunks=[];recorder.bytes=0;recorder.started=Date.now();
+ recorder.media.ondataavailable=e=>{if(e.data?.size){recorder.chunks.push(e.data);recorder.bytes+=e.data.size;}};
+ recorder.media.onstop=finishRecording;
+ recorder.media.start(1000);
+ $('recorderStart').hidden=true;$('recorderStop').hidden=false;$('recorderDot').hidden=false;
+ recorder.timer=setInterval(()=>{
+  const ms=Date.now()-recorder.started,sec=Math.floor(ms/1000);
+  $('recorderTime').textContent=String(Math.floor(sec/60)).padStart(2,'0')+':'+String(sec%60).padStart(2,'0');
+  $('recorderSize').textContent=(recorder.bytes/1048576).toFixed(1)+' MB';
+  if(ms>=RECORDER_MAX_MS)recorder.media?.stop();
+ },500);
+}
+function finishRecording(){
+ const type=(recorder.media?.mimeType||recorderMime()||'video/webm').split(';')[0];
+ const blob=new Blob(recorder.chunks,{type});
+ recorderReset();$('recorderDialog').close();
+ if(!blob.size){alert('Video rỗng, vui lòng quay lại.');return;}
+ const code=String(String(state.selected?.invoice_codes||'').split(/[,;\s]+/)[0]||state.selected?.id||'DON').replace(/[^\w-]/g,'').slice(0,40)||'DON';
+ const stamp=new Date().toISOString().replace(/[-:]/g,'').slice(0,15);
+ const file=new File([blob],'QBOOKS_'+code+'_'+stamp+(type.includes('mp4')?'.mp4':'.webm'),{type,lastModified:Date.now()});
+ recordedVideos.add(file);
+ const input=$('videos'),list=new DataTransfer();
+ for(const f of input.files||[])list.items.add(f);
+ list.items.add(file);
+ input.files=list.files;
+ input.dispatchEvent(new Event('change',{bubbles:true})); // shows the file and starts the upload right away
+}
+function cancelRecording(){
+ if(recorder.media&&recorder.media.state!=='inactive'){recorder.media.onstop=null;recorder.media.stop();}
+ recorderReset();$('recorderDialog').close();
+}
 async function savePack(){
  if(state.saving||!state.selected)return;
  
@@ -1386,9 +1491,14 @@ async function savePack(){
  markDraftSaved($('packControls'));
  notice('Đang tải video nền: có thể dùng menu Qbooks khác nhưng chưa được đóng trình duyệt.',true);
  // Deliberately not awaited: render/navigation continue while upload runs.
+ const pre=state.preUpload?.orderId===id?state.preUpload:null;
+ const preKeys=new Set(pre?pre.keys:[]);
  void (async()=>{
   try{
-   const saved=await uploadSelection(id,uploads,true);
+   // Videos already sent since they were picked are not sent again.
+   let preSaved=[],rest=uploads.filter(([stage,file])=>!preKeys.has(fingerprint(id,stage,file)));
+   if(pre){try{preSaved=await pre.promise;}catch(e){if(e.cancelled)throw e;preSaved=[];rest=uploads;}}
+   const saved=[...preSaved,...await uploadSelection(id,rest,true)];
    // Keep the warning until both file storage and the packing record are committed.
    $('backgroundUploadProgress').value=100;
    $('backgroundUploadTitle').textContent='Video đã tải đủ – đang lưu đóng hàng';
@@ -1408,7 +1518,7 @@ async function savePack(){
    notice('Tải video nền gặp lỗi: '+e.message);
    state.lockedOrderIds.delete(id);
    await api('DELETE','/api/orders/'+id+'/lock').catch(()=>{});
-  }finally{state.backgroundJob=null;}
+  }finally{state.backgroundJob=null;if(state.preUpload===pre)state.preUpload=null;}
  })();
 }
 async function saveShip(){
@@ -1477,6 +1587,12 @@ $('reloadBtn').onclick=()=>loadOrders().catch(e=>notice(e.message));
 $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packControls'));markDraftSaved($('shipControls'));tab(state.tab);};
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 ['invoicePics','goodsPics','videos','shippingPics'].forEach(id=>$(id).addEventListener('change',renderSelectedFiles));
+$('videos').addEventListener('change',startVideoPreUpload);
+$('recordVideoBtn').addEventListener('click',openRecorder);
+$('recorderStart').addEventListener('click',startRecording);
+$('recorderStop').addEventListener('click',()=>recorder.media?.stop());
+$('recorderCancel').addEventListener('click',cancelRecording);
+$('recorderDialog').addEventListener('cancel',e=>{e.preventDefault();cancelRecording();});
 ['shippingFee','heavyFee','terminalFee','extraFee'].forEach(id=>$(id).addEventListener('input',updateShippingTotal));
 $('saleDeliveryMode').onchange=()=>{const timed=$('saleDeliveryMode').value==='THOI_GIAN';$('saleDeliveryTimeBox').hidden=!timed;$('saleDeliveryTime').required=timed;if(!timed)$('saleDeliveryTime').value='';};
 $('saleForm').elements.customer.addEventListener('input',updateSaleCustomerHint);
@@ -1804,7 +1920,7 @@ $('editOrderForm').onsubmit=saveOrderEdit;
 $('editFromOrderDetail').onclick=()=>{const order=state.summaryOrder;if(!order||!canEditOrder(order))return; $('orderSummaryDialog').close();openEditOrder(order);};
 $('closeOrderSummary').onclick=()=>$('orderSummaryDialog').close();
 $('closeDrivePreview').onclick=()=>$('drivePreviewDialog').close();
-window.addEventListener('beforeunload',e=>{if(state.backgroundJob){e.preventDefault();e.returnValue='';}});
+window.addEventListener('beforeunload',e=>{if(state.backgroundJob||(state.preUpload&&!state.preUpload.done)){e.preventDefault();e.returnValue='';}});
 prefillRememberedAccount();
 initGoogleSignIn();
 protectBeforeUnload();

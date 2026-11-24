@@ -29,7 +29,7 @@ export async function googleAccessToken(env){
   throw new Error('Google OAuth refresh failed (HTTP '+resp.status+'): '+String(obj.error||'unknown').slice(0,70));
  return obj.access_token;
 }
-async function runFile(env,uploadId,token,maxChunks=5){
+async function runFile(env,uploadId,token,maxChunks=5,deadline=Infinity){
  const movable=moveEnabled(env);
  const claimed=await env.DB.prepare(
   'UPDATE uploads SET auto_lease_until=?,auto_last_attempt_at=CURRENT_TIMESTAMP WHERE id=? AND status=\'COMPLETE\' AND (drive_file_id IS NULL'+(movable?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=?')
@@ -40,7 +40,8 @@ async function runFile(env,uploadId,token,maxChunks=5){
   if(!existing)throw new Error('Không tìm thấy bản ghi tải lên.');
   let progress=existing.drive_file_id?{done:true,fileId:existing.drive_file_id}:await driveInit(env,{uploadId,googleAccessToken:token});
   let chunks=0;
-  while(!progress.done&&chunks<maxChunks){
+  // Keep streaming while the batch still has time; the 9-minute lease protects the file.
+  while(!progress.done&&chunks<maxChunks&&Date.now()<deadline){
    progress=await driveChunk(env,{uploadId,googleAccessToken:token});
    chunks++;
   }
@@ -65,17 +66,24 @@ async function runFile(env,uploadId,token,maxChunks=5){
   return {status:'ERROR',uploadId,error:safeError(e)};
  }
 }
-export async function syncBatch(env,{maxFiles=2,maxChunks=5}={}){
+// Time-budgeted batch: small files (photos, short clips) go first so they reach Drive within
+// a minute, then large videos use the remaining budget instead of 5 parts per run.
+export const SYNC_BUDGET_MS=4*60*1000;
+export async function syncBatch(env,{maxFiles=5,maxChunks=60,budgetMs=SYNC_BUDGET_MS}={}){
+ const deadline=Date.now()+budgetMs;
  if(!configured(env))return {status:'DISABLED',processed:0,reason:'Cần quyền Google ngoại tuyến và SYNC_ENABLED=true'};
  const ids=await env.DB.prepare(
-  'SELECT id FROM uploads WHERE status=\'COMPLETE\' AND (drive_file_id IS NULL'+(moveEnabled(env)?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=? ORDER BY created_at,id LIMIT ?'
- ).bind(now(),now(),Math.min(3,Math.max(1,maxFiles))).all();
+  'SELECT id FROM uploads WHERE status=\'COMPLETE\' AND (drive_file_id IS NULL'+(moveEnabled(env)?' OR r2_deleted_at IS NULL':'')+') AND auto_next_attempt<=? AND auto_lease_until<=? ORDER BY CASE WHEN bytes<=52428800 THEN 0 ELSE 1 END,created_at,id LIMIT ?'
+ ).bind(now(),now(),Math.min(8,Math.max(1,maxFiles))).all();
  const candidates=ids.results||[];
  if(!candidates.length)return {status:'IDLE',processed:0};
  // Refresh once per batch; do not store access token.
  const token=await googleAccessToken(env);
  const out=[];
- for(const {id} of candidates)out.push(await runFile(env,id,token,maxChunks));
+ for(const {id} of candidates){
+  if(Date.now()>=deadline)break;
+  out.push(await runFile(env,id,token,maxChunks,deadline));
+ }
  return {status:'COMPLETE',processed:out.length,completed:out.filter(x=>x.status==='DONE'||x.status==='MOVED').length,
    failed:out.filter(x=>x.status==='ERROR').length,items:out};
 }

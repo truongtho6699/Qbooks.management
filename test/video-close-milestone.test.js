@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
 const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 test('safe to close only after server records completed packing',()=>{
- const begin=app.indexOf('const saved=await uploadSelection(id,uploads,true)');
+ const begin=app.indexOf('const saved=[...preSaved,...await uploadSelection(id,rest,true)]');
  const commit=app.indexOf("await api('POST','/api/orders/'+id+'/pack',payload);",begin);
  const safe=app.indexOf('CÓ THỂ ĐÓNG TRÌNH DUYỆT',commit);
  assert.ok(begin>=0&&commit>begin&&safe>commit);
