@@ -1213,7 +1213,9 @@ async function openOrder(order){
  trackDraft(pack?$('packControls'):$('shipControls'));
  notice('');
 }
+const lastProgress=new Map(); // file name -> [done,total], so the background bar starts from bytes already sent
 function progress(file,done,total,background=false,dest='R2'){
+ lastProgress.set(file,[done,total]);
  if(background&&state.backgroundJob){
   $('backgroundUploadBar').hidden=false;
   const pct=total?Math.min(100,Math.round(done/total*100)):0;
@@ -1711,7 +1713,9 @@ async function savePack(){
  // NOT browser/tab termination. Multipart upload IDs enable safe manual resume.
  state.backgroundJob={orderId:id,filename:uploads.filter(x=>x[0]==='VIDEO_DONG_HANG').map(x=>x[1].name).join(', '),status:'RUNNING'};
  $('backgroundUploadBar').hidden=false;backgroundBarState('running');
- $('backgroundUploadProgress').value=0;$('backgroundUploadPercent').textContent='0%';
+ const sent=uploads.filter(x=>x[0]==='VIDEO_DONG_HANG').map(x=>lastProgress.get(x[1].name)||[0,x[1].size]);
+ const sentTotal=sent.reduce((a,x)=>a+x[1],0),startPct=sentTotal?Math.min(99,Math.round(sent.reduce((a,x)=>a+x[0],0)/sentTotal*100)):0;
+ $('backgroundUploadProgress').value=startPct;$('backgroundUploadPercent').textContent=startPct+'%';
  $('backgroundUploadTitle').textContent='Đang tải video · '+(order.invoice_codes||id);
  $('backgroundUploadDetail').textContent='Đang gửi video lên nơi lưu trữ. Có thể chuyển menu Qbooks, nhưng KHÔNG đóng tab/Safari trước khi thấy CÓ THỂ ĐÓNG TRÌNH DUYỆT.';
  markDraftSaved($('packControls'));
