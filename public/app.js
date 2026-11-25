@@ -1153,8 +1153,14 @@ async function loadOrders({signal}={}){
   }
  }
 }
+// "Người đóng cùng" is a closed dropdown: the summary shows who is picked, the list opens on tap.
+function updatePackingHelpersSummary(){
+ const names=$all('.packHelperChoice:checked').map(x=>x.value);
+ $('packingHelpersSummary').textContent=names.length?names.join(', '):'Không có';
+ $('packingHelpersPicker').classList.toggle('has-value',names.length>0);
+}
 async function loadPackingHelpers(){
- const list=$('packingHelpers');list.replaceChildren();
+ const list=$('packingHelpers');list.replaceChildren();$('packingHelpersPicker').open=false;
  try{
   const result=await api('GET','/api/packing-people');
   for(const person of result.people||[]){
@@ -1163,8 +1169,13 @@ async function loadPackingHelpers(){
    const input=document.createElement('input');input.type='checkbox';input.className='packHelperChoice';input.value=person.name;
    label.append(input,document.createTextNode(person.name));list.append(label);
   }
+  if(!list.children.length)list.append(el('p','Không có nhân sự khác.','hint'));
  }catch(e){list.append(el('p','Chưa tải được danh sách nhân sự: '+e.message));}
+ updatePackingHelpersSummary();
 }
+$('packingHelpers').addEventListener('change',updatePackingHelpersSummary);
+document.addEventListener('click',e=>{const d=$('packingHelpersPicker');if(d.open&&!d.contains(e.target))d.open=false;});
+document.addEventListener('keydown',e=>{const d=$('packingHelpersPicker');if(e.key==='Escape'&&d.open){d.open=false;d.querySelector('summary').focus();}});
 const REPACK_LABELS={VIDEO_DONG_HANG:'Quay lại video',HANG_HOA:'Chụp lại ảnh hàng hóa',ANH_HOA_DON:'Chụp lại ảnh hóa đơn'};
 function repackStages(order){try{const v=JSON.parse(order?.repack_stages||'[]');return Array.isArray(v)?v:[];}catch{return [];}}
 function renderRepackBanner(order){

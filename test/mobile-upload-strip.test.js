@@ -20,3 +20,12 @@ test('phones show a single upload strip until the video bar is tapped', () => {
   const css = readFileSync('public/design-system.css', 'utf8');
   assert.match(css, /\.qbook-background-upload:not\(\[hidden\]\):not\(\.expanded\)~\.qbook-upload-activity\{display:none!important\}/);
 });
+
+test('packing form: compact two-column grid and closed "Người đóng cùng" dropdown', () => {
+  const html = readFileSync('public/index.html', 'utf8');
+  const js = readFileSync('public/app.js', 'utf8');
+  assert.match(html, /<details id="packingHelpersPicker" class="qbook-multiselect"><summary id="packingHelpersSummary"/);
+  assert.match(html, /class="fields pack-fields"/);
+  assert.match(js, /packingHelpersPicker'\)\.open=false/);
+  assert.match(js, /nguoiDongCung:\$all\('\.packHelperChoice:checked'\)/);
+});

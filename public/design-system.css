@@ -529,3 +529,27 @@
  .qbook-background-upload{cursor:pointer}
  .qbook-background-upload:not(.expanded) .qbook-bg-percent::after{content:' ▴';color:#64748b;font-weight:400}
 }
+
+/* ===== Packing form (2026-11-25): compact grid + "Người đóng cùng" dropdown ===== */
+#appPage #detailView #packControls .pack-fields,#packControls .pack-fields{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px 12px;align-items:start}
+#packControls .pack-fields>label:not(.span-all){grid-column:auto!important}
+#packControls .pack-fields>.span-all{grid-column:1/-1!important}
+#packControls .pack-fields input[type=file]:not(#videos){padding:9px 8px;font-size:12px}
+#packControls .pack-fields>label,#packControls .pack-fields>.field{margin:0!important;min-width:0}
+#packControls .pack-fields input[type=file]{width:100%;min-width:0;font-size:13px}
+#packControls .pack-fields textarea{min-height:64px}
+#packControls .record-video-btn{margin-top:6px}
+.pack-field-label{display:block;font-size:13px;font-weight:700;color:#475569;margin-bottom:6px}
+.qbook-multiselect{position:relative}
+.qbook-multiselect>summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;padding:0 36px 0 12px;border:1px solid #d6e0ec;border-radius:10px;background:#fff;color:#64748b;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.qbook-multiselect>summary::-webkit-details-marker{display:none}
+.qbook-multiselect>summary::after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#64748b}
+.qbook-multiselect[open]>summary{border-color:#2563eb;box-shadow:0 0 0 3px #2563eb22}
+.qbook-multiselect[open]>summary::after{content:'▴'}
+.qbook-multiselect.has-value>summary{color:#0f2a4a;font-weight:600}
+.qbook-multiselect-list{position:absolute;z-index:30;left:auto;right:0;top:calc(100% + 4px);width:max(100%,200px);max-height:min(50dvh,320px);overflow:auto;background:#fff;border:1px solid #d6e0ec;border-radius:10px;box-shadow:0 10px 28px #0b2b4d2e;padding:4px}
+.qbook-multiselect-list label.check{display:flex!important;flex-direction:row!important;align-items:center;gap:10px;min-height:44px;padding:0 10px;margin:0;border:0;border-radius:8px;background:none;font-weight:500;text-align:left}
+.qbook-multiselect-list label.check:hover{background:#f1f5fb}
+.qbook-multiselect-list input[type=checkbox]{width:20px;height:20px;margin:0;flex:none}
+.qbook-multiselect-list .hint{margin:8px 10px}
+@media(max-width:340px){#appPage #detailView #packControls .pack-fields,#packControls .pack-fields{grid-template-columns:1fr!important}}
