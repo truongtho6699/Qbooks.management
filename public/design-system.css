@@ -524,4 +524,8 @@
 }
 @media(max-width:800px){
  .qbook-background-upload.expanded:not([hidden])~.qbook-upload-activity:not([hidden]){bottom:calc(78px + 118px + env(safe-area-inset-bottom))!important}
+ /* One strip only on phones: the file queue stays hidden behind the video bar until the bar is tapped. */
+ .qbook-background-upload:not([hidden]):not(.expanded)~.qbook-upload-activity{display:none!important}
+ .qbook-background-upload{cursor:pointer}
+ .qbook-background-upload:not(.expanded) .qbook-bg-percent::after{content:' ▴';color:#64748b;font-weight:400}
 }

@@ -15,3 +15,8 @@ test('finished uploads tidy themselves away',()=>{
  assert.match(app,/if\(stateName==='done'\)backgroundBarTimer=setTimeout/);
  assert.match(app,/if\(records\.length&&done===records\.length\)uploadPanelTimer=setTimeout/);
 });
+
+test('phones show a single upload strip until the video bar is tapped', () => {
+  const css = readFileSync('public/design-system.css', 'utf8');
+  assert.match(css, /\.qbook-background-upload:not\(\[hidden\]\):not\(\.expanded\)~\.qbook-upload-activity\{display:none!important\}/);
+});
