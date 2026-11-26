@@ -737,7 +737,8 @@ async function handle(req,env){
   validateUpload({stage:b.stage,filename:name,contentType:type,size});
   const id=uid(),key=filePath(order.id,b.stage,name),multipart=b.stage==='VIDEO_DONG_HANG';
   let session=null;
-  if(multipart&&directDriveEnabled(env)){
+  // The native app uploader sends R2 parts in the background (screen off), so it asks for R2 explicitly.
+  if(multipart&&b.transport!=='r2'&&directDriveEnabled(env)){
    // Google problems (expired token, missing folder access, quota) must never block packing:
    // fall back to the R2 multipart path and leave a trace for the admin.
    try{

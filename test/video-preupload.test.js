@@ -19,7 +19,7 @@ function harness(){
   uploadSelection:(orderId,items,bg)=>{calls.push({orderId,names:items.map(x=>x[1].name),bg,cancelledAtStart:[...ctx.cancelledUploadKeys]});
    for(const [s,f] of items)ctx.uploadIdsByKey.set(ctx.fingerprint(orderId,s,f),'id-'+f.name);
    return new Promise((res,rej)=>resolvers.push({res,rej,items}));},
-  Promise,
+  Promise,videoFiles:()=>[...input.files],isNativeFile:()=>false,
  };
  vm.createContext(ctx);
  vm.runInContext(slice('function startVideoPreUpload(','async function savePack(')+';this.start=startVideoPreUpload;this.cancel=cancelPreUpload;',ctx);
