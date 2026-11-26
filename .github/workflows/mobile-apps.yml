@@ -28,10 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: mobile } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm, cache-dependency-path: mobile/package-lock.json }
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: 21 }
       - run: npm ci
       - run: npx cap sync android
@@ -55,7 +55,7 @@ jobs:
           [ -f android/app/build/outputs/apk/release/app-release.apk ] && cp android/app/build/outputs/apk/release/app-release.apk "out/QBooks-${QBOOKS_VERSION_NAME}-release.apk" || true
           [ -f android/app/build/outputs/bundle/release/app-release.aab ] && cp android/app/build/outputs/bundle/release/app-release.aab "out/QBooks-${QBOOKS_VERSION_NAME}-google-play.aab" || true
           ls -la out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: QBooks-Android-${{ env.QBOOKS_VERSION_NAME }}
           path: mobile/out/*
@@ -64,8 +64,8 @@ jobs:
     runs-on: macos-26
     defaults: { run: { working-directory: mobile } }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm, cache-dependency-path: mobile/package-lock.json }
       - run: npm ci
       - run: npx cap sync ios
