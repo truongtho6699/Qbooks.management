@@ -414,6 +414,122 @@ async function loadPendingGoogle(){
   }
  }catch(e){notice('Không tải được đăng ký Google: '+e.message);}
 }
+// ---- Native background upload (QBooks iOS/Android app) ------------------------------------
+// In the app, videos are copied into the app's own storage and the native uploader sends the
+// R2 parts, completes the upload and saves the packing record itself, so it keeps going with
+// the screen off or the app in the background (iOS background URLSession / Android WorkManager
+// foreground service). The web page only starts the job and shows progress when it is visible.
+const NATIVE_UPLOAD=IN_APP&&!!window.Capacitor?.isNativePlatform?.()&&!!window.Capacitor?.PluginHeaders?.some?.(p=>p.name==='QBooksUpload');
+const nativeUp={
+ call:(method,options={})=>window.Capacitor.nativePromise('QBooksUpload',method,options),
+ on:(eventName,cb)=>window.Capacitor.nativeCallback('QBooksUpload','addListener',{eventName},cb)
+};
+const nativeFileState=new Map(),nativeWaiters=new Map(),nativeJobWaiters=new Map();
+const isNativeFile=f=>!!f?.nativeRef;
+function videoFiles(){return state.nativeVideos?.length?state.nativeVideos:[...($('videos').files||[])];}
+function nativeFile(meta){return {nativeRef:meta.ref,name:meta.name,size:Number(meta.size)||0,type:meta.type||'video/mp4',lastModified:Number(meta.lastModified)||0,duration:Number(meta.duration)||0};}
+function onNativeProgress(e){
+ if(!e?.ref)return;
+ nativeFileState.set(e.ref,e);
+ const file=(state.nativeVideos||[]).find(f=>f.nativeRef===e.ref)||nativeFileState.get('file:'+e.ref);
+ if(file&&e.total)progress(file.name,Number(e.sent)||0,Number(e.total),true);
+ const w=nativeWaiters.get(e.ref);
+ if(w&&(e.state==='complete'||e.state==='failed'||e.state==='cancelled')){nativeWaiters.delete(e.ref);e.state==='complete'?w.resolve():w.reject(Object.assign(Error(e.error||'Tải video bị dừng.'),{cancelled:e.state==='cancelled'}));}
+}
+function onNativeJob(e){
+ if(!e?.orderId)return;
+ const w=nativeJobWaiters.get(e.orderId);
+ if(w&&(e.state==='done'||e.state==='failed')){nativeJobWaiters.delete(e.orderId);e.state==='done'?w.resolve(e):w.reject(Error(e.error||'Chưa lưu được đơn.'));}
+}
+async function nativeSync(){
+ if(!NATIVE_UPLOAD)return null;
+ try{const st=await nativeUp.call('getState');for(const f of Object.values(st.files||{}))onNativeProgress(f);for(const j of Object.values(st.jobs||{}))onNativeJob(j);return st;}catch{return null;}
+}
+if(NATIVE_UPLOAD){
+ nativeUp.on('progress',onNativeProgress);nativeUp.on('job',onNativeJob);
+ document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')nativeSync();});
+}
+async function pickNativeVideos(){
+ try{
+  const r=await nativeUp.call('pickVideos',{multiple:true});
+  const files=(r.files||[]).map(nativeFile);
+  if(!files.length)return;
+  for(const f of files)if(f.duration>3601)throw Error('Video '+f.name+' dài hơn 60 phút.');
+  for(const old of state.nativeVideos||[])if(!files.some(f=>f.nativeRef===old.nativeRef))nativeUp.call('cancel',{ref:old.nativeRef}).catch(()=>{});
+  state.nativeVideos=files;$('videos').value='';
+  $('videos').dispatchEvent(new Event('change',{bubbles:true}));
+ }catch(e){if(!/cancel/i.test(e.message||''))notice('Không chọn được video: '+e.message);}
+}
+// Creates (or reuses) the server upload session and hands the file to the native uploader.
+async function startNativeVideo(orderId,file){
+ const stage='VIDEO_DONG_HANG',key=fingerprint(orderId,stage,file);
+ if(!file.size||file.size>2*1024*1024*1024)throw Error('Tệp '+file.name+' vượt giới hạn 2 GB');
+ let id=localStorage.getItem(key),info=null;
+ if(id){try{info=await api('GET','/api/uploads/'+id);if(info.bytes!==file.size||!['UPLOADING','COMPLETE'].includes(info.status)||info.transport==='drive')id=null;}
+  catch(e){if(/Không tìm thấy phiên tải/.test(e.message))id=null;else throw e;}}
+ if(!id){
+  const r=await api('POST','/api/uploads',{orderId,stage,filename:file.name,contentType:file.type||'video/mp4',size:file.size,transport:'r2'});
+  if(r.transport==='drive'){await api('DELETE','/api/uploads/'+r.id).catch(()=>{});throw Error('Máy chủ chưa hỗ trợ tải nền từ app. Hãy cập nhật web.');}
+  id=r.id;localStorage.setItem(key,id);info={status:'UPLOADING',chunkSize:r.chunkSize,parts:[]};
+ }
+ uploadIdsByKey.set(key,id);nativeFileState.set('file:'+file.nativeRef,file);
+ await nativeUp.call('start',{ref:file.nativeRef,uploadId:id,partSize:info.chunkSize||CHUNK_BYTES,
+  skipParts:(info.parts||[]).map(p=>p.part_number),alreadyComplete:info.status==='COMPLETE',baseUrl:location.origin,token:state.token,label:file.name});
+ return id;
+}
+function waitNativeJob(orderId){
+ return new Promise((resolve,reject)=>{nativeJobWaiters.set(orderId,{resolve,reject});nativeSync();});
+}
+async function saveNativePack(order,uploads,payload){
+ const id=order.id,label=order.invoice_codes||id;
+ const videos=uploads.filter(([stage,f])=>stage==='VIDEO_DONG_HANG'&&isNativeFile(f)),photos=uploads.filter(([stage])=>stage!=='VIDEO_DONG_HANG');
+ state.backgroundJob={orderId:id,filename:videos.map(x=>x[1].name).join(', '),status:'RUNNING',native:true};
+ $('backgroundUploadBar').hidden=false;backgroundBarState('running');
+ $('backgroundUploadTitle').textContent='Đang tải video · '+label;
+ $('backgroundUploadDetail').textContent='App tự tải tiếp kể cả khi tắt màn hình hoặc chuyển app. Không cần mở lại cho đến khi xong.';
+ markDraftSaved($('packControls'));
+ notice('Đang tải video nền: có thể tắt màn hình, app tự lưu đơn khi tải xong.',true);
+ const pre=state.preUpload?.orderId===id?state.preUpload:null;
+ void (async()=>{
+  try{
+   if(pre)await pre.promise.catch(()=>{});
+   await uploadSelection(id,photos,true);
+   const ids=[];for(const [,f] of videos)ids.push(await startNativeVideo(id,f));
+   const waiting=waitNativeJob(id);
+   await nativeUp.call('finalize',{orderId:id,label,refs:videos.map(([,f])=>f.nativeRef),packPath:'/api/orders/'+encodeURIComponent(id)+'/pack',
+    packBody:JSON.stringify(payload),baseUrl:location.origin,token:state.token});
+   const done=await waiting;
+   for(const [stage,file] of uploads)localStorage.removeItem(fingerprint(id,stage,file));
+   state.lockedOrderIds.delete(id);
+   $('backgroundUploadProgress').value=100;
+   $('backgroundUploadTitle').textContent='✓ Đã lưu '+label;$('backgroundUploadPercent').textContent='';backgroundBarState('done');
+   $('backgroundUploadDetail').textContent='Video và đơn đã lưu'+(done.files?(' ('+done.files+' video)'):'')+'.';
+   if(state.area==='orders'&&state.tab==='pack'&&state.selected?.id===id){show('detailView',false);show('ordersView',true);await loadOrders().catch(()=>{});}
+  }catch(e){
+   $('backgroundUploadTitle').textContent='Tải chưa xong: '+label+' · chạm để xem';
+   $('backgroundUploadPercent').textContent='';backgroundBarState('failed');$('backgroundUploadBar').classList.add('expanded');
+   $('backgroundUploadDetail').textContent=e.message+' · Mở lại đơn và bấm LƯU để tiếp tục từ phần đã gửi.';
+   notice('Tải video nền gặp lỗi: '+e.message);
+  }finally{state.backgroundJob=null;if(state.preUpload===pre)state.preUpload=null;state.nativeVideos=[];}
+ })();
+}
+// After the app was closed and reopened: report jobs the native uploader finished meanwhile.
+async function nativeResume(){
+ const st=await nativeSync();if(!st)return;
+ for(const j of Object.values(st.jobs||{})){
+  if(j.state==='done'){notice('✓ App đã lưu đóng hàng '+(j.label||j.orderId)+' trong lúc chạy nền.',true);nativeUp.call('forgetJob',{orderId:j.orderId}).catch(()=>{});}
+  else if(j.state==='failed'){notice('Đơn '+(j.label||j.orderId)+' chưa lưu được khi chạy nền: '+(j.error||'lỗi')+'. Mở lại đơn để thử lại.');nativeUp.call('forgetJob',{orderId:j.orderId}).catch(()=>{});}
+  else if(!state.backgroundJob){
+   state.backgroundJob={orderId:j.orderId,status:'RUNNING',native:true};
+   $('backgroundUploadBar').hidden=false;backgroundBarState('running');
+   $('backgroundUploadTitle').textContent='Đang tải video · '+(j.label||j.orderId);
+   $('backgroundUploadDetail').textContent='App đang tải nền và sẽ tự lưu đơn khi xong.';
+   waitNativeJob(j.orderId).then(()=>{$('backgroundUploadTitle').textContent='✓ Đã lưu '+(j.label||j.orderId);backgroundBarState('done');nativeUp.call('forgetJob',{orderId:j.orderId}).catch(()=>{});},
+    e=>{$('backgroundUploadTitle').textContent='Tải chưa xong: '+(j.label||j.orderId);backgroundBarState('failed');$('backgroundUploadDetail').textContent=e.message;})
+    .finally(()=>{state.backgroundJob=null;});
+  }
+ }
+}
 async function bootstrap(){
  try{
   const r=await api('GET','/api/bootstrap');state.user=r.user;
@@ -435,6 +551,7 @@ async function bootstrap(){
   }
   if(['overview','sale','pack','ship'].includes(tabParam)&&permitted(tabParam))state.tab=tabParam;
   state.area='orders';switchView();
+  if(NATIVE_UPLOAD)nativeResume();
 
  }catch(e){clearLoginSession();show('loginPage',true);show('appPage',false);$('logoutBtn').hidden=true;const skip=$('qbSkipLink');if(skip)skip.href='#loginPage';notice(e.message);}
 }
@@ -1208,6 +1325,7 @@ async function openOrder(order){
  }catch(e){return notice('Không lấy được khóa đơn: '+e.message);}
  state.selected=order;
  for(const id of ['invoicePics','goodsPics','videos','shippingPics'])$(id).value='';
+ state.nativeVideos=[];
  renderSelectedFiles();
  // Desktop follows the Figma split view: keep the pending-order list visible next to the form.
  show('ordersView',true);show('saleView',false);show('detailView',true);
@@ -1498,7 +1616,7 @@ function renderSelectedFiles(){
  const groups=[['invoicePics','Ảnh hóa đơn','packFilePreview'],['goodsPics','Ảnh hàng hóa','packFilePreview'],
   ['videos','Video đóng hàng','packFilePreview'],['shippingPics','Ảnh bàn giao','shipFilePreview']];
  const byTarget=new Map([['packFilePreview',[]],['shipFilePreview',[]]]);
- for(const [inputId,stage,targetId] of groups)for(const file of $(inputId).files||[])byTarget.get(targetId).push({stage,file});
+ for(const [inputId,stage,targetId] of groups)for(const file of (inputId==='videos'?videoFiles():$(inputId).files||[]))byTarget.get(targetId).push({stage,file});
  for(const [id,items] of byTarget){
   const node=$(id);if(!node)continue;node.replaceChildren();
   if(!items.length){node.textContent=id==='packFilePreview'?'Chưa chọn tệp đóng hàng.':'Chưa chọn ảnh bàn giao.';continue;}
@@ -1506,7 +1624,7 @@ function renderSelectedFiles(){
   node.append(el('strong','Đã chọn '+items.length+' tệp · '+mb.toFixed(1)+' MB'));
   for(const {stage,file} of items.slice(0,12)){
    const row=el('div',null,'qbook-selected-file');
-   if(file.type.startsWith('image/')){
+   if(!isNativeFile(file)&&file.type.startsWith('image/')){
     const url=URL.createObjectURL(file);selectedPreviewUrls.push(url);
     const image=document.createElement('img');image.src=url;image.alt='Xem trước '+file.name;image.loading='lazy';row.append(image);
    }
@@ -1618,14 +1736,15 @@ function showSavedMediaLinks(order,result,newStatus){
 function startVideoPreUpload(){
  const order=state.selected;
  if(!order||state.tab!=='pack'||order.status!=='CHỜ ĐÓNG HÀNG')return;
- const items=[...($('videos').files||[])].map(f=>['VIDEO_DONG_HANG',f]);
+ const items=videoFiles().map(f=>['VIDEO_DONG_HANG',f]);
  const keys=items.map(([stage,file])=>fingerprint(order.id,stage,file));
  const current=state.preUpload;
  if(current&&current.orderId===order.id&&current.keys.join('\n')===keys.join('\n'))return;
  const previous=current?cancelPreUpload(current):Promise.resolve();
  if(!items.length||state.backgroundJob)return; // another order's video is still in the background
  const job={orderId:order.id,items,keys,done:false,error:null};
- job.promise=previous.then(()=>uploadSelection(order.id,items,true))
+ job.native=items.some(([,f])=>isNativeFile(f));
+ job.promise=previous.then(()=>job.native?Promise.all(items.map(([,f])=>startNativeVideo(order.id,f))):uploadSelection(order.id,items,true))
   .then(r=>{job.done=true;return r},e=>{job.error=e;throw e});
  job.settled=job.promise.catch(()=>{});
  state.preUpload=job;
@@ -1635,6 +1754,7 @@ async function cancelPreUpload(job=state.preUpload){
  if(!job)return;
  if(state.preUpload===job)state.preUpload=null;
  for(const k of job.keys)cancelledUploadKeys.add(k);
+ if(job.native)await Promise.allSettled(job.items.map(([,f])=>nativeUp.call('cancel',{ref:f.nativeRef})));
  await job.settled;
  const ids=[];
  for(const k of job.keys){const id=uploadIdsByKey.get(k)||localStorage.getItem(k);if(id)ids.push(id);localStorage.removeItem(k);uploadIdsByKey.delete(k);cancelledUploadKeys.delete(k);}
@@ -1654,7 +1774,7 @@ function recorderError(message){const n=$('recorderError');n.textContent=message
 function recorderReset(){
  clearInterval(recorder.timer);recorder.timer=null;
  recorder.stream?.getTracks().forEach(t=>t.stop());
- recorder.stream=null;recorder.media=null;recorder.chunks=[];recorder.bytes=0;
+ recorder.stream=null;recorder.media=null;recorder.chunks=[];recorder.bytes=0;recorder.native=null;
  $('recorderPreview').srcObject=null;$('recorderDot').hidden=true;
  $('recorderStart').hidden=false;$('recorderStop').hidden=true;$('recorderTime').textContent='00:00';$('recorderSize').textContent='0 MB';
 }
@@ -1675,8 +1795,18 @@ function startRecording(){
  const mimeType=recorderMime();
  try{recorder.media=new MediaRecorder(recorder.stream,{...(mimeType?{mimeType}:{}),videoBitsPerSecond:RECORDER_BITRATE,audioBitsPerSecond:64000});}
  catch{recorderError('Trình duyệt không hỗ trợ quay video. Hãy chọn video có sẵn.');return;}
- recorder.chunks=[];recorder.bytes=0;recorder.started=Date.now();
- recorder.media.ondataavailable=e=>{if(e.data?.size){recorder.chunks.push(e.data);recorder.bytes+=e.data.size;}};
+ recorder.chunks=[];recorder.bytes=0;recorder.started=Date.now();recorder.native=null;
+ if(NATIVE_UPLOAD){
+  // App: stream each recorded second into a native file so the background uploader can send it.
+  const type=(mimeType||'video/webm').split(';')[0];
+  recorder.native={type,chain:nativeUp.call('beginFile',{name:recordingName(type),type}).then(r=>{recorder.native.ref=r.ref;})};
+ }
+ recorder.media.ondataavailable=e=>{
+  if(!e.data?.size)return;
+  recorder.chunks.push(e.data);recorder.bytes+=e.data.size;
+  const n=recorder.native;
+  if(n)n.chain=n.chain.then(()=>blobBase64(e.data)).then(data=>nativeUp.call('appendFile',{ref:n.ref,data}));
+ };
  recorder.media.onstop=finishRecording;
  recorder.media.start(1000);
  $('recorderStart').hidden=true;$('recorderStop').hidden=false;$('recorderDot').hidden=false;
@@ -1687,14 +1817,29 @@ function startRecording(){
   if(ms>=RECORDER_MAX_MS)recorder.media?.stop();
  },500);
 }
-function finishRecording(){
- const type=(recorder.media?.mimeType||recorderMime()||'video/webm').split(';')[0];
- const blob=new Blob(recorder.chunks,{type});
- recorderReset();$('recorderDialog').close();
- if(!blob.size){alert('Video rỗng, vui lòng quay lại.');return;}
+function recordingName(type){
  const code=String(String(state.selected?.invoice_codes||'').split(/[,;\s]+/)[0]||state.selected?.id||'DON').replace(/[^\w-]/g,'').slice(0,40)||'DON';
  const stamp=new Date().toISOString().replace(/[-:]/g,'').slice(0,15);
- const file=new File([blob],'QBOOKS_'+code+'_'+stamp+(type.includes('mp4')?'.mp4':'.webm'),{type,lastModified:Date.now()});
+ return 'QBOOKS_'+code+'_'+stamp+(type.includes('mp4')?'.mp4':'.webm');
+}
+function blobBase64(blob){
+ return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>{const u=String(r.result),i=u.indexOf(';base64,');resolve(i<0?'':u.slice(i+8));}; /* the mime may contain commas (codecs=avc1…,mp4a…) */r.onerror=()=>reject(r.error);r.readAsDataURL(blob);});
+}
+async function finishRecording(){
+ const type=(recorder.media?.mimeType||recorderMime()||'video/webm').split(';')[0];
+ const blob=new Blob(recorder.chunks,{type}),nativeRec=recorder.native;
+ recorderReset();$('recorderDialog').close();
+ if(!blob.size){alert('Video rỗng, vui lòng quay lại.');return;}
+ if(nativeRec){
+  try{
+   await nativeRec.chain;
+   const meta=await nativeUp.call('endFile',{ref:nativeRec.ref});
+   state.nativeVideos=[...(state.nativeVideos||[]),nativeFile(meta)];
+   $('videos').dispatchEvent(new Event('change',{bubbles:true}));
+   return;
+  }catch(e){if(nativeRec.ref)nativeUp.call('cancel',{ref:nativeRec.ref}).catch(()=>{});} // fall back to the in-page upload below
+ }
+ const file=new File([blob],recordingName(type),{type,lastModified:Date.now()});
  recordedVideos.add(file);
  const input=$('videos'),list=new DataTransfer();
  for(const f of input.files||[])list.items.add(f);
@@ -1703,6 +1848,7 @@ function finishRecording(){
  input.dispatchEvent(new Event('change',{bubbles:true})); // shows the file and starts the upload right away
 }
 function cancelRecording(){
+ if(recorder.native){const n=recorder.native;n.chain.finally(()=>n.ref&&nativeUp.call('cancel',{ref:n.ref}).catch(()=>{}));}
  if(recorder.media&&recorder.media.state!=='inactive'){recorder.media.onstop=null;recorder.media.stop();}
  recorderReset();$('recorderDialog').close();
 }
@@ -1712,7 +1858,7 @@ async function savePack(){
  const order=state.selected,id=order.id,uploads=[];
  for(const f of $('invoicePics').files)uploads.push(['ANH_HOA_DON',f]);
  for(const f of $('goodsPics').files)uploads.push(['HANG_HOA',f]);
- for(const f of $('videos').files)uploads.push(['VIDEO_DONG_HANG',f]);
+ for(const f of videoFiles())uploads.push(['VIDEO_DONG_HANG',f]);
  const payload={boxes:Number($('boxes').value),nguoiDongCung:$all('.packHelperChoice:checked').map(x=>x.value),note:$('packNote').value};
  const hasVideo=uploads.some(([stage])=>stage==='VIDEO_DONG_HANG');
  const redoMissing=repackStages(order).filter(stage=>!uploads.some(([s])=>s===stage));
@@ -1731,6 +1877,7 @@ async function savePack(){
   finally{setBusy(false);}
   return;
  }
+ if(uploads.some(([,f])=>isNativeFile(f)))return saveNativePack(order,uploads,payload);
  // Files stay referenced by this in-page task; it survives SPA menu switches,
  // NOT browser/tab termination. Multipart upload IDs enable safe manual resume.
  state.backgroundJob={orderId:id,filename:uploads.filter(x=>x[0]==='VIDEO_DONG_HANG').map(x=>x[1].name).join(', '),status:'RUNNING'};
@@ -1842,6 +1989,7 @@ $('backBtn').onclick=()=>{if(!confirmLeave())return;markDraftSaved($('packContro
 $('savePacking').onclick=savePack;$('saveShipping').onclick=saveShip;
 ['invoicePics','goodsPics','videos','shippingPics'].forEach(id=>$(id).addEventListener('change',renderSelectedFiles));
 $('videos').addEventListener('change',startVideoPreUpload);
+if(NATIVE_UPLOAD)$('videos').addEventListener('click',e=>{e.preventDefault();pickNativeVideos();});
 $('recordVideoBtn').addEventListener('click',openRecorder);
 $('recorderStart').addEventListener('click',startRecording);
 $('recorderStop').addEventListener('click',()=>recorder.media?.stop());

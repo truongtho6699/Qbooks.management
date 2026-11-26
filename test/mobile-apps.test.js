@@ -28,3 +28,20 @@ test('PWA manifest has PNG icons for home-screen install', () => {
   assert.ok(m.icons.some(i => i.sizes === '512x512' && i.purpose === 'maskable'));
   assert.match(readFileSync('public/index.html', 'utf8'), /rel="apple-touch-icon" href="\/icons\/icon-180.png"/);
 });
+
+test('native background uploader is wired on both platforms', () => {
+  const js = readFileSync('public/app.js', 'utf8');
+  assert.match(js, /PluginHeaders\?\.some\?\.\(p=>p\.name==='QBooksUpload'\)/);
+  assert.match(js, /if\(uploads\.some\(\(\[,f\]\)=>isNativeFile\(f\)\)\)return saveNativePack/);
+  assert.match(js, /transport:'r2'/);
+  assert.match(readFileSync('src/worker.js', 'utf8'), /b\.transport!=='r2'&&directDriveEnabled\(env\)/);
+  const manifest = readFileSync('mobile/android/app/src/main/AndroidManifest.xml', 'utf8');
+  assert.match(manifest, /SystemForegroundService[\s\S]*foregroundServiceType="dataSync"/);
+  assert.match(manifest, /FOREGROUND_SERVICE_DATA_SYNC/);
+  assert.match(readFileSync('mobile/android/app/src/main/java/vn/qbooks/quantri/MainActivity.java', 'utf8'), /registerPlugin\(QBooksUploadPlugin\.class\)/);
+  assert.match(readFileSync('mobile/ios/App/App/AppDelegate.swift', 'utf8'), /handleEventsForBackgroundURLSession/);
+  assert.match(readFileSync('mobile/ios/App/App/QBooksUploader.swift', 'utf8'), /URLSessionConfiguration\.background/);
+  assert.match(readFileSync('mobile/ios/App/App/Base.lproj/Main.storyboard', 'utf8'), /customClass="MainViewController"/);
+  const pbx = readFileSync('mobile/ios/App/App.xcodeproj/project.pbxproj', 'utf8');
+  for (const f of ['QBooksUploader.swift', 'QBooksUploadPlugin.swift', 'MainViewController.swift']) assert.ok(pbx.includes(f + ' in Sources'), f);
+});

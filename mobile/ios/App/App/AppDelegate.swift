@@ -7,8 +7,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Reconnect the background upload session (also when iOS relaunches the app only to deliver upload events).
+        QBooksUploader.shared.activate()
         return true
+    }
+
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        guard identifier == QBooksUploader.sessionIdentifier else { return completionHandler() }
+        QBooksUploader.shared.backgroundCompletion = completionHandler
+        QBooksUploader.shared.activate()
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

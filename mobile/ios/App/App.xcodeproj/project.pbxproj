@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D0868AB0B9AB19866C462ED2 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D3A9942028C862C5482E0C /* MainViewController.swift */; };
+		FE8DD59B5719B24E3EB65BE1 /* QBooksUploadPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27F7113049DAB277D06EAE3D /* QBooksUploadPlugin.swift */; };
+		B2DB49202F49FF3A894D5671 /* QBooksUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1705AB622F8A1808BAADE000 /* QBooksUploader.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -19,6 +22,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		60D3A9942028C862C5482E0C /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
+		27F7113049DAB277D06EAE3D /* QBooksUploadPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QBooksUploadPlugin.swift; sourceTree = "<group>"; };
+		1705AB622F8A1808BAADE000 /* QBooksUploader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QBooksUploader.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -67,6 +73,9 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				60D3A9942028C862C5482E0C /* MainViewController.swift */,
+				27F7113049DAB277D06EAE3D /* QBooksUploadPlugin.swift */,
+				1705AB622F8A1808BAADE000 /* QBooksUploader.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -159,6 +168,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				D0868AB0B9AB19866C462ED2 /* MainViewController.swift in Sources */,
+				FE8DD59B5719B24E3EB65BE1 /* QBooksUploadPlugin.swift in Sources */,
+				B2DB49202F49FF3A894D5671 /* QBooksUploader.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
