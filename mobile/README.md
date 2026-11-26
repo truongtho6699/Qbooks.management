@@ -17,6 +17,13 @@ Trong app, trang web nhận biết qua user agent `QBooksApp/…`. Ở chế đ�
 - Đăng nhập bằng email + PIN. Google không cho đăng nhập bên trong app nhúng, nên nút Google được thay bằng hướng dẫn.
 - Giữ màn hình sáng trong lúc đang tải video. Tính năng này cũng chạy trên trình duyệt có hỗ trợ.
 
+## Tải video nền (tắt màn hình vẫn tải)
+Trong app, nút chọn video mở **thư viện ảnh của máy**. Video được chép vào bộ nhớ riêng của app. Phần native tự gửi video lên máy chủ, tự xác nhận, rồi tự **lưu đơn đóng hàng**. Khi xong, điện thoại hiện thông báo "Đã lưu đóng hàng HD…".
+- iOS: dùng background `URLSession`, nên vẫn tải khi khóa màn hình, chuyển app, kể cả khi iOS tạm đóng app.
+- Android: dùng WorkManager chạy dịch vụ nền. Trong lúc tải có thông báo tiến độ. Việc tải tự chạy tiếp khi có mạng trở lại hoặc khi khởi động lại máy.
+- Video quay bằng nút "QUAY VIDEO 720p" cũng được ghi thẳng vào bộ nhớ app trong lúc quay, rồi tải nền như trên.
+- Code nằm ở: `ios/App/App/QBooksUploader.swift`, `QBooksUploadPlugin.swift`; `android/.../UploadWorker.java`, `UploadStore.java`, `QBooksUploadPlugin.java`.
+
 ## Build tự động (GitHub Actions → "Mobile apps (iOS & Android)")
 
 Workflow chạy khi `mobile/**` thay đổi. Có thể chạy tay: tab **Actions → Mobile apps → Run workflow**.
