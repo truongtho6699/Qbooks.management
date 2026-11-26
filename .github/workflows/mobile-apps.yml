@@ -56,7 +56,9 @@ jobs:
           [ -f android/app/build/outputs/bundle/release/app-release.aab ] && cp android/app/build/outputs/bundle/release/app-release.aab "out/QBooks-${QBOOKS_VERSION_NAME}-google-play.aab" || true
           ls -la out
       - uses: actions/upload-artifact@v4
-        with: { name: QBooks-Android-${{ env.QBOOKS_VERSION_NAME }}, path: mobile/out/* }
+        with:
+          name: QBooks-Android-${{ env.QBOOKS_VERSION_NAME }}
+          path: mobile/out/*
 
   ios:
     runs-on: macos-26
