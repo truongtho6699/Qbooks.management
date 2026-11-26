@@ -32,6 +32,22 @@ function prefillRememberedAccount(){
 }
 
 const $all=(s)=>[...document.querySelectorAll(s)];
+// Running inside the QBooks iOS/Android app (Capacitor shell appends this to the user agent).
+const IN_APP=/QBooksApp\//.test(navigator.userAgent);
+if(IN_APP)document.documentElement.classList.add('qbooks-app');
+// Keep the screen on while a video is uploading: phones suspend the page (and the upload) when they sleep.
+let wakeLockSentinel=null,wakeLockBusy=false;
+async function syncWakeLock(){
+ const busy=!!(state.backgroundJob||state.preUpload);
+ if(busy===wakeLockBusy&&(!busy||wakeLockSentinel))return;
+ wakeLockBusy=busy;
+ try{
+  if(busy&&!wakeLockSentinel&&navigator.wakeLock&&document.visibilityState==='visible'){wakeLockSentinel=await navigator.wakeLock.request('screen');wakeLockSentinel.addEventListener('release',()=>{wakeLockSentinel=null;});}
+  else if(!busy&&wakeLockSentinel){const s=wakeLockSentinel;wakeLockSentinel=null;await s.release();}
+ }catch{wakeLockSentinel=null;}
+}
+setInterval(syncWakeLock,1500);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){wakeLockBusy=false;syncWakeLock();}});
 function notice(text='',ok=false){$('notice').textContent=ok?text:humanizeError(text);$('notice').className=ok?'notice ok':'notice';}
 async function api(method,path,data,blob=false,externalSignal=null){
  const headers={};if(state.token)headers.authorization='Bearer '+state.token;
@@ -114,6 +130,12 @@ async function loadGoogleSdk(){
  if(!window.google?.accounts?.id)throw Error('Trình duyệt không hỗ trợ đăng nhập Google.');
 }
 async function initGoogleSignIn(){
+ if(IN_APP){
+  // Google blocks its sign-in inside embedded app web views, so the app uses email + PIN.
+  $('googleUnavailable').textContent='Trong app: đăng nhập bằng email + mã PIN';
+  $('googleStatus').textContent='Đăng nhập Google chỉ dùng được trên trình duyệt Chrome/Safari. Nếu chưa có PIN, nhờ quản trị cấp PIN cho tài khoản.';
+  return;
+ }
  try{
   const cfg=await api('GET','/api/google/config');
   state.googleClientId=cfg.clientId||null;
