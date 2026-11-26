@@ -529,3 +529,79 @@
  .qbook-background-upload{cursor:pointer}
  .qbook-background-upload:not(.expanded) .qbook-bg-percent::after{content:' ▴';color:#64748b;font-weight:400}
 }
+
+/* ===== UI polish 2026-11-26 (UI/UX audit) =====================================================
+   One type scale (12 / 14 / 16 / 20 / 28), one button system (primary · outline · text),
+   sentence-case status chips, a single brand bar, and phone-friendly Media tables. */
+#appPage{--qb-ink:#17223b;--qb-muted:#5b6b84;--qb-line:#dce4f0;--qb-brand:#2563eb;--qb-brand-ink:#1d4ed8;font-size:14px;color:var(--qb-ink)}
+#appPage td{font-size:14px}
+#appPage th{font-size:12.5px;font-weight:600;color:var(--qb-muted)}
+#appPage label{font-size:13px}
+#appPage .hint,#appPage .mini-note,#appPage small,#appPage .kpi-sub,#appPage .qb-trend-label,#appPage .qb-viz-caption{font-size:12px}
+#appPage .kpi-label{font-size:13px}
+/* Status chips: readable size, sentence case ("Chờ vận đơn"), no shouting. */
+#appPage .state,#appPage .shipment-status{display:inline-block!important;font-size:12px!important;font-weight:600;letter-spacing:0!important;text-transform:lowercase;white-space:nowrap;line-height:1.5}
+/* The internal order id adds noise next to the invoice number (kept as a tooltip). */
+#appPage .shipping-table td:first-child small[title]{display:none}
+#appPage .state::first-letter,#appPage .shipment-status::first-letter{text-transform:uppercase}
+/* Buttons: primary = filled (one per screen), secondary = outline, link-action = text. Same size everywhere. */
+#appPage button.primary,#appPage button.secondary{font-size:14px;line-height:1.2;min-height:40px;border-radius:8px;padding:9px 16px;letter-spacing:0}
+#appPage button.primary{font-weight:600}
+#appPage button.secondary{background:#fff;border:1px solid #bcd0f2;color:var(--qb-brand-ink);font-weight:600}
+#appPage button.secondary:hover:not(:disabled){background:#eef4ff;border-color:var(--qb-brand)}
+#appPage .overview-detail-btn,#appPage .overview-detail-btn.primary{background:#fff!important;border:1px solid #bcd0f2!important;color:var(--qb-brand-ink)!important}
+#appPage #addStaffBtn{width:auto;justify-self:start;align-self:flex-start;padding:9px 18px}
+#appPage .qv-row-action{min-height:34px!important;padding:6px 14px!important}
+/* Overview KPIs are buttons that filter the list. */
+#appPage button.shipping-kpi{font:inherit;text-align:left;cursor:pointer;border:1px solid transparent;width:100%}
+#appPage button.shipping-kpi:hover{border-color:#bcd0f2}
+#appPage button.shipping-kpi[aria-pressed="true"]{border-color:var(--qb-brand);box-shadow:inset 0 0 0 1px var(--qb-brand)}
+#appPage button.shipping-kpi:focus-visible{outline:2px solid var(--qb-brand);outline-offset:2px}
+/* Desktop: the sidebar carries the brand and the account, so the top bar is redundant once signed in. */
+@media(min-width:801px){
+ body:has(#appPage:not([hidden])) header.top{display:none}
+ #appPage .shipping-sidebar{top:0;height:100dvh;min-height:0;overflow-y:auto}
+}
+@media(max-width:800px){
+ #appPage td{font-size:14px}
+ #appPage button.primary,#appPage button.secondary{min-height:44px;font-size:15px}
+ /* Compact page header: the bottom bar already says where you are. */
+ #appPage #qbookSectionLabel,#appPage #shippingSubheading,#appPage #viewSubtitle,#appPage .shipping-operation-title small{display:none}
+ /* Overview KPIs: one swipeable row instead of three rows of big boxes. */
+ #appPage #shippingKpis{display:flex!important;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px;grid-template-columns:none!important}
+ #appPage #shippingKpis .shipping-kpi{flex:0 0 auto;width:auto;min-width:108px;scroll-snap-align:start;padding:10px 12px!important;min-height:0!important}
+ #appPage #shippingKpis .shipping-kpi strong{font-size:20px!important}
+ /* Media tables become cards: every value keeps its column name, nothing is cut off. */
+ #appPage .qbook-media-page .tablewrap{overflow:visible;border:0;background:none;box-shadow:none}
+ #appPage .qbook-media-page .data-table,#appPage .qbook-media-page .data-table tbody,#appPage .qbook-media-page .data-table tr,#appPage .qbook-media-page .data-table td{display:block;width:100%}
+ #appPage .qbook-media-page .data-table thead{display:none}
+ #appPage .qbook-media-page .data-table tr{border:1px solid var(--qb-line);border-radius:12px;padding:10px 12px;margin:0 0 10px;background:#fff}
+ #appPage .qbook-media-page .data-table td{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border:0!important;padding:4px 0!important;text-align:right;min-width:0}
+ #appPage .qbook-media-page .data-table td::before{content:attr(data-label);color:var(--qb-muted);font-size:12.5px;text-align:left;flex:none}
+ #appPage .qbook-media-page .data-table td[data-label=""]{display:block;padding-top:8px!important}
+ #appPage .qbook-media-page .data-table td[data-label=""]::before{content:none}
+ #appPage .qbook-media-page .data-table td[data-label=""] button{width:100%;min-height:44px!important}
+ #appPage .qbook-media-page .data-table td[data-label="Video"],#appPage .qbook-media-page .data-table td[data-label="Đầu sách"]{text-align:right}
+}
+#appPage .qb-trend-value{display:block;min-height:16px;font-size:11.5px;font-weight:600;color:var(--qb-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+#appPage .qb-trend{height:232px}
+@media(max-width:640px){
+ /* Phones: the last 7 days only, labels upright. */
+ #appPage .qb-trend{grid-template-columns:repeat(7,minmax(0,1fr))!important;gap:6px;height:190px}
+ #appPage .qb-trend-day:nth-child(-n+7){display:none}
+ #appPage .qb-trend-label{writing-mode:horizontal-tb!important;transform:none!important;font-size:11.5px!important}
+ #appPage .qb-trend-bars{height:120px;gap:2px}
+}
+@media(max-width:800px){
+ #appPage .qbook-media-page .data-table{min-width:0!important;table-layout:auto!important}
+ #appPage .qbook-media-page .data-table td>*{min-width:0;overflow-wrap:anywhere}
+ #appPage .qbook-media-page .data-table td{overflow-wrap:anywhere}
+ #appPage .shipping-operation-title{display:none}
+}
+@media(max-width:800px){#appPage .qbook-media-page .data-table .qv-cell{text-align:right;min-width:0}}
+@media(min-width:801px){
+ #appPage .qbook-media-page .tablewrap{overflow-x:auto}
+ #appPage .qbook-media-page .data-table th{white-space:normal}
+ #appPage .qbook-media-page .two>*{min-width:0}
+}
+@media(min-width:801px){#appPage .qbook-media-page .two .data-table{min-width:0!important}}

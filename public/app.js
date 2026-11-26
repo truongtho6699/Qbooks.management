@@ -141,7 +141,7 @@ async function initGoogleSignIn(){
   state.googleClientId=cfg.clientId||null;
   if(!cfg.enabled||!cfg.clientId){
    $('googleUnavailable').textContent='Đăng nhập Google chưa được cấu hình';
-   $('googleStatus').textContent='Google chưa được kết nối. Quản trị cần cấu hình GOOGLE_CLIENT_ID trên Cloudflare Pages.';
+   $('googleStatus').textContent='Đăng nhập bằng Google chưa được bật. Hãy dùng email và mã PIN.';
    return;
   }
   await loadGoogleSdk();
@@ -565,7 +565,7 @@ function syncRoute(area,view){
 }
 function setShellTitle(area,title,description=''){
  state.area=area;
- $('qbookSectionLabel').textContent=area==='media'?'QUẢN LÝ MEDIA':area==='admin'?'QUẢN TRỊ HỆ THỐNG':'QUẢN LÝ GIAO HÀNG';
+ $('qbookSectionLabel').textContent=area==='media'?'Quản lý Media':area==='admin'?'Quản trị hệ thống':'Quản lý giao hàng';
  $('shippingHeading').textContent=title;
  $('shippingSubheading').textContent=description;
  const container=$('unifiedMediaView');
@@ -687,7 +687,7 @@ function switchView(){
  const title={overview:'Tổng hợp',sale:'Sale lên đơn',pack:'Đóng hàng',ship:'Vận đơn',staff:'Quản trị hệ thống'};
  $('shippingHeading').textContent=title[key]||'Quản lý chuyển hàng';
  $('shippingSubheading').textContent=isView?'Chế độ chỉ xem – chỉ hiển thị dữ liệu trong phạm vi được cấp quyền, không thể thay đổi':
-  key==='overview'?'Tiến độ, chứng từ, ảnh và video của từng đơn':'Theo dõi và thực hiện nghiệp vụ QBooks';
+  ({overview:'Tiến độ, chứng từ, ảnh và video của từng đơn',sale:'Tạo đơn mới và sửa đơn chưa đóng hàng',pack:'Chọn đơn, chụp ảnh, quay video rồi lưu',ship:'Chọn đơn đã đóng, ghi thông tin giao và ảnh bàn giao',staff:'Tài khoản, quyền truy cập, đồng bộ và nhật ký'})[key]||'';
  if(isView&&key!=='overview'){
   show('viewOnlyPanel',true);
   for(const id of ['overviewView','ordersView','saleView','staffView','detailView'])show(id,false);
@@ -912,8 +912,8 @@ function addMediaLinks(container,order){
   const link=fileDriveUrl(item.drive_file_id);
   if(link)appendDrive((MEDIA_LABELS[item.stage]||'Tệp')+' · '+(item.filename||'Mở tệp'),link,true);
   else{
-   const b=button((MEDIA_LABELS[item.stage]||'Tệp')+' · R2',()=>downloadMedia(item.id,item.filename,b),'overview-link');
-   b.title='Tệp chưa chuyển lên Drive, chỉ có thể tải từ R2: '+(item.filename||'');
+   const b=button((MEDIA_LABELS[item.stage]||'Tệp')+' · tải về',()=>downloadMedia(item.id,item.filename,b),'overview-link');
+   b.title='Tệp đang chờ chuyển lên Google Drive, bấm để tải bản lưu trên QBooks: '+(item.filename||'');
    container.append(b);
   }
  }
@@ -1185,7 +1185,14 @@ function renderOverview(){
  const kpis=$('shippingKpis');kpis.replaceChildren();
  const cards=[['Tổng số đơn',r.totals.total,'all'],['Chờ đóng hàng',r.totals.waitingPacking,'pack'],['Chờ vận đơn',r.totals.waitingShipping,'ship'],['Đang giao',r.totals.moving,'moving'],['Hoàn thành',r.totals.completed,'done']];
  for(const [label,num,style] of cards){
-  const card=el('div',null,'shipping-kpi '+style);card.append(el('small',label),el('strong',Number(num||0).toLocaleString('vi-VN')));kpis.append(card);
+  // Each KPI is also the quickest way to filter the list by that status.
+  const value={all:'',pack:'CHỜ ĐÓNG HÀNG',ship:'CHỜ VẬN ĐƠN',moving:'ĐANG GIAO',done:'HOÀN THÀNH'}[style];
+  const card=el('button',null,'shipping-kpi '+style);card.type='button';
+  card.setAttribute('aria-pressed',String($('overviewStatus').value===value));
+  card.title=style==='all'?'Xem tất cả trạng thái':'Lọc các đơn '+label.toLowerCase();
+  card.append(el('small',label),el('strong',Number(num||0).toLocaleString('vi-VN')));
+  card.onclick=()=>{$('overviewStatus').value=value;refreshOverviewFilters();};
+  kpis.append(card);
  }
  const serverPage=!!r.pagination;
  const term=$('overviewSearch').value.trim().toLocaleLowerCase('vi'),status=$('overviewStatus').value;
@@ -1354,7 +1361,7 @@ async function openOrder(order){
  notice('');
 }
 const lastProgress=new Map(); // file name -> [done,total], so the background bar starts from bytes already sent
-function progress(file,done,total,background=false,dest='R2'){
+function progress(file,done,total,background=false,dest='QBooks'){
  lastProgress.set(file,[done,total]);
  if(background&&state.backgroundJob){
   $('backgroundUploadBar').hidden=false;
@@ -1478,7 +1485,7 @@ async function uploadOne(orderId,stage,file,background=false){
  uploadIdsByKey.set(key,id);
  // Keep the fingerprint until the order commit succeeds. Retrying a failed pack
  // must reuse completed files instead of creating duplicate Drive/R2 objects.
- if(info.status==='COMPLETE'){progress(file.name,file.size,file.size,background,info.transport==='drive'?'Google Drive':'R2');return id}
+ if(info.status==='COMPLETE'){progress(file.name,file.size,file.size,background,info.transport==='drive'?'Google Drive':'QBooks');return id}
  if(!video){
   progress(stage+' · '+file.name,0,file.size,background);await uploadPhotoWithProgress(id,stage,file,background);
   progress(file.name,file.size,file.size,background);return id;
@@ -1695,7 +1702,7 @@ async function mirrorOperationalFiles(uploads,statusId){
  const token=state.operationalDriveToken;
  if(!uploads.length)return result;
  if(!token||Date.now()>=state.operationalDriveUntil){
-  operationalDriveStatus(statusId,'Tệp đã lưu trên R2. Chưa có quyền Google Drive nên chưa tạo liên kết chia sẻ.');
+  operationalDriveStatus(statusId,'Tệp đã lưu trên QBooks. Liên kết Google Drive sẽ có sau khi hệ thống chuyển tệp.');
   result.pending=uploads.length;
   result.files=uploads.map(f=>({...f,drive_file_id:null}));
   return result;
@@ -1721,7 +1728,7 @@ async function mirrorOperationalFiles(uploads,statusId){
   }
  }
  const summary='Đã lưu trên Drive '+result.synced+'/'+uploads.length+' tệp.'+
- (result.pending?' Còn '+result.pending+' tệp trên R2 cần đồng bộ tiếp.':' Có thể mở hoặc sao chép liên kết.');
+ (result.pending?' Còn '+result.pending+' tệp đang chờ chuyển lên Drive.':' Có thể mở hoặc sao chép liên kết.');
  operationalDriveStatus(statusId,summary);
  return result;
 }
@@ -1871,7 +1878,7 @@ async function savePack(){
    await api('POST','/api/orders/'+id+'/pack',payload);
    for(const [stage,file] of uploads)localStorage.removeItem(fingerprint(id,stage,file));
    state.lockedOrderIds.delete(id);markDraftSaved($('packControls'));
-   notice('Đã hoàn thành đóng hàng, '+saved.length+' tệp đã lưu R2.',true);
+   notice('Đã lưu đóng hàng và '+saved.length+' tệp.',true);
    show('detailView',false);show('ordersView',true);await loadOrders();
   }catch(e){notice('Chưa lưu được đóng hàng: '+e.message);showFormError($('packControls'),e.message);}
   finally{setBusy(false);}
@@ -1886,7 +1893,7 @@ async function savePack(){
  const sentTotal=sent.reduce((a,x)=>a+x[1],0),startPct=sentTotal?Math.min(99,Math.round(sent.reduce((a,x)=>a+x[0],0)/sentTotal*100)):0;
  $('backgroundUploadProgress').value=startPct;$('backgroundUploadPercent').textContent=startPct+'%';
  $('backgroundUploadTitle').textContent='Đang tải video · '+(order.invoice_codes||id);
- $('backgroundUploadDetail').textContent='Đang gửi video lên nơi lưu trữ. Có thể chuyển menu Qbooks, nhưng KHÔNG đóng tab/Safari trước khi thấy CÓ THỂ ĐÓNG TRÌNH DUYỆT.';
+ $('backgroundUploadDetail').textContent='Đang gửi video. Có thể chuyển sang menu khác, nhưng không đóng tab/Safari trước khi thấy “Có thể đóng trình duyệt”.';
  markDraftSaved($('packControls'));
  notice('Đang tải video nền: có thể dùng menu Qbooks khác nhưng chưa được đóng trình duyệt.',true);
  // Deliberately not awaited: render/navigation continue while upload runs.
@@ -1905,9 +1912,9 @@ async function savePack(){
    await api('POST','/api/orders/'+id+'/pack',payload);
    for(const [stage,file] of uploads)localStorage.removeItem(fingerprint(id,stage,file));
    state.lockedOrderIds.delete(id);
-   $('backgroundUploadTitle').textContent='✓ Đã lưu '+(order.invoice_codes||id)+' · CÓ THỂ ĐÓNG TRÌNH DUYỆT';
+   $('backgroundUploadTitle').textContent='✓ Đã lưu '+(order.invoice_codes||id)+' · Có thể đóng trình duyệt';
    $('backgroundUploadPercent').textContent='';backgroundBarState('done');
-   $('backgroundUploadDetail').textContent='Đã xác nhận lưu '+saved.length+' tệp. Video tải thẳng Drive đã được kiểm tra; tệp còn trên R2 sẽ chờ Worker đồng bộ nếu được bật.';
+   $('backgroundUploadDetail').textContent='Đã lưu '+saved.length+' tệp. Hệ thống tự chuyển tệp lên Google Drive trong vài phút.';
    if(state.area==='orders'&&state.tab==='pack'&&state.selected?.id===id){
     show('detailView',false);show('ordersView',true);
     await loadOrders().catch(()=>{});
@@ -1947,7 +1954,7 @@ async function saveShip(){
   for(const [stage,file] of uploads)localStorage.removeItem(fingerprint(id,stage,file));
   for(const key of orderIds)state.lockedOrderIds.delete(key);
   markDraftSaved($('shipControls'));
-  notice('Đã lưu vận đơn. '+uploaded.length+' tệp đã ghi R2. Chuyển Drive khi Worker được kích hoạt; chỉ xóa R2 sau khi xác minh đủ tệp. Dữ liệu Sheets đồng bộ riêng.',true);
+  notice('Đã lưu vận đơn và '+uploaded.length+' ảnh. Hệ thống tự chuyển ảnh lên Google Drive trong vài phút.',true);
   show('detailView',false);show('ordersView',true);await loadOrders();
  }catch(e){
   if(saved){notice('Vận đơn đã lưu, nhưng chưa tải lại được danh sách: '+humanizeError(e.message),true);return;}
@@ -2025,7 +2032,7 @@ $('saleForm').addEventListener('submit',async e=>{
   await api('POST','/api/orders',f);saved=true;
   form.reset();updateSaleCustomerHint();checkSaleDuplicatePreview();$('saleDeliveryTimeBox').hidden=true;$('saleDeliveryTime').required=false;
   markDraftSaved(form);
-  notice('Đã tạo đơn Sale trên D1. Đơn sẵn sàng chuyển Đóng hàng; chưa tự ghi sang Google Sheets.',true);
+  notice('Đã lưu đơn. Đơn đã chuyển sang danh sách Đóng hàng.',true);
   await loadGroupOptions();await loadOrders();
  }catch(err){
   if(saved){notice('Đơn đã được lưu thành công, nhưng chưa cập nhật được danh sách: '+humanizeError(err.message),true);return;}
